@@ -73,8 +73,8 @@ export function generateWorld(seed) {
     if (water) { W.type[i] = T_WATER; W.mtn[i] = 0; } else if (W.mtn[i] > 0.35) W.type[i] = T_MOUNTAIN;
 
     const tn = nTree.fbm(x * 0.13 + 200, z * 0.13, 3) * 0.5 + 0.5;
-    const dens = tn + treesP - 0.62;
-    W.trees[i] = W.type[i] === T_WATER ? 0 : dens > 0.3 ? 3 : dens > 0.18 ? 2 : dens > 0.06 ? 1 : 0;
+    const dens = tn + treesP - 0.7;
+    W.trees[i] = W.type[i] === T_WATER ? 0 : dens > 0.32 ? 3 : dens > 0.2 ? 2 : dens > 0.08 ? 1 : 0;
     if (W.type[i] === T_MOUNTAIN && W.mtn[i] > 0.7) W.trees[i] = Math.min(W.trees[i], 1);
   }
 
@@ -166,10 +166,10 @@ function placeSites(W, rng) {
     reg.industries.forEach((type, k) => {
       let spot = null;
       if (r === 0 && k === 0) {
-        // tutorial forest: 7..10 tiles from Greenfield with a clear land corridor
+        // tutorial forest: 9..12 tiles from Greenfield with a clear land corridor
         const g = W.towns[0];
         for (let a = 0; a < 300 && !spot; a++) {
-          const ang = rng.range(0, Math.PI * 2), dist = rng.range(7, 10);
+          const ang = rng.range(0, Math.PI * 2), dist = rng.range(9, 12);
           const x = Math.round(g.x + Math.cos(ang) * dist), z = Math.round(g.z + Math.sin(ang) * dist);
           if (x < 4 || z < 4 || x > N - 6 || z > N - 6) continue;
           if (W.region[idx(x, z)] !== 0 || W.region[idx(x + 1, z + 1)] !== 0) continue;

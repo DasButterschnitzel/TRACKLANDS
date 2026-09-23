@@ -214,7 +214,7 @@ export class TrainSystem {
     let cur = tile, heading = h, acc = 0;
     // head step
     let bestOut = null, bt = 9;
-    for (let d = 0; d < 8; d++) if (net.hasDir(tile, d) && d !== opp(h) && turnOf(h, d) <= 2 && turnOf(h, d) < bt) { bt = turnOf(h, d); bestOut = d; }
+    for (let d = 0; d < 8; d++) if (net.hasDir(tile, d) && d !== opp(h) && turnOf(h, d) <= 3 && turnOf(h, d) < bt) { bt = turnOf(h, d); bestOut = d; }
     seq.push({ tile, inH: h, outH: bestOut });
     acc += TILE / 2;
     let guard = 0;
@@ -227,7 +227,7 @@ export class TrainSystem {
         if (!net.hasDir(prev, d) || d === heading) continue;
         const cand = opp(d);
         const tt = turnOf(cand, heading);
-        if (tt <= 2 && tt < best) { best = tt; hp = cand; }
+        if (tt <= 3 && tt < best) { best = tt; hp = cand; }
       }
       const sd = net.special.get(prev);
       if (sd && sd.type === 'depot') hp = null;
@@ -281,12 +281,12 @@ export class TrainSystem {
     const atCenter = Math.abs(t.s - st.sc) < 0.05;
     if (atCenter) {
       if (st.tile === targetTile) { /* already here */ }
-      const r = net.findRoute({ tile: st.tile, heading: st.inH, fromCenter: true }, targetTile, { minTier });
+      const r = net.findRoute({ tile: st.tile, heading: st.inH, fromCenter: true }, targetTile, { minTier, allowReverse: true });
       if (r && (r.steps.length || st.tile === targetTile)) opts.push({ kind: 'center', route: r, cost: r.length });
     } else if (st.outH != null && net.hasDir(st.tile, st.outH)) {
       const nt = step(st.tile, st.outH);
       if (nt >= 0) {
-        const r = net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, targetTile, { minTier });
+        const r = net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, targetTile, { minTier, allowReverse: true });
         if (r) opts.push({ kind: 'forward', route: r, cost: r.length + (st.s1 - t.s) / TILE });
       }
     }
@@ -298,18 +298,28 @@ export class TrainSystem {
         const rh = opp(ts.inH);
         const nt = step(ts.tile, rh);
         if (nt >= 0 && net.hasDir(ts.tile, rh)) {
-          const r = net.findRoute({ tile: nt, heading: rh, fromCenter: false }, targetTile, { minTier });
+          const r = net.findRoute({ tile: nt, heading: rh, fromCenter: false }, targetTile, { minTier, allowReverse: true });
           if (r) opts.push({ kind: 'reverse', route: r, cost: r.length + 1.5 + L / TILE });
         }
+      } else if (ts && ts.outH != null) {
+        // tail sits in a step that starts at a tile center (depot / spawn point)
+        const r = net.findRoute({ tile: ts.tile, heading: opp(ts.outH), fromCenter: true }, targetTile, { minTier, allowReverse: true });
+        if (r) opts.push({ kind: 'reverse', route: r, cost: r.length + 1.5 + L / TILE });
       }
     }
+    for (const o of opts) o.target = targetTile;
     opts.sort((a, b) => a.cost - b.cost);
     return opts;
   }
 
   applyRoute(t, opt) {
     const net = this.net;
-    if (opt.kind === 'reverse') this.flipTrain(t);
+    if (opt.kind === 'reverse') {
+      this.flipTrain(t);
+      const o2 = this.planOptions(t, opt.target, false);
+      if (!o2.length) return false;
+      return this.applyRoute(t, o2[0]);
+    }
     const { k, st } = this.headInfo(t);
     if (opt.kind === 'center') {
       const first = opt.route.firstOut;
@@ -342,7 +352,19 @@ export class TrainSystem {
     for (const s of opt.route.steps) this.appendStep(t, s);
     const last = t.steps[t.steps.length - 1];
     t.stopS = last.sc;
+    t.via = !!opt.route.reverse;
     return true;
+  }
+
+  // reached a shunting point: reverse direction and continue to the target
+  viaReverse(t) {
+    const stn = this.game.stations.byId(t.target);
+    t.via = false; t.v = 0;
+    if (!stn) { t.state = 'idle'; t.stateT = 0; return; }
+    const opts = this.planOptions(t, stn.tile, true).filter((o) => o.kind === 'reverse');
+    if (opts.length && this.applyRoute(t, opts[0])) return;
+    const any = this.planOptions(t, stn.tile, false);
+    if (!any.length || !this.applyRoute(t, any[0])) { t.state = 'lost'; t.stateT = 0; t.problem = 'no_route'; }
   }
 
   // ---------- AI ----------
@@ -448,11 +470,11 @@ export class TrainSystem {
       t.state = 'idle'; t.stateT = 0;
       return;
     }
-    if (opts[0].kind === 'reverse') {
-      // reversing needs the other lane to be free
-      const probe = opts[0];
-      this.applyRoute(t, probe);
-    } else this.applyRoute(t, opts[0]);
+    if (!this.applyRoute(t, opts[0])) {
+      t.unreachable.set(stn.id, g.time + 20);
+      t.problem = 'no_route'; t.state = 'idle'; t.stateT = 0;
+      return;
+    }
     t.target = stn.id;
     t.problem = null;
     t.state = 'run'; t.stateT = 0; t.wait = 0; t.recover = 0;
@@ -625,7 +647,7 @@ export class TrainSystem {
       let lim = TRACK_TIERS[tier].speed * (st.model.maglev && tier === 3 ? 1.45 : 1);
       if (s.inH != null && s.outH != null && s.inH !== s.outH) {
         const tt = turnOf(s.inH, s.outH);
-        let f = tt === 1 ? (tier === 3 ? 0.92 : 0.8) : (tier === 3 ? 0.72 : 0.5);
+        let f = tt === 1 ? (tier === 3 ? 0.92 : 0.8) : tt === 2 ? (tier === 3 ? 0.72 : 0.5) : 0.22;
         f = 1 - (1 - f) * (1 + fx.curvePenalty);
         lim *= f;
       }
@@ -654,6 +676,7 @@ export class TrainSystem {
     if (t.s >= t.stopS - 0.02 && t.v < 0.2) {
       t.s = t.stopS;
       if (t.pendingLost) { t.pendingLost = false; t.state = 'lost'; t.stateT = 0; t.v = 0; return; }
+      if (t.via) { this.viaReverse(t); return; }
       this.arrive(t);
       if (t.steps.length > 60) this.trim(t);
       return;
@@ -683,7 +706,7 @@ export class TrainSystem {
       if (!this.net.canReserve(s.keys, t.id)) avoid.add(s.tile);
     }
     const nt = step(st.tile, st.outH);
-    const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, stn.tile, { minTier: t._st.minTier, avoid });
+    const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, stn.tile, { minTier: t._st.minTier, avoid, allowReverse: true });
     if (r && !r.steps.some((s) => avoid.has(s.tile))) {
       this.applyRoute(t, { kind: 'forward', route: r });
     }
@@ -892,7 +915,7 @@ export class TrainSystem {
       if (loco.visible && t.state === 'run' && g.particles) {
         const m = t._st.model;
         t._puff = (t._puff || 0) + dt * (0.8 + t.v * 1.2);
-        if (m.kind.startsWith('steam') && t._puff > 1) {
+        if (m.kind.startsWith('steam') && t._puff > 1.8) {
           t._puff = 0;
           _v.set(0.52, 0.85, 0).applyEuler(loco.rotation).add(loco.position);
           g.particles.emit('steam', _v.x, _v.y, _v.z, 1);

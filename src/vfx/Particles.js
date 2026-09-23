@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 
 const TYPES = {
-  steam: { life: 2.4, size: [0.5, 1.6], col: [0.97, 0.97, 0.98], a: 0.75, vy: 1.4, spread: 0.25, grow: 1, drag: 0.6 },
+  steam: { life: 2.0, size: [0.35, 1.15], col: [0.97, 0.97, 0.98], a: 0.5, vy: 1.4, spread: 0.25, grow: 1, drag: 0.6 },
   smoke: { life: 4.0, size: [0.7, 2.4], col: [0.52, 0.52, 0.55], a: 0.55, vy: 1.0, spread: 0.2, grow: 1, drag: 0.4 },
   exhaust: { life: 1.6, size: [0.3, 0.9], col: [0.35, 0.35, 0.38], a: 0.5, vy: 1.1, spread: 0.12, grow: 1, drag: 0.6 },
   dust: { life: 1.3, size: [0.4, 1.1], col: [0.78, 0.68, 0.52], a: 0.7, vy: 0.9, spread: 1.4, grow: 1, drag: 2.5 },

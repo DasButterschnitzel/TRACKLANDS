@@ -1,0 +1,1077 @@
+// DOM user interface: HUD, toolbars, panels, inspector, world labels, toasts,
+// modals, tooltips and the debug overlay. All strings come from i18n.
+import * as THREE from 'three';
+import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
+import {
+  CARGO, CARGO_IDS, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
+  TRACK_TIERS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
+  LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S,
+} from '../config.js';
+import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
+import { icon, cargoIcon } from './icons.js';
+import { locoModel } from '../trains/Trains.js';
+import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels.js';
+import { MATS } from '../core/ModelBuilder.js';
+import { MonetizationService } from '../services/Monetization.js';
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = escapeHtml;
+
+export class UI {
+  constructor(app) {
+    this.app = app;          // main app (settings, store, actions)
+    this.game = null;
+    this.panel = null;
+    this.handlers = {};
+    this.floats = [];
+    this.labels = new Map();
+    this.previews = new Map();
+    this._v = new THREE.Vector3();
+    this._liveT = 0;
+    this._coinsShown = 0;
+    this.hud = $('#hud');
+    this.bindGlobal();
+  }
+
+  tr(key, p) { return i18n(key, p); }
+  cargoName(c) { return this.tr('cargo_' + c); }
+
+  attach(game) {
+    this.game = game;
+    this.renderHud();
+    this.hud.hidden = false;
+    this._coinsShown = game.economy.coins;
+    const E = game.events;
+    E.on('tool', () => this.renderToolbar());
+    E.on('undo', () => this.renderToolbar());
+    E.on('speed', () => this.renderTop());
+    E.on('grant', () => this.renderGrant());
+    E.on('select', () => {});
+    E.on('saved', () => { const s = $('#save-dot'); if (s) { s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); } });
+    for (const ev of ['research', 'levelUp', 'regionUnlocked', 'contractDone', 'contractClaimed', 'achievement', 'objectiveDone', 'trainBought', 'trainSold', 'dailyClaimed', 'stationUpgraded']) E.on(ev, () => this.refreshPanel());
+    this.renderGrant();
+  }
+
+  detach() {
+    this.game = null;
+    this.hud.hidden = true;
+    this.closePanel(); this.showInspector(null);
+    $('#labels').innerHTML = ''; this.labels.clear();
+    $('#floats').innerHTML = ''; this.floats = [];
+  }
+
+  // ---------- global delegation ----------
+  bindGlobal() {
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-act]');
+      if (!el || el.disabled) return;
+      const act = el.dataset.act;
+      const h = this.handlers[act] || this.actions[act];
+      if (h) { e.preventDefault(); this.app.audio.unlock(); h.call(this, el.dataset.arg, el, e); if (!el.dataset.silent) this.app.audio.play('click'); }
+    });
+    document.addEventListener('input', (e) => {
+      const el = e.target.closest('[data-input]');
+      if (!el) return;
+      const h = this.inputs[el.dataset.input];
+      if (h) h.call(this, el);
+    });
+    document.addEventListener('change', (e) => {
+      const el = e.target.closest('[data-change]');
+      if (!el) return;
+      const h = this.inputs[el.dataset.change];
+      if (h) h.call(this, el);
+    });
+    // tooltips (hover on desktop, long press on touch)
+    const tip = $('#tooltip');
+    let lpTimer = 0;
+    document.addEventListener('pointerover', (e) => {
+      const el = e.target.closest('[data-tip]');
+      if (!el || e.pointerType !== 'mouse') return;
+      this.showTip(el);
+    });
+    document.addEventListener('pointerout', (e) => { if (e.target.closest('[data-tip]')) tip.hidden = true; });
+    document.addEventListener('pointerdown', (e) => {
+      const el = e.target.closest('[data-tip]');
+      clearTimeout(lpTimer);
+      tip.hidden = true;
+      if (el && e.pointerType !== 'mouse') lpTimer = setTimeout(() => this.showTip(el), 450);
+    });
+    document.addEventListener('pointerup', () => clearTimeout(lpTimer));
+  }
+  showTip(el) {
+    const tip = $('#tooltip');
+    tip.textContent = el.dataset.tip;
+    tip.hidden = false;
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = r.left + r.width / 2 - tw / 2, y = r.top - th - 8;
+    if (y < 4) y = r.bottom + 8;
+    tip.style.left = clamp(x, 4, window.innerWidth - tw - 4) + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  // ---------- HUD ----------
+  renderHud() {
+    this.renderTop();
+    this.renderRail();
+    this.renderToolbar();
+  }
+
+  renderTop() {
+    const g = this.game; if (!g) return;
+    const P = g.progression;
+    const sp = [0, 1, 2, 4].map((s) => `<button class="spd ${g.speed === s ? 'on' : ''}" data-act="speed" data-arg="${s}" aria-label="${this.tr(s ? 'speed_x' : 'pause', { n: s })}" data-tip="${this.tr(s ? 'speed_x' : 'pause', { n: s })}">${s ? s + '×' : icon('pause')}</button>`).join('');
+    $('#topbar').innerHTML = `
+      <button class="menu-btn" data-act="toggleMenu" aria-label="${this.tr('menu')}">${icon('menu')}</button>
+      <button class="lvl" data-act="panel" data-arg="company" data-tip="${this.tr('company_level')}">
+        <span class="lvl-num" id="lvl-num">${P.level}</span>
+        <span class="lvl-bar"><span id="xp-fill"></span></span>
+      </button>
+      <div class="res coins" data-tip="${this.tr('coins')}">${icon('coin')}<span id="coins-v">${fmt(g.economy.coins)}</span></div>
+      <button class="res rp" data-act="panel" data-arg="research" data-tip="${this.tr('research_points')}">${icon('rp')}<span id="rp-v">${P.rp}</span></button>
+      <div class="spacer"></div>
+      <div class="speeds" role="group" aria-label="${this.tr('game_speed')}">${sp}</div>
+      <span id="save-dot" class="save-dot" data-tip="${this.tr('autosave')}"></span>
+      <button class="icon-btn" data-act="panel" data-arg="settings" aria-label="${this.tr('settings')}">${icon('settings')}</button>`;
+    this.updateTop(true);
+  }
+
+  updateTop(force) {
+    const g = this.game; if (!g) return;
+    const P = g.progression;
+    const c = g.economy.coins;
+    this._coinsShown += (c - this._coinsShown) * (force ? 1 : 0.2);
+    if (Math.abs(c - this._coinsShown) < 1) this._coinsShown = c;
+    const cv = $('#coins-v'); if (cv) cv.textContent = fmt(this._coinsShown);
+    const rv = $('#rp-v'); if (rv) rv.textContent = P.rp;
+    const ln = $('#lvl-num'); if (ln) ln.textContent = P.level;
+    const xf = $('#xp-fill'); if (xf) xf.style.width = Math.min(100, (P.xp / P.xpNeeded()) * 100) + '%';
+    const lvlBtn = $('.lvl'); if (lvlBtn) lvlBtn.dataset.tip = `${this.tr('company_level')} ${P.level} · ${fmt(P.xp)}/${fmt(P.xpNeeded())} XP`;
+  }
+
+  renderRail() {
+    const items = ['company', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements'];
+    $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
+  }
+
+  renderToolbar() {
+    const g = this.game; if (!g) return;
+    const C = g.construction;
+    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['bulldoze', 'bulldoze'], ['decor', 'decor']];
+    const btn = ([id, ic], k) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${k + 1})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
+    const heat = g.railView.heatOn;
+    const undo = C.canUndo();
+    $('#toolbar').innerHTML = `<div class="tools">${tools.map(btn).join('')}</div>
+      <div class="tools2">
+        <button class="tool small ${heat ? 'on' : ''}" data-act="heatmap" data-tip="${this.tr('heatmap')} (H)" aria-label="${this.tr('heatmap')}">${icon('heat')}</button>
+        <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
+      </div>`;
+    // contextual sub bar
+    let sub = '';
+    if (C.tool === 'track') {
+      sub = TRACK_TIERS.map((t, i) => {
+        const locked = t.research && !g.progression.research.has(t.research);
+        return `<button class="chip ${C.tier === i ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="tier" data-arg="${i}" data-tip="${locked ? this.tr('requires') + ': ' + this.tr('res_' + t.research) : this.tr('tier_' + t.id + '_desc')}">${locked ? icon('lock') : ''}<b>${this.tr('tier_' + t.id)}</b><small>${fmt(g.economy.costs.trackTile(i, 0))}● · ${t.speed} km/h</small></button>`;
+      }).join('') + `<span class="sub-hint">${this.tr('hint_drag_track')}</span>`;
+    } else if (C.tool === 'decor') {
+      sub = DECORATIONS.map((d) => {
+        const locked = !g.progression.isUnlocked(d.unlock);
+        return `<button class="chip ${C.decor === d.id ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="decorType" data-arg="${d.id}" ${locked ? `data-tip="${this.tr('unlock_level', { n: d.unlock.level })}"` : ''}>${locked ? icon('lock') : ''}<b>${this.tr('dec_' + d.id)}</b><small>${fmt(g.economy.costs.decor(d))}●</small></button>`;
+      }).join('');
+    } else if (C.tool === 'station') {
+      sub = `<span class="sub-hint">${icon('station')} ${this.tr('hint_station', { cost: fmt(g.economy.costs.station()) })}</span>`;
+    } else if (C.tool === 'depot') {
+      sub = `<span class="sub-hint">${icon('depot')} ${this.tr('hint_depot', { cost: fmt(g.economy.costs.depot()) })}</span>`;
+    } else if (C.tool === 'bulldoze') {
+      sub = `<span class="sub-hint">${icon('bulldoze')} ${this.tr('hint_bulldoze')}</span>`;
+    }
+    const sb = $('#subbar');
+    sb.innerHTML = sub;
+    sb.hidden = !sub;
+    document.body.classList.toggle('building', C.tool !== 'select');
+  }
+
+  renderGrant() {
+    const g = this.game;
+    const el = $('#grant');
+    if (!g || !g.economy.grantAvailable) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = `<button class="btn gold" data-act="grant">${icon('gift')} ${this.tr('grant_btn')}</button><small>${this.tr('grant_desc')}</small>`;
+  }
+
+  // ---------- per-frame ----------
+  update(dt) {
+    const g = this.game; if (!g) return;
+    this.updateTop(false);
+    if (this.followId != null) {
+      const p = g.entityPos({ type: 'train', id: this.followId });
+      if (p) { g.camera.target.x += (p.x - g.camera.target.x) * Math.min(1, dt * 5); g.camera.target.z += (p.z - g.camera.target.z) * Math.min(1, dt * 5); } else this.followId = null;
+    }
+    this.updateFloats(dt);
+    this.updateLabels();
+    const ut = $('#undo-t');
+    if (ut) { const left = g.construction.undoTimeLeft(); ut.style.setProperty('--p', (left / 10) * 100 + '%'); }
+    this._liveT -= dt;
+    if (this._liveT <= 0) {
+      this._liveT = 0.5;
+      if (this.panel && this.panelDefs[this.panel] && this.panelDefs[this.panel].live) this.refreshPanel();
+      if (this.inspectSel) this.renderInspector();
+      this.updateBadges();
+      if (this.debugOn) this.renderDebug();
+    }
+  }
+
+  updateBadges() {
+    const g = this.game;
+    const set = (k, n) => { const b = $('#badge-' + k); if (b) { b.hidden = !n; b.textContent = n > 9 ? '9+' : n; } };
+    set('contracts', g.economy.contracts.filter((k) => k.done && !k.claimed).length + (g.economy.daily ? g.economy.daily.list.filter((d) => !d.claimed && g.economy.dailyProgress(d) >= d.target).length : 0));
+    set('research', g.progression.researchAvailable() ? RESEARCH.filter((r) => g.progression.researchState(r.id) === 'available').length : 0);
+    const nr = g.progression.nextRegion();
+    set('objectives', nr >= 0 && g.progression.regionUnlockInfo(nr).ok ? 1 : 0);
+  }
+
+  // ---------- toasts, banners, floating text ----------
+  toast(text, kind = 'info', ic = null) {
+    const box = $('#toasts');
+    const el = document.createElement('div');
+    el.className = 'toast ' + kind;
+    el.innerHTML = `${ic ? icon(ic) : kind === 'error' ? icon('warn') : icon('info')}<span>${esc(text)}</span>`;
+    el.setAttribute('role', 'status');
+    box.appendChild(el);
+    while (box.children.length > 3) box.firstChild.remove();
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'error' ? 2600 : 3600);
+  }
+  error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error'); this.app.audio.play('error'); }
+  hint(text) { this.toast(text, 'hint', 'info'); }
+
+  banner(title, desc) {
+    const b = $('#banner');
+    if (!title) { b.classList.remove('show'); return; }
+    b.innerHTML = `<b>${esc(title)}</b><span>${esc(desc || '')}</span>`;
+    b.classList.add('show');
+  }
+
+  celebrate(title, sub) {
+    const c = $('#celebrate');
+    c.innerHTML = `<div class="cel-title">${esc(title)}</div><div class="cel-sub">${esc(sub || '')}</div>`;
+    c.classList.remove('show'); void c.offsetWidth; c.classList.add('show');
+    clearTimeout(this._celT);
+    this._celT = setTimeout(() => c.classList.remove('show'), 3200);
+  }
+
+  levelUp(lvl, unlocks) {
+    this.celebrate(this.tr('level_up'), this.tr('company_level') + ' ' + lvl);
+    for (const u of unlocks.slice(0, 4)) {
+      let s;
+      if (u.kind === 'train') s = this.tr('unlock_train', { name: u.name });
+      else if (u.kind === 'station') s = this.tr('unlock_station', { name: this.tr('slvl_' + u.level) });
+      else if (u.kind === 'region') s = this.tr('unlock_region', { name: this.tr('region_' + u.id) });
+      else if (u.kind === 'research') s = this.tr('unlock_research');
+      else if (u.kind === 'livery') s = this.tr('unlock_livery', { name: this.tr('liv_' + u.id) });
+      else if (u.kind === 'legacy') s = this.tr('unlock_legacy');
+      if (s) this.toast(s, 'gold', 'star');
+    }
+    const lv = $('.lvl'); if (lv) { lv.classList.remove('pop'); void lv.offsetWidth; lv.classList.add('pop'); }
+  }
+
+  floatText(x, y, z, text, cls) {
+    if (this.floats.length > 40) { const f = this.floats.shift(); f.el.remove(); }
+    const el = document.createElement('div');
+    el.className = 'float ' + (cls || '');
+    el.innerHTML = cls === 'coin' ? `${icon('coin')}${esc(text)}` : esc(text);
+    $('#floats').appendChild(el);
+    this.floats.push({ el, x: x + (Math.random() - 0.5) * 0.8, y: y + Math.random() * 0.4, z: z + (Math.random() - 0.5) * 0.8, t: 0 });
+  }
+  updateFloats(dt) {
+    const cam = this.game.camera.camera;
+    const W = window.innerWidth, H = window.innerHeight;
+    for (let i = this.floats.length - 1; i >= 0; i--) {
+      const f = this.floats[i];
+      f.t += dt;
+      if (f.t > 1.6) { f.el.remove(); this.floats.splice(i, 1); continue; }
+      this._v.set(f.x, f.y + f.t * 1.5, f.z).project(cam);
+      const sx = (this._v.x + 1) / 2 * W, sy = (1 - this._v.y) / 2 * H;
+      f.el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -50%)`;
+      f.el.style.opacity = f.t < 1.1 ? 1 : 1 - (f.t - 1.1) / 0.5;
+    }
+  }
+
+  cursorInfo(text, ok) {
+    const el = $('#cursorinfo');
+    el.hidden = false;
+    el.textContent = text;
+    el.className = ok ? 'ok' : 'bad';
+  }
+  hideCursorInfo() { $('#cursorinfo').hidden = true; }
+  pointerMoved(x, y) {
+    const el = $('#cursorinfo');
+    el.style.transform = `translate(${x + 18}px, ${y + 14}px)`;
+  }
+
+  weatherChanged() {}
+
+  // ---------- world labels ----------
+  label(key, cls) {
+    let el = this.labels.get(key);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wlabel ' + cls;
+      el.dataset.key = key;
+      $('#labels').appendChild(el);
+      this.labels.set(key, el);
+      el.addEventListener('click', () => {
+        const [type, id] = key.split(':');
+        if (type === 'region') this.game.select({ type: 'region', id: +id });
+        else this.game.select({ type, id: +id });
+      });
+    }
+    el._used = true;
+    return el;
+  }
+  pulseLabel(type, id) {
+    const el = this.labels.get(`${type}:${id}`);
+    if (el) { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); }
+  }
+
+  updateLabels() {
+    const g = this.game;
+    const cam = g.camera.camera;
+    const vs = g.camera.viewSize;
+    const W = window.innerWidth, H = window.innerHeight;
+    for (const el of this.labels.values()) el._used = false;
+    const place = (el, x, y, z) => {
+      this._v.set(x, y, z).project(cam);
+      if (this._v.x < -1.2 || this._v.x > 1.2 || this._v.y < -1.2 || this._v.y > 1.2) { el.style.display = 'none'; return false; }
+      el.style.display = '';
+      el.style.transform = `translate(${(this._v.x + 1) / 2 * W}px, ${(1 - this._v.y) / 2 * H}px) translate(-50%, -100%)`;
+      return true;
+    };
+    const showLabels = g.settings.labels !== false;
+    if (showLabels) {
+      for (const t of g.towns.list) {
+        if (!g.progression.regionUnlocked(t.region) || vs > 60) continue;
+        const el = this.label('town:' + t.id, 'town');
+        const detail = vs < 30;
+        const sig = `${t.name}|${t.stage}|${detail}|${JSON.stringify(t.progress)}|${getLang()}`;
+        if (el._sig !== sig) {
+          el._sig = sig;
+          const req = g.towns.requirement(t);
+          let bars = '';
+          if (detail && req) bars = '<div class="lbars">' + Object.keys(req).map((c) => `<div class="lbar" title="${this.cargoName(c)}">${cargoIcon(c)}<i style="--p:${Math.min(100, ((t.progress[c] || 0) / req[c]) * 100)}%"></i><small>${Math.floor(t.progress[c] || 0)}/${req[c]}</small></div>`).join('') + '</div>';
+          el.innerHTML = `<b>${esc(t.name)}</b><small>${this.tr('stage_' + g.towns.stageName(t))}</small>${bars}`;
+        }
+        place(el, (t.x + 0.5) * TILE, g.world.tileH[t.z * N + t.x] + 3.2, (t.z + 0.5) * TILE);
+      }
+      if (vs < 26) for (const s of g.stations.list) {
+        const el = this.label('station:' + s.id, 'station' + (s.warn ? ' warn' : ''));
+        const sig = s.name + s.warn;
+        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('station')}<span>${esc(s.name)}</span>${s.warn ? icon('warn', 'w') : ''}`; el.className = 'wlabel station' + (s.warn ? ' warn' : ''); }
+        place(el, tileCX(s.tile), g.net.railH(s.tile) + 2.3, tileCZ(s.tile));
+      }
+      if (vs < 24) for (const ind of g.industries.list) {
+        if (!g.progression.regionUnlocked(ind.region)) continue;
+        const el = this.label('industry:' + ind.id, 'industry');
+        const sig = ind.level + getLang();
+        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('factory')}<span>${esc(g.industries.displayName(ind))}</span>`; }
+        place(el, (ind.x + 1) * TILE, g.industries.baseHeight(ind) + 3.2, (ind.z + 1) * TILE);
+      }
+    }
+    REGIONS.forEach((r, i) => {
+      if (g.progression.regionUnlocked(i)) return;
+      const el = this.label('region:' + i, 'region');
+      const sig = getLang() + g.progression.level;
+      if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('lock')}<b>${this.tr('region_' + r.id)}</b><small>${this.tr('unlock_level', { n: r.level })}</small>`; }
+      const c = g.world.centers[i];
+      place(el, c[0] * TILE, 7, c[1] * TILE);
+    });
+    for (const [k, el] of this.labels) if (!el._used) { el.remove(); this.labels.delete(k); }
+  }
+
+  // ---------- tutorial ----------
+  tutorial(st) {
+    const el = $('#tutorial');
+    document.querySelectorAll('.tut-glow').forEach((e) => e.classList.remove('tut-glow'));
+    if (!st) { el.hidden = true; return; }
+    el.hidden = false;
+    const sig = st.id + getLang();
+    if (el._sig !== sig) {
+      el._sig = sig;
+      el.innerHTML = `<div class="tut-step">${this.tr('tutorial')} ${st.index + 1}/${st.total}</div>
+        <div class="tut-title">${this.tr('tut_' + st.id)}</div><div class="tut-text">${this.tr('tut_' + st.id + '_text')}</div>
+        <div class="tut-btns">${st.button ? `<button class="btn primary" data-act="tutNext">${this.tr(st.button)}</button>` : ''}<button class="btn ghost" data-act="tutSkip">${this.tr('tut_skip')}</button></div>`;
+    }
+    if (st.ui) { const t = document.getElementById(st.ui); if (t) t.classList.add('tut-glow'); }
+  }
+
+  // ---------- panels ----------
+  get panelDefs() {
+    return {
+      company: { title: 'menu_company', render: () => this.pCompany(), live: true },
+      research: { title: 'menu_research', render: () => this.pResearch(), after: () => this.drawResearchLines() },
+      objectives: { title: 'menu_objectives', render: () => this.pObjectives(), live: true },
+      contracts: { title: 'menu_contracts', render: () => this.pContracts(), live: true },
+      collection: { title: 'menu_collection', render: () => this.pCollection() },
+      map: { title: 'menu_map', render: () => this.pMap(), after: () => this.drawMinimap(), live: true },
+      stats: { title: 'menu_stats', render: () => this.pStats(), live: true },
+      achievements: { title: 'menu_achievements', render: () => this.pAchievements() },
+      settings: { title: 'settings', render: () => this.pSettings() },
+      trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
+      credits: { title: 'credits', render: () => this.pCredits() },
+    };
+  }
+
+  openPanel(name, arg) {
+    if (this.panel === name && arg === undefined) { this.closePanel(); return; }
+    this.panel = name; this.panelArg = arg;
+    const el = $('#panel');
+    el.hidden = false;
+    el.classList.add('open');
+    document.body.classList.add('panel-open');
+    this.refreshPanel(true);
+    this.app.audio.play('open');
+    document.querySelectorAll('.rail-btn').forEach((b) => b.classList.toggle('on', b.dataset.arg === name));
+    $('#menu-rail').classList.remove('open');
+  }
+  closePanel() {
+    if (!this.panel) return;
+    this.panel = null;
+    const el = $('#panel');
+    el.classList.remove('open');
+    el.hidden = true;
+    document.body.classList.remove('panel-open');
+    document.querySelectorAll('.rail-btn').forEach((b) => b.classList.remove('on'));
+  }
+  refreshPanel(first) {
+    if (!this.panel) return;
+    const def = this.panelDefs[this.panel];
+    const el = $('#panel');
+    const body = $('.pbody', el);
+    const scroll = body ? body.scrollTop : 0;
+    el.innerHTML = `<div class="phead"><h2>${this.tr(def.title)}</h2><button class="icon-btn" data-act="closePanel" aria-label="${this.tr('close')}">${icon('close')}</button></div><div class="pbody">${def.render()}</div>`;
+    const nb = $('.pbody', el);
+    if (!first) nb.scrollTop = scroll;
+    if (def.after) def.after();
+  }
+  closeTop() {
+    const m = $('#modal-root');
+    if (m.children.length) { const last = m.lastElementChild; if (last._cancel) last._cancel(); return true; }
+    if (this.panel) { this.closePanel(); return true; }
+    if (this.inspectSel) { this.game.select(null); return true; }
+    return false;
+  }
+
+  bar(p, cls = '') { return `<div class="bar ${cls}"><i style="width:${clamp(p, 0, 1) * 100}%"></i></div>`; }
+
+  pCompany() {
+    const g = this.game, P = g.progression, S = g.stats.data, E = g.economy;
+    const ev = E.event ? `<div class="card event">${icon('star')}<div><b>${this.tr('ev_' + E.event.id)}</b><small>${this.tr('ev_' + E.event.id + '_desc')} · ${fmtTime(E.event.dur - E.event.t)}</small></div></div>` : '';
+    const lp = P.legendProgress();
+    const legend = `<h3>${this.tr('legend_title')}</h3>${P.legend ? `<div class="card gold">${icon('star')} ${this.tr('legend_done')}</div>` : ''}<div class="checks">${Object.entries(lp).map(([k, [a, b]]) => `<div class="chk ${a >= b ? 'ok' : ''}">${icon(a >= b ? 'check' : 'lock')}<span>${this.tr('legend_' + k)}</span><small>${fmt(Math.min(a, b))}/${fmt(b)}</small></div>`).join('')}</div>`;
+    const legacy = P.canFoundLegacy()
+      ? `<h3>${this.tr('legacy_title')}</h3><p class="muted">${this.tr('legacy_desc', { n: P.legacy.count })}</p><button class="btn" data-act="legacy">${this.tr('legacy_btn')}</button>`
+      : `<h3>${this.tr('legacy_title')}</h3><p class="muted">${this.tr('legacy_locked', { n: LEGACY_LEVEL })}</p>`;
+    return `<div class="company-head"><div class="big-lvl">${P.level}</div><div><b>${this.tr('company_level')}</b>${this.bar(P.xp / P.xpNeeded())}<small>${fmt(P.xp)} / ${fmt(P.xpNeeded())} XP</small></div></div>
+      ${ev}
+      <div class="kv-grid">
+        <div>${icon('coin')}<b>${fmt(E.coins)}</b><small>${this.tr('coins')}</small></div>
+        <div>${icon('rp')}<b>${P.rp}</b><small>${this.tr('research_points')}</small></div>
+        <div>${icon('train')}<b>${g.trains.trains.length}</b><small>${this.tr('stat_trainsOwned')}</small></div>
+        <div>${icon('station')}<b>${g.stations.list.length}</b><small>${this.tr('stat_stations')}</small></div>
+        <div>${icon('coin')}<b>${fmt(E.avgIncomePerMin())}</b><small>${this.tr('income_min')}</small></div>
+        <div>${icon('map')}<b>${P.regions.size}/${REGIONS.length}</b><small>${this.tr('stat_regionsUnlocked')}</small></div>
+      </div>
+      <p class="muted">${this.tr('difficulty')}: ${this.tr('diff_' + g.difficultyId)} · ${this.tr('legacy_badge', { n: P.legacy.count })} · ${fmtTime(S.playTime)}</p>
+      ${legend}${legacy}
+      <h3>${this.tr('more')}</h3><button class="btn ghost" data-act="panel" data-arg="credits">${this.tr('credits')}</button> <button class="btn ghost" data-act="saveQuit">${this.tr('save_quit')}</button>`;
+  }
+
+  pResearch() {
+    const g = this.game, P = g.progression;
+    if (!P.researchAvailable()) return `<div class="empty">${icon('lock')}<p>${this.tr('research_locked', { n: 3 })}</p></div>`;
+    const depth = {};
+    const d = (id) => { if (depth[id] != null) return depth[id]; const r = RESEARCH.find((x) => x.id === id); depth[id] = r.req.length ? Math.max(...r.req.map(d)) + 1 : 0; return depth[id]; };
+    RESEARCH.forEach((r) => d(r.id));
+    const cols = RESEARCH_CATS.map((cat) => {
+      const nodes = RESEARCH.filter((r) => r.cat === cat).sort((a, b) => depth[a.id] - depth[b.id]);
+      return `<div class="rcol"><h4>${this.tr('cat_' + cat)}</h4>${nodes.map((r) => {
+        const st = P.researchState(r.id);
+        return `<button class="rnode ${st}" id="rn-${r.id}" data-req="${r.req.join(',')}" data-act="research" data-arg="${r.id}" ${st === 'done' || st === 'locked' ? 'disabled' : ''}>
+          <b>${this.tr('res_' + r.id)}</b><small>${this.tr('res_' + r.id + '_desc')}</small>
+          <span class="rcost">${st === 'done' ? icon('check') : `${icon('rp')}${r.cost}`}</span>
+          ${r.req.length && st === 'locked' ? `<em>${this.tr('requires')}: ${r.req.map((q) => this.tr('res_' + q)).join(', ')}</em>` : ''}</button>`;
+      }).join('')}</div>`;
+    }).join('');
+    return `<p class="muted">${icon('rp')} ${this.tr('rp_have', { n: P.rp })} · ${this.tr('rp_sources')}</p><div class="rtree"><svg class="rlines"></svg>${cols}</div>`;
+  }
+  drawResearchLines() {
+    const tree = $('.rtree'); if (!tree) return;
+    const svg = $('.rlines', tree);
+    const tb = tree.getBoundingClientRect();
+    svg.setAttribute('width', tree.scrollWidth); svg.setAttribute('height', tree.scrollHeight);
+    let h = '';
+    for (const r of RESEARCH) for (const q of r.req) {
+      const a = document.getElementById('rn-' + q), b = document.getElementById('rn-' + r.id);
+      if (!a || !b) continue;
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const x1 = ra.left + ra.width / 2 - tb.left + tree.scrollLeft, y1 = ra.bottom - tb.top + tree.scrollTop;
+      const x2 = rb.left + rb.width / 2 - tb.left + tree.scrollLeft, y2 = rb.top - tb.top + tree.scrollTop;
+      const done = this.game.progression.research.has(q);
+      h += `<path d="M${x1},${y1} C${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2}" class="${done ? 'done' : ''}"/>`;
+    }
+    svg.innerHTML = h;
+  }
+
+  objectiveText(o) {
+    switch (o.type) {
+      case 'connectTowns': return this.tr('obj_connect', { n: o.n });
+      case 'delivered': return this.tr('obj_delivered', { n: fmt(o.n), cargo: this.cargoName(o.cargo) });
+      case 'stat': return this.tr('obj_stat_' + o.stat, { n: o.n });
+      case 'townStage': return this.tr('obj_town_stage', { stage: this.tr('stage_' + ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'][o.n]) });
+      case 'industryLevel': return this.tr('obj_industry_level', { level: this.tr('ilvl_' + o.n) });
+      default: return o.id;
+    }
+  }
+
+  regionCard(i) {
+    const g = this.game, P = g.progression;
+    const r = REGIONS[i];
+    const info = P.regionUnlockInfo(i);
+    const prevName = i > 0 ? this.tr('region_' + REGIONS[i - 1].id) : '';
+    return `<div class="card region-card"><div class="rc-head">${icon('lock')}<b>${this.tr('region_' + r.id)}</b><small>${this.tr('biome_' + r.biome)}</small></div>
+      <p class="muted">${this.tr('region_' + r.id + '_desc')}</p>
+      <div class="checks">
+        <div class="chk ${info.okLevel ? 'ok' : ''}">${icon(info.okLevel ? 'check' : 'lock')}<span>${this.tr('unlock_level', { n: r.level })}</span></div>
+        ${i > 0 ? `<div class="chk ${info.okObj ? 'ok' : ''}">${icon(info.okObj ? 'check' : 'lock')}<span>${this.tr('req_objectives', { n: info.needObjectives, region: prevName })}</span><small>${Math.min(info.prevObjectives, info.needObjectives)}/${info.needObjectives}</small></div>` : ''}
+        <div class="chk ${info.okCoins ? 'ok' : ''}">${icon(info.okCoins ? 'check' : 'coin')}<span>${fmt(info.cost)} ${this.tr('coins')}</span></div>
+      </div>
+      <div class="row"><button class="btn primary" data-act="unlockRegion" data-arg="${i}" ${info.ok ? '' : 'disabled'}>${this.tr('unlock_region_btn')}</button><button class="btn ghost" data-act="focusRegion" data-arg="${i}">${icon('focus')}</button></div></div>`;
+  }
+
+  pObjectives() {
+    const g = this.game, P = g.progression;
+    let h = '';
+    const next = P.nextRegion();
+    if (next >= 0) h += `<h3>${this.tr('next_region')}</h3>${this.regionCard(next)}`;
+    REGIONS.forEach((r, i) => {
+      if (!P.regionUnlocked(i)) return;
+      const list = OBJECTIVES[r.id] || [];
+      const done = P.regionObjectivesDone(i);
+      h += `<h3>${this.tr('region_' + r.id)} <small class="${P.developed.has(i) ? 'good' : ''}">${done}/${list.length}${P.developed.has(i) ? ' · ' + this.tr('developed') : ''}</small></h3><div class="objs">`;
+      for (const o of list) {
+        const ok = P.objectives.has(o.id);
+        const prog = ok ? o.n : Math.min(o.n, P.objectiveProgress(o, i));
+        h += `<div class="obj ${ok ? 'done' : ''}">${icon(ok ? 'check' : 'objectives')}<div><span>${this.objectiveText(o)}</span>${ok ? '' : this.bar(prog / o.n)}</div><small>${ok ? '' : `${fmt(prog)}/${fmt(o.n)}`}</small></div>`;
+      }
+      h += '</div>';
+    });
+    return h;
+  }
+
+  contractText(k) {
+    const p = { n: fmt(k.amount), cargo: k.cargo ? this.cargoName(k.cargo) : '', town: k.townName || '', count: k.count };
+    return this.tr('con_' + k.type, p);
+  }
+
+  pContracts() {
+    const g = this.game, E = g.economy;
+    E.ensureDaily();
+    const cons = E.contracts.filter((k) => !k.claimed).map((k) => {
+      const pct = k.progress / k.amount;
+      const timer = k.type === 'timed_deliver' && !k.done ? `<span class="timer">${fmtTime(k.left)}</span>` : '';
+      return `<div class="card contract ${k.done ? 'done' : ''}">
+        <div class="con-top">${k.cargo ? cargoIcon(k.cargo) : icon(k.type === 'passengers' ? 'town' : 'contracts')}<b>${this.contractText(k)}</b>${timer}</div>
+        ${this.bar(pct)}<div class="con-bottom"><small>${k.type === 'freight_income' ? fmt(k.progress) : k.type === 'trains_running' ? fmtTime(k.progress) : fmt(Math.floor(k.progress))} / ${k.type === 'trains_running' ? fmtTime(k.amount) : fmt(k.amount)}</small>
+        <span class="reward">${icon('coin')}${fmt(k.coins)} · ${fmt(k.xp)} XP${k.rp ? ` · ${icon('rp')}${k.rp}` : ''}</span></div>
+        <div class="row">${k.done ? `<button class="btn gold" data-act="claimContract" data-arg="${k.id}">${this.tr('claim')}</button>` : k.progress === 0 ? `<button class="btn ghost small" data-act="rerollContract" data-arg="${k.id}">${this.tr('reroll')}</button>` : ''}</div></div>`;
+    }).join('');
+    const daily = E.daily.list.map((d, i) => {
+      const prog = Math.min(d.target, E.dailyProgress(d));
+      const ok = prog >= d.target;
+      return `<div class="card daily ${d.claimed ? 'claimed' : ''}"><div class="con-top">${icon('star')}<b>${this.tr('daily_' + d.id, { n: fmt(d.target) })}</b></div>${this.bar(prog / d.target)}
+        <div class="con-bottom"><small>${fmt(prog)}/${fmt(d.target)}</small><span class="reward">${icon('coin')}${fmt(d.coins)} · ${fmt(d.xp)} XP${d.rp ? ` · ${icon('rp')}1` : ''}</span></div>
+        <div class="row">${d.claimed ? `<small class="good">${this.tr('claimed')}</small>` : ok ? `<button class="btn gold" data-act="claimDaily" data-arg="${i}">${this.tr('claim')}</button>` : ''}</div></div>`;
+    }).join('');
+    const tmr = new Date(); tmr.setHours(24, 0, 0, 0);
+    return `<h3>${this.tr('contracts')}</h3>${cons}<h3>${this.tr('daily_challenges')} <small>${this.tr('resets_in', { t: fmtTime((tmr - Date.now()) / 1000) })}</small></h3>${daily}`;
+  }
+
+  // ---------- train previews ----------
+  locoPreview(id, locked) {
+    const key = id + (locked ? ':l' : '') + ':' + this.game.progression.defaultLivery;
+    if (this.previews.has(key)) return this.previews.get(key);
+    if (!this.prevR) {
+      try {
+        this.prevR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        this.prevR.setSize(200, 110, false);
+        this.prevScene = new THREE.Scene();
+        this.prevScene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a6a, 2.2));
+        const dl = new THREE.DirectionalLight(0xffffff, 2); dl.position.set(3, 5, 4); this.prevScene.add(dl);
+        this.prevCam = new THREE.PerspectiveCamera(30, 200 / 110, 0.1, 50);
+        this.prevCam.position.set(2.4, 1.6, 3.6); this.prevCam.lookAt(-0.3, 0.35, 0);
+        this.silMat = new THREE.MeshBasicMaterial({ color: 0x39404c });
+      } catch (e) { return ''; }
+    }
+    const m = locoModel(id);
+    const grp = new THREE.Group();
+    const livery = this.game.progression.defaultLivery;
+    const loco = new THREE.Mesh(locoGeometry(id, livery, 0), locked ? this.silMat : MATS);
+    loco.position.x = 0.4; grp.add(loco);
+    const cols = liveryColors(m, livery);
+    const w = new THREE.Mesh(wagonGeometry(m.role === 'freight' ? 'crate' : 'coach', m.role === 'freight' ? 'GOODS' : null, true, m.kind, cols.body, cols.trim), locked ? this.silMat : MATS);
+    w.position.x = -1.15; grp.add(w);
+    this.prevScene.add(grp);
+    this.prevR.render(this.prevScene, this.prevCam);
+    const url = this.prevR.domElement.toDataURL('image/png');
+    this.prevScene.remove(grp);
+    this.previews.set(key, url);
+    return url;
+  }
+
+  statBars(m) {
+    const rows = [['stat_speed', m.speed / 480, `${m.speed} km/h`], ['stat_accel', m.accel / 3.4, m.accel.toFixed(1)], ['stat_power', m.power / 18000, fmt(m.power) + ' kW'], ['stat_freight', m.freight / 180, m.freight], ['stat_pax', m.pax / 220, m.pax], ['stat_reliability', m.reliability, Math.round(m.reliability * 100) + '%'], ['stat_load', m.load / 1.8, '×' + m.load.toFixed(1)], ['stat_op', m.op / 450, fmt(m.op) + '/min']];
+    return `<div class="sbars">${rows.map(([k, p, v]) => `<div class="sb"><span>${this.tr(k)}</span>${this.bar(p)}<small>${v}</small></div>`).join('')}</div>`;
+  }
+
+  locoUnlockText(m) {
+    const req = ERA_RESEARCH[m.era];
+    const parts = [this.tr('unlock_level', { n: m.level })];
+    if (req) parts.push(this.tr('res_' + req));
+    return parts.join(' + ');
+  }
+
+  pCollection() {
+    const g = this.game, P = g.progression;
+    const cards = LOCOS.map((m) => {
+      const unlocked = P.locoUnlocked(m), owned = P.owned.has(m.id);
+      const fleet = g.trains.trains.filter((t) => t.model === m.id);
+      const up = fleet.length ? Math.max(...fleet.map((t) => Object.values(t.upg).reduce((a, b) => a + b, 0))) : 0;
+      return `<div class="lcard ${unlocked ? '' : 'locked'} rar-${m.rarity}">
+        <img alt="" src="${this.locoPreview(m.id, !unlocked)}" loading="lazy"/>
+        <div class="lc-head"><b>${esc(m.name)}</b><span class="tag">${this.tr('era_' + m.era)}</span></div>
+        <div class="lc-sub"><span class="tag">${this.tr('role_' + m.role)}</span><span class="tag rar">${this.tr('rar_' + m.rarity)}</span>${m.electric ? `<span class="tag">${this.tr(m.maglev ? 'needs_hsr' : 'needs_electric')}</span>` : ''}</div>
+        <p class="trait">${icon('star')}<b>${this.tr('trait_' + m.trait)}</b> — ${this.tr('trait_' + m.trait + '_desc')}</p>
+        ${this.statBars(m)}
+        <div class="lc-foot">${owned ? `<span class="good">${icon('check')} ${this.tr('owned')} ×${fleet.length}${up ? ` · ${this.tr('upgrades')} ${up}` : ''}</span>` : unlocked ? `<span>${fmt(g.economy.costs.train(m))} ●</span>` : `<span class="muted">${icon('lock')} ${this.locoUnlockText(m)}</span>`}</div></div>`;
+    }).join('');
+    const liv = LIVERIES.map((l) => {
+      const ok = P.isUnlocked(l.unlock);
+      const c = '#' + new THREE.Color(l.body ?? 0x2f6b4a).getHexString(), t = '#' + new THREE.Color(l.trim).getHexString();
+      return `<button class="swatch ${P.defaultLivery === l.id ? 'on' : ''} ${ok ? '' : 'locked'}" ${ok ? '' : 'disabled'} data-act="defaultLivery" data-arg="${l.id}" data-tip="${this.tr('liv_' + l.id)}${ok ? '' : ' · ' + this.unlockReqText(l.unlock)}"><i style="background:linear-gradient(135deg, ${c} 60%, ${t} 60%)"></i><span>${this.tr('liv_' + l.id)}</span></button>`;
+    }).join('');
+    const sty = STATION_STYLES.map((s) => {
+      const ok = P.isUnlocked(s.unlock);
+      const c = '#' + new THREE.Color(s.wall).getHexString(), r = '#' + new THREE.Color(s.roof).getHexString();
+      return `<button class="swatch ${P.defaultStationStyle === s.id ? 'on' : ''} ${ok ? '' : 'locked'}" ${ok ? '' : 'disabled'} data-act="defaultStyle" data-arg="${s.id}" data-tip="${ok ? '' : this.unlockReqText(s.unlock)}"><i style="background:linear-gradient(180deg, ${r} 45%, ${c} 45%)"></i><span>${this.tr('sty_' + s.id)}</span></button>`;
+    }).join('');
+    const dec = DECORATIONS.map((d) => `<span class="tag ${P.isUnlocked(d.unlock) ? '' : 'locked'}">${P.isUnlocked(d.unlock) ? '' : icon('lock')}${this.tr('dec_' + d.id)}</span>`).join('');
+    return `<p class="muted">${this.tr('collection_desc', { n: P.owned.size, total: LOCOS.length })}</p><div class="lgrid">${cards}</div>
+      <h3>${this.tr('liveries')}</h3><p class="muted">${this.tr('liveries_desc')}</p><div class="swatches">${liv}</div>
+      <h3>${this.tr('station_styles')}</h3><div class="swatches">${sty}</div>
+      <h3>${this.tr('decorations')}</h3><div class="tags">${dec}</div>`;
+  }
+  unlockReqText(u) {
+    if (u.level) return this.tr('unlock_level', { n: u.level });
+    if (u.achievement) return this.tr('ach_' + u.achievement);
+    if (u.region) return this.tr('region_' + u.region);
+    return '';
+  }
+
+  pMap() {
+    const g = this.game, P = g.progression;
+    const regions = REGIONS.map((r, i) => `<button class="mreg ${P.regionUnlocked(i) ? 'on' : ''}" data-act="focusRegion" data-arg="${i}">${icon(P.regionUnlocked(i) ? 'map' : 'lock')}<span>${this.tr('region_' + r.id)}</span><small>${P.regionUnlocked(i) ? `${P.regionObjectivesDone(i)}/${(OBJECTIVES[r.id] || []).length}` : this.tr('unlock_level', { n: r.level })}</small></button>`).join('');
+    const towns = g.towns.list.filter((t) => P.regionUnlocked(t.region)).map((t) => `<button class="mitem" data-act="jump" data-arg="town:${t.id}">${icon('town')}<span>${esc(t.name)}</span><small>${this.tr('stage_' + g.towns.stageName(t))}</small></button>`).join('');
+    const trains = g.trains.trains.map((t) => `<button class="mitem" data-act="jump" data-arg="train:${t.id}">${icon('train')}<span>${esc(t.name)}</span><small>${this.tr('tstate_' + t.state)}</small></button>`).join('');
+    return `<canvas id="minimap" width="256" height="256" aria-label="${this.tr('menu_map')}"></canvas>
+      <div class="legend"><span><i class="lg town"></i>${this.tr('towns')}</span><span><i class="lg rail"></i>${this.tr('track')}</span><span><i class="lg train"></i>${this.tr('trains')}</span><span><i class="lg ind"></i>${this.tr('industries')}</span></div>
+      <h3>${this.tr('regions')}</h3><div class="mlist">${regions}</div>
+      <h3>${this.tr('towns')}</h3><div class="mlist">${towns}</div>
+      ${trains ? `<h3>${this.tr('trains')}</h3><div class="mlist">${trains}</div>` : ''}`;
+  }
+  drawMinimap() {
+    const cv = $('#minimap'); if (!cv) return;
+    const g = this.game, W = g.world;
+    const ctx = cv.getContext('2d');
+    const s = cv.width / N;
+    if (!this._mmBase || this._mmBaseV !== g.progression.regions.size) {
+      const base = document.createElement('canvas'); base.width = base.height = cv.width;
+      const b = base.getContext('2d');
+      const col = new THREE.Color();
+      for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+        const i = idx(x, z);
+        col.copy(g.world.view.tileColor(i, W.tileH[i], 0));
+        if (W.type[i] === 1) col.set(0x4aa3c4);
+        b.fillStyle = '#' + col.getHexString();
+        b.fillRect(x * s, z * s, s + 0.5, s + 0.5);
+      }
+      this._mmBase = base; this._mmBaseV = g.progression.regions.size;
+    }
+    ctx.drawImage(this._mmBase, 0, 0);
+    ctx.fillStyle = '#3a3230';
+    for (let i = 0; i < N * N; i++) if (g.net.conn[i]) ctx.fillRect(tx(i) * s + s * 0.2, tz(i) * s + s * 0.2, s * 0.6, s * 0.6);
+    ctx.fillStyle = '#8a5ab0';
+    for (const ind of g.industries.list) ctx.fillRect(ind.x * s, ind.z * s, s * 2, s * 2);
+    ctx.fillStyle = '#f4efe6'; ctx.strokeStyle = '#2b3445';
+    for (const t of g.towns.list) { const r = s * (1.2 + t.stage * 0.4); ctx.beginPath(); ctx.arc((t.x + 0.5) * s, (t.z + 0.5) * s, r, 0, 7); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = '#e0a33a';
+    for (const t of g.trains.trains) { const p = g.entityPos({ type: 'train', id: t.id }); if (p) { ctx.beginPath(); ctx.arc(p.x / TILE * s, p.z / TILE * s, s * 0.9, 0, 7); ctx.fill(); } }
+    // view marker
+    const c = g.camera.target;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    const vw = g.camera.viewSize * 1.5 / TILE * s;
+    ctx.strokeRect(c.x / TILE * s - vw, c.z / TILE * s - vw * 0.6, vw * 2, vw * 1.2);
+    if (!cv._bound) {
+      cv._bound = true;
+      cv.addEventListener('click', (e) => {
+        const r = cv.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width * N * TILE, z = (e.clientY - r.top) / r.height * N * TILE;
+        this.game.camera.focus(x, z);
+      });
+    }
+  }
+
+  pStats() {
+    const g = this.game, S = g.stats.data;
+    let trackLen = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) trackLen++;
+    const fastest = g.trains.trains.reduce((m, t) => Math.max(m, Math.round(t._st.speed)), 0);
+    const largest = g.towns.largest();
+    const rows = [
+      ['stat_track', `${fmt(trackLen)} ${this.tr('tiles')}`], ['stat_trainsOwned', g.trains.trains.length], ['stat_stations', g.stations.list.length],
+      ['stat_deliveries', fmt(S.deliveries)], ['stat_cargo', fmt(S.cargoUnits)], ['stat_passengers', fmt(S.passengers)], ['stat_coinsEarned', fmt(S.coinsEarned)],
+      ['stat_longestRoute', `${S.longestRoute} ${this.tr('tiles')}`], ['stat_fastest', `${fastest} km/h`], ['stat_topSpeed', `${S.topSpeed} km/h`],
+      ['stat_largestTown', largest ? `${largest.name} (${fmt(largest.pop)})` : '-'], ['stat_townsDeveloped', g.towns.list.filter((t) => t.stage > 0).length],
+      ['stat_regionsUnlocked', `${g.progression.regions.size}/${REGIONS.length}`], ['stat_bridgesBuilt', S.bridgesBuilt], ['stat_tunnelsBuilt', S.tunnelsBuilt],
+      ['stat_contractsDone', S.contractsDone], ['stat_researchDone', S.researchDone], ['stat_playTime', fmtTime(S.playTime)],
+    ];
+    const cargo = CARGO_IDS.filter((c) => S.cargo[c]).map((c) => `<div class="cstat">${cargoIcon(c)}<span>${this.cargoName(c)}</span><b>${fmt(S.cargo[c])}</b></div>`).join('');
+    return `<div class="stats">${rows.map(([k, v]) => `<div><span>${this.tr(k)}</span><b>${v}</b></div>`).join('')}</div><h3>${this.tr('cargo_transported')}</h3><div class="cstats">${cargo || `<p class="muted">${this.tr('none_yet')}</p>`}</div>`;
+  }
+
+  pAchievements() {
+    const g = this.game, P = g.progression, S = g.stats.data;
+    return `<p class="muted">${P.achievements.size}/${ACHIEVEMENTS.length}</p><div class="agrid">${ACHIEVEMENTS.map((a) => {
+      const ok = P.achievements.has(a.id);
+      const v = Math.min(a.target, S[a.stat] || 0);
+      return `<div class="ach ${ok ? 'done' : ''}">${icon(ok ? 'achievements' : 'lock')}<div><b>${this.tr('ach_' + a.id)}</b><small>${this.tr('ach_' + a.id + '_desc', { n: fmt(a.target) })}</small>${ok ? '' : this.bar(v / a.target)}</div>${a.rp ? `<span class="rp">${icon('rp')}${a.rp}</span>` : ''}</div>`;
+    }).join('')}</div>`;
+  }
+
+  pSettings() {
+    const s = this.app.settings;
+    const range = (k, label) => `<label class="set"><span>${this.tr(label)}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-input="setting" data-key="${k}"/></label>`;
+    const tog = (k, label) => `<label class="set tog"><span>${this.tr(label)}</span><input type="checkbox" ${s[k] ? 'checked' : ''} data-change="settingBool" data-key="${k}"/><i></i></label>`;
+    const sel = (k, label, opts) => `<label class="set"><span>${this.tr(label)}</span><select data-change="settingSel" data-key="${k}">${opts.map((o) => `<option value="${o}" ${s[k] === o ? 'selected' : ''}>${this.tr('opt_' + o)}</option>`).join('')}</select></label>`;
+    const lang = `<label class="set"><span>${this.tr('language')}</span><select data-change="lang">${LANGS.map((l) => `<option value="${l.id}" ${getLang() === l.id ? 'selected' : ''}>${l.name}</option>`).join('')}</select></label>`;
+    const inGame = !!this.game;
+    return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
+      <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['low', 'medium', 'high'])}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
+      ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
+      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}
+      <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
+      <h3>${this.tr('save_data')}</h3><div class="row wrap">
+        ${inGame ? `<button class="btn" data-act="exportSave">${this.tr('export_save')}</button>` : ''}
+        <button class="btn" data-act="importSave">${this.tr('import_save')}</button>
+        ${inGame ? `<button class="btn ghost" data-act="resetTutorial">${this.tr('reset_tutorial')}</button>` : ''}
+        <button class="btn danger" data-act="resetGame">${this.tr('reset_game')}</button></div>
+      <p class="muted small">${this.tr('storage_info')} · v${GAME_VERSION}</p>`;
+  }
+
+  pCredits() {
+    return `<div class="credits"><h1>TRACKLANDS</h1><p>${this.tr('credits_tagline')}</p>
+      ${CREATOR_NAME ? `<p><b>${this.tr('created_by')}</b><br>${esc(CREATOR_NAME)}</p>` : ''}
+      <p class="muted">${this.tr('credits_tech')}</p><p class="muted small">three.js — MIT License © three.js authors</p><p class="muted small">v${GAME_VERSION}</p></div>`;
+  }
+
+  pTrainShop() {
+    const g = this.game, P = g.progression;
+    const depots = g.stations.depots;
+    let dep = g.stations.depotById(this.shopDepot);
+    if (!dep) dep = depots.find((d) => g.net.conn[d.tile]) || depots[0];
+    this.shopDepot = dep ? dep.id : null;
+    if (!depots.length) return `<div class="empty">${icon('depot')}<p>${this.tr('err_no_depot')}</p><button class="btn primary" data-act="tool" data-arg="depot">${this.tr('tool_depot')}</button></div>`;
+    const dsel = `<label class="set"><span>${this.tr('depot')}</span><select data-change="shopDepot">${depots.map((d) => `<option value="${d.id}" ${d.id === this.shopDepot ? 'selected' : ''}>${esc(d.name)}${g.net.conn[d.tile] ? '' : ' — ' + this.tr('not_connected')}</option>`).join('')}</select></label>`;
+    const list = LOCOS.map((m) => {
+      const ok = P.locoUnlocked(m);
+      const cost = g.economy.costs.train(m);
+      const err = ok ? g.trains.canBuy(m.id, dep) : 'err_train_locked';
+      return `<div class="shop-item ${ok ? '' : 'locked'}"><img alt="" src="${this.locoPreview(m.id, !ok)}"/><div class="si-body"><b>${esc(m.name)}</b>
+        <small>${this.tr('era_' + m.era)} · ${this.tr('role_' + m.role)} · ${m.speed} km/h · ${icon('train', 'mini')}${m.freight}/${m.pax}</small>
+        <small class="trait">${icon('star', 'mini')}${this.tr('trait_' + m.trait)}</small>
+        ${ok ? '' : `<small class="muted">${icon('lock', 'mini')} ${this.locoUnlockText(m)}</small>`}</div>
+        <button class="btn ${err ? 'ghost' : 'primary'}" data-act="buyTrain" data-arg="${m.id}" ${ok ? '' : 'disabled'} ${err && ok ? `data-tip="${this.tr(err)}"` : ''}>${icon('coin', 'mini')}${fmt(cost)}</button></div>`;
+    }).join('');
+    return `${dsel}<p class="muted">${this.tr('shop_desc')}</p><div class="shop">${list}</div>`;
+  }
+
+  openTrainShop(depotId) { if (depotId != null) this.shopDepot = depotId; this.openPanel('trainshop', depotId ?? null); }
+
+  // ---------- inspector ----------
+  showInspector(sel) {
+    this.inspectSel = sel;
+    const el = $('#inspector');
+    if (!sel) { el.hidden = true; el.classList.remove('open'); document.body.classList.remove('insp-open'); return; }
+    el.hidden = false; el.classList.add('open');
+    document.body.classList.add('insp-open');
+    this._inspFirst = true;
+    this.renderInspector();
+  }
+  renderInspector() {
+    const g = this.game, sel = this.inspectSel;
+    if (!g || !sel) return;
+    const el = $('#inspector');
+    let title = '', body = '', ic = 'info';
+    switch (sel.type) {
+      case 'station': { const s = g.stations.byId(sel.id); if (!s) return this.game.select(null); ic = 'station'; title = s.name; body = this.iStation(s); break; }
+      case 'depot': { const d = g.stations.depotById(sel.id); if (!d) return this.game.select(null); ic = 'depot'; title = d.name; body = this.iDepot(d); break; }
+      case 'industry': { const i = g.industries.byId(sel.id); if (!i) return this.game.select(null); ic = 'factory'; title = g.industries.displayName(i); body = this.iIndustry(i); break; }
+      case 'town': { const t = g.towns.byId(sel.id); if (!t) return this.game.select(null); ic = 'town'; title = t.name; body = this.iTown(t); break; }
+      case 'train': { const t = g.trains.byId(sel.id); if (!t) return this.game.select(null); ic = 'train'; title = t.name; body = this.iTrain(t); break; }
+      case 'region': { ic = 'lock'; title = this.tr('region_' + REGIONS[sel.id].id); body = g.progression.regionUnlocked(sel.id) ? '' : this.regionCard(sel.id); break; }
+      default: return;
+    }
+    const b = $('.ibody', el);
+    const scroll = b ? b.scrollTop : 0;
+    const focused = document.activeElement && el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT';
+    if (focused) return;
+    el.innerHTML = `<div class="phead">${icon(ic)}<h2>${esc(title)}</h2><button class="icon-btn" data-act="focusSel" aria-label="${this.tr('focus')}" data-tip="${this.tr('focus')}">${icon('focus')}</button><button class="icon-btn" data-act="closeInspector" aria-label="${this.tr('close')}">${icon('close')}</button></div><div class="ibody">${body}</div>`;
+    if (!this._inspFirst) $('.ibody', el).scrollTop = scroll;
+    this._inspFirst = false;
+  }
+
+  cargoRow(c, amt, cap, extra = '') {
+    return `<div class="crow">${cargoIcon(c)}<span>${this.cargoName(c)}</span>${cap ? this.bar(amt / cap, amt / cap > 0.9 ? 'warn' : '') : ''}<b>${fmt(Math.floor(amt))}${cap ? '/' + fmt(cap) : ''}</b>${extra}</div>`;
+  }
+
+  iStation(s) {
+    const g = this.game;
+    const up = g.stations.upgradeInfo(s);
+    const cap = g.stations.storage(s);
+    const towns = s.links.towns.map((id) => g.towns.byId(id)).filter(Boolean);
+    const inds = s.links.industries.map((id) => g.industries.byId(id)).filter(Boolean);
+    const stock = Object.keys(s.stock).filter((c) => s.stock[c] >= 1);
+    const trains = g.trains.trains.filter((t) => t.target === s.id);
+    const styles = g.progression.stationStyles().map((st) => `<option value="${st.id}" ${s.style === st.id ? 'selected' : ''}>${this.tr('sty_' + st.id)}</option>`).join('');
+    return `<div class="pill-row"><span class="pill">${this.tr('slvl_' + s.level)}</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
+      ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}
+      <h4>${this.tr('serves')}</h4><div class="links">${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('') || `<span class="muted">${this.tr('nothing_linked')}</span>`}</div>
+      <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>
+      <h4>${this.tr('waiting_cargo')}</h4>${stock.map((c) => this.cargoRow(c, s.stock[c], cap)).join('') || `<p class="muted">${this.tr('none_waiting')}</p>`}
+      <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
+      <div class="row wrap">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}`}</div>
+      <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>
+      <p class="muted small">${this.tr('station_stats', { d: fmt(s.delivered), p: fmt(s.picked) })}</p>`;
+  }
+
+  iDepot(d) {
+    const g = this.game;
+    const trains = g.trains.trains.filter((t) => t.homeDepot === d.id);
+    return `${g.net.conn[d.tile] ? '' : `<div class="card warn">${icon('warn')} ${this.tr('hint_connect_depot')}</div>`}
+      <p class="muted">${this.tr('depot_desc')}</p><button class="btn primary" data-act="shopFromDepot" data-arg="${d.id}">${icon('train')} ${this.tr('buy_train')}</button>
+      <h4>${this.tr('trains')}: ${trains.length}</h4>${trains.map((t) => `<button class="tag link" data-act="jump" data-arg="train:${t.id}">${icon('train', 'mini')}${esc(t.name)}</button>`).join('')}`;
+  }
+
+  iIndustry(ind) {
+    const g = this.game, cfg = INDUSTRIES[ind.type];
+    const cap = g.industries.capacity(ind);
+    const ins = g.industries.inputs(ind), outs = g.industries.outputs(ind);
+    const sts = g.industries.linkedStations(ind);
+    const recipe = cfg.recipes.map((r) => `<div class="recipe">${Object.keys(r.in).map((c) => `${cargoIcon(c)}<small>${r.in[c]} ${this.cargoName(c)}</small>`).join(' + ') || `<small>${this.tr('natural_resource')}</small>`} → ${Object.keys(r.out).map((c) => `${cargoIcon(c)}<small>${r.out[c]} ${this.cargoName(c)}</small>`).join(' + ')}</div>`).join('');
+    const locked = !g.progression.regionUnlocked(ind.region);
+    return `<div class="pill-row"><span class="pill">${this.tr('ilvl_' + ind.level)}</span><span class="pill">${fmt(g.industries.rate(ind))}/${this.tr('min')}</span></div>
+      ${locked ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
+      <h4>${this.tr('production_chain')}</h4>${recipe}
+      ${ins.length ? `<h4>${this.tr('needs')}</h4>${ins.map((c) => this.cargoRow(c, ind.inp[c] || 0, cap * 2)).join('')}` : ''}
+      <h4>${this.tr('produces')}</h4>${outs.map((c) => this.cargoRow(c, ind.out[c] || 0, cap)).join('')}
+      <h4>${this.tr('growth')}</h4>${ind.level < 4 ? `${this.bar(g.industries.levelProgress(ind))}<small class="muted">${this.tr('next_ilvl', { name: this.tr('ilvl_' + (ind.level + 1)) })}</small>` : `<span class="good">${this.tr('max_level')}</span>`}
+      <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}`;
+  }
+
+  iTown(t) {
+    const g = this.game;
+    const req = g.towns.requirement(t);
+    const sts = g.stations.list.filter((s) => s.links.towns.includes(t.id));
+    const bars = req ? Object.keys(req).map((c) => {
+      const have = Math.floor(t.progress[c] || 0);
+      return `<div class="crow">${cargoIcon(c)}<span>${this.cargoName(c)}</span>${this.bar(have / req[c], have >= req[c] ? 'good' : '')}<b>${have}/${req[c]}</b></div>`;
+    }).join('') : `<span class="good">${this.tr('max_stage')}</span>`;
+    const next = t.stage < 6 ? this.tr('stage_' + ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'][t.stage + 1]) : '';
+    return `<div class="pill-row"><span class="pill">${this.tr('stage_' + g.towns.stageName(t))}</span><span class="pill">${icon('town', 'mini')} ${fmt(t.pop)}</span>${t.tourist ? `<span class="pill">${this.tr('tourist_town')}</span>` : ''}</div>
+      ${!g.progression.regionUnlocked(t.region) ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
+      <h4>${next ? this.tr('growth_to', { name: next }) : this.tr('growth')}</h4>${bars}
+      <p class="muted small">${this.tr('town_growth_help')}</p>
+      <h4>${this.tr('accepts')}</h4><div class="icons">${TOWN_ACCEPTS.map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('')}</div>
+      <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
+      <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('town_no_station')}</p>`}
+      <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>`;
+  }
+
+  iTrain(t) {
+    const g = this.game, st = t._st, m = st.model;
+    const target = g.stations.byId(t.target);
+    const kmh = Math.round(t.v / TILE * KMH_PER_TILE_S);
+    const loadF = t.cargo.filter((l) => l.c !== 'PASSENGERS').reduce((a, l) => a + l.n, 0), loadP = t.cargo.filter((l) => l.c === 'PASSENGERS').reduce((a, l) => a + l.n, 0);
+    const cargo = t.cargo.map((l) => this.cargoRow(l.c, l.n, 0, `<small class="muted">${esc(g.stations.byId(l.from)?.name || '')}</small>`)).join('') || `<p class="muted">${this.tr('empty')}</p>`;
+    const upg = TRAIN_UPGRADES.map((k) => {
+      const lvl = t.upg[k];
+      const cost = g.economy.costs.trainUpgrade(m, lvl);
+      const pips = Array.from({ length: TRAIN_UPGRADE_MAX }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+      return `<div class="upg"><span data-tip="${this.tr('upg_' + k + '_desc')}">${this.tr('upg_' + k)}</span><span class="pips">${pips}</span>${lvl >= TRAIN_UPGRADE_MAX ? `<small class="good">${this.tr('max')}</small>` : `<button class="btn small" data-act="upgradeTrain" data-arg="${t.id}:${k}" ${g.economy.canAfford(cost) ? '' : 'disabled'}>${fmt(cost)}●</button>`}</div>`;
+    }).join('');
+    const stations = g.stations.list;
+    const route = t.mode === 'manual' ? `<div class="route">${t.route.map((r, i) => {
+      const s = g.stations.byId(r.st);
+      return `<div class="rstop ${i === t.routeIdx % Math.max(1, t.route.length) ? 'cur' : ''}"><span>${i + 1}. ${esc(s ? s.name : '?')}</span><button class="icon-btn small" data-act="routeUp" data-arg="${t.id}:${i}" aria-label="up">▲</button><button class="icon-btn small" data-act="routeDown" data-arg="${t.id}:${i}" aria-label="down">▼</button><button class="icon-btn small" data-act="routeDel" data-arg="${t.id}:${i}" aria-label="${this.tr('remove')}">${icon('close')}</button></div>`;
+    }).join('') || `<p class="muted">${this.tr('route_empty')}</p>`}
+      <label class="set"><span>${this.tr('add_stop')}</span><select data-change="routeAdd" data-id="${t.id}"><option value="">—</option>${stations.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>
+      <h4>${this.tr('cargo_filter')}</h4><div class="chips">${CARGO_IDS.map((c) => { const on = !t.filter || t.filter.includes(c); return `<button class="chip ${on ? 'on' : ''}" data-act="toggleCargo" data-arg="${t.id}:${c}" data-tip="${this.cargoName(c)}">${cargoIcon(c)}</button>`; }).join('')}</div></div>` : `<p class="muted small">${this.tr('auto_desc')}</p>`;
+    const liv = g.progression.liveries().map((l) => `<option value="${l.id}" ${t.livery === l.id ? 'selected' : ''}>${this.tr('liv_' + l.id)}</option>`).join('');
+    return `<div class="pill-row"><span class="pill">${esc(m.name)}</span><span class="pill">${this.tr('era_' + m.era)}</span><span class="pill">${this.tr('trait_' + m.trait)}</span></div>
+      <div class="tstatus ${t.problem ? 'warn' : ''}">${icon(t.problem ? 'warn' : 'route')}<span>${t.problem ? this.tr('prob_' + t.problem) : this.tr('tstate_' + t.state)}${target && !t.problem ? ` → <b>${esc(target.name)}</b>` : ''}</span><small>${kmh} km/h</small></div>
+      <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
+      <h4>${this.tr('cargo')} · ${loadF}/${st.freight} ${icon('contracts', 'mini')} · ${loadP}/${st.pax} ${icon('town', 'mini')}</h4>${cargo}
+      <h4>${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
+      ${route}
+      <h4>${this.tr('upgrades')}</h4>${upg}
+      <label class="set"><span>${this.tr('livery')}</span><select data-change="livery" data-id="${t.id}">${liv}</select></label>
+      <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(Math.round(g.economy.costs.train(m) * COSTS.trainSellRefund))}●)</button></div>`;
+  }
+
+  // ---------- modals ----------
+  modal(html, { cls = '', onCancel } = {}) {
+    const root = $('#modal-root');
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-wrap';
+    wrap.innerHTML = `<div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div>`;
+    wrap._cancel = () => { wrap.remove(); if (onCancel) onCancel(); };
+    wrap.addEventListener('click', (e) => { if (e.target === wrap && onCancel) wrap._cancel(); });
+    root.appendChild(wrap);
+    const f = wrap.querySelector('input, textarea, button.primary, button');
+    if (f) setTimeout(() => f.focus(), 30);
+    return wrap;
+  }
+  confirm(text, okLabel, danger) {
+    return new Promise((res) => {
+      const w = this.modal(`<p>${esc(text)}</p><div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn ${danger ? 'danger' : 'primary'}" data-mbtn="yes">${esc(okLabel || this.tr('ok'))}</button></div>`, { onCancel: () => res(false) });
+      w.querySelector('[data-mbtn=no]').onclick = () => { w.remove(); res(false); };
+      w.querySelector('[data-mbtn=yes]').onclick = () => { w.remove(); res(true); };
+    });
+  }
+  prompt(text, value) {
+    return new Promise((res) => {
+      const w = this.modal(`<p>${esc(text)}</p><input class="inp" maxlength="28" value="${esc(value || '')}"/><div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn primary" data-mbtn="yes">${this.tr('ok')}</button></div>`, { onCancel: () => res(null) });
+      const inp = w.querySelector('input');
+      const ok = () => { w.remove(); res(inp.value.trim()); };
+      w.querySelector('[data-mbtn=no]').onclick = () => { w.remove(); res(null); };
+      w.querySelector('[data-mbtn=yes]').onclick = ok;
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
+    });
+  }
+
+  welcomeBack(o, onClaim) {
+    const ads = MonetizationService.adsAvailable();
+    const w = this.modal(`<div class="wb">${icon('gift')}<h2>${this.tr('welcome_back')}</h2><p class="muted">${this.tr('time_away', { t: fmtTime(o.away) })}</p>
+      <div class="kv-grid"><div>${icon('coin')}<b>${fmt(o.coins)}</b><small>${this.tr('coins_earned')}</small></div><div><b>${fmt(o.deliveries)}</b><small>${this.tr('est_deliveries')}</small></div><div><b>${fmt(o.xp)}</b><small>XP</small></div></div>
+      <div class="row end">${ads ? `<button class="btn ghost" data-mbtn="ad">${this.tr('double_ad')}</button>` : ''}<button class="btn gold" data-mbtn="claim">${this.tr('claim')}</button></div></div>`, { cls: 'center' });
+    w.querySelector('[data-mbtn=claim]').onclick = () => { w.remove(); onClaim(1); };
+    const ad = w.querySelector('[data-mbtn=ad]');
+    if (ad) ad.onclick = async () => { const r = await MonetizationService.requestRewardedAd('offline_double'); w.remove(); onClaim(r.rewarded ? 2 : 1); };
+  }
+
+  legend() {
+    const w = this.modal(`<div class="wb legend">${icon('star')}<h2>${this.tr('legend_title')}</h2><p>${this.tr('legend_text')}</p><div class="row end"><button class="btn gold" data-mbtn="ok">${this.tr('continue_playing')}</button></div></div>`, { cls: 'center' });
+    w.querySelector('[data-mbtn=ok]').onclick = () => w.remove();
+  }
+
+  // ---------- debug ----------
+  toggleDebug() { this.debugOn = !this.debugOn; $('#debug').hidden = !this.debugOn; if (this.debugOn) this.renderDebug(); }
+  renderDebug() {
+    const g = this.game; if (!g) return;
+    const info = g.renderer.info;
+    let nodes = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) nodes++;
+    const sel = g.selection ? `${g.selection.type}:${g.selection.id}` : '-';
+    const tr = g.selection && g.selection.type === 'train' ? g.trains.byId(g.selection.id) : null;
+    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)}` : ''}`;
+  }
+
+  toggleHeatmap() { const g = this.game; g.railView.setHeatmap(!g.railView.heatOn); this.renderToolbar(); if (g.railView.heatOn) this.toast(this.tr('heatmap_desc'), 'info', 'heat'); }
+
+  // ---------- actions ----------
+  get actions() {
+    const g = () => this.game;
+    return {
+      panel: (a) => this.openPanel(a),
+      closePanel: () => this.closePanel(),
+      closeInspector: () => g().select(null),
+      toggleMenu: () => $('#menu-rail').classList.toggle('open'),
+      speed: (a) => g().setSpeed(+a),
+      tool: (a) => { if (a === 'train') { this.openTrainShop(); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
+      tier: (a) => g().construction.setTier(+a),
+      decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
+      heatmap: () => this.toggleHeatmap(),
+      undo: () => g().construction.undo(),
+      grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
+      research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
+      unlockRegion: (a) => { const e = g().progression.unlockRegion(+a); if (e) this.error(e); else { this.closePanel(); g().select(null); g().save(); } },
+      focusRegion: (a) => { const c = g().world.centers[+a]; g().camera.focus(c[0] * TILE, c[1] * TILE, 40); if (window.innerWidth < 760) this.closePanel(); },
+      claimContract: (a) => { const k = g().economy.contracts.find((x) => x.id === +a); if (k) { g().economy.claimContract(k); this.app.audio.play('coin'); } this.refreshPanel(); },
+      rerollContract: (a) => { const k = g().economy.contracts.find((x) => x.id === +a); if (k) g().economy.rerollContract(k); this.refreshPanel(); },
+      claimDaily: (a) => { const d = g().economy.daily.list[+a]; if (d) { g().economy.claimDaily(d); this.app.audio.play('coin'); } this.refreshPanel(); },
+      defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
+      defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
+      jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      focusSel: () => { if (this.inspectSel) g().focusOn(this.inspectSel); },
+      follow: (a) => { this.followId = +a; g().focusOn({ type: 'train', id: +a }, 12); },
+      buyTrain: (a) => {
+        const dep = g().stations.depotById(this.shopDepot);
+        const r = g().trains.buy(a, dep);
+        if (r.error) { this.error(r.error); return; }
+        this.closePanel();
+        g().select({ type: 'train', id: r.train.id });
+      },
+      shopFromDepot: (a) => this.openTrainShop(+a),
+      upgradeStation: (a) => { const s = g().stations.byId(+a); const e = g().stations.upgrade(s); if (e) this.error(e); else this.toast(this.tr('toast_station_upgraded', { name: s.name }), 'good', 'station'); },
+      upgradeTrain: (a) => { const [id, k] = a.split(':'); const t = g().trains.byId(+id); const e = g().trains.upgrade(t, k); if (e) this.error(e); else this.app.audio.play('levelUp', { vol: 0.5 }); },
+      trainMode: (a) => { const [id, mode] = a.split(':'); const t = g().trains.byId(+id); t.mode = mode; if (mode === 'auto') t.filter = null; if (t.state === 'idle') t.stateT = 3; },
+      routeUp: (a) => { const [id, i] = a.split(':').map(Number); const t = g().trains.byId(id); if (i > 0) [t.route[i - 1], t.route[i]] = [t.route[i], t.route[i - 1]]; },
+      routeDown: (a) => { const [id, i] = a.split(':').map(Number); const t = g().trains.byId(id); if (i < t.route.length - 1) [t.route[i + 1], t.route[i]] = [t.route[i], t.route[i + 1]]; },
+      routeDel: (a) => { const [id, i] = a.split(':').map(Number); const t = g().trains.byId(id); t.route.splice(i, 1); t.routeIdx = 0; },
+      toggleCargo: (a) => {
+        const [id, c] = a.split(':'); const t = g().trains.byId(+id);
+        let f = t.filter ? [...t.filter] : [...CARGO_IDS];
+        f = f.includes(c) ? f.filter((x) => x !== c) : [...f, c];
+        t.filter = f.length === CARGO_IDS.length ? null : f;
+      },
+      renameTrain: async (a) => { const t = g().trains.byId(+a); const n = await this.prompt(this.tr('rename_train'), t.name); if (n) t.name = n.slice(0, 28); },
+      sellTrain: async (a) => { const t = g().trains.byId(+a); if (await this.confirm(this.tr('confirm_sell', { name: t.name }), this.tr('sell'), true)) { g().trains.sell(t); g().select(null); } },
+      tutNext: () => g().tutorial.advance(),
+      tutSkip: () => g().tutorial.skip(),
+      legacy: async () => { if (await this.confirm(this.tr('legacy_confirm'), this.tr('legacy_btn'), true)) this.app.foundLegacy(); },
+      saveQuit: () => this.app.toTitle(),
+      exportSave: () => this.app.exportSave(),
+      importSave: () => this.app.importSave(),
+      resetTutorial: () => { g().tutorial.restart(); g().settings.tutorial = true; this.closePanel(); },
+      resetGame: async () => { if (await this.confirm(this.tr('confirm_reset'), this.tr('reset_game'), true)) this.app.resetGame(); },
+    };
+  }
+
+  get inputs() {
+    const g = () => this.game;
+    return {
+      setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
+      settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
+      settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
+      lang: (el) => { setLang(el.value); this.app.setSetting('lang', el.value); this.relocalize(); },
+      shopDepot: (el) => { this.shopDepot = +el.value; this.refreshPanel(); },
+      stationStyle: (el) => { const s = g().stations.byId(+el.dataset.id); g().stations.setStyle(s, el.value); },
+      livery: (el) => { const t = g().trains.byId(+el.dataset.id); t.livery = el.value; t.visualSig = null; },
+      routeAdd: (el) => { if (!el.value) return; const t = g().trains.byId(+el.dataset.id); t.route.push({ st: +el.value }); el.blur(); if (t.state === 'idle') t.stateT = 3; this.renderInspector(); },
+    };
+  }
+
+  relocalize() {
+    document.documentElement.lang = getLang();
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = this.tr(el.dataset.i18n); });
+    if (this.game) { this.renderHud(); this.refreshPanel(); this.renderInspector(); this.renderGrant(); for (const el of this.labels.values()) el._sig = null; $('#tutorial')._sig = null; }
+    else if (this.panel) this.refreshPanel();
+    this.app.onRelocalize && this.app.onRelocalize();
+  }
+}

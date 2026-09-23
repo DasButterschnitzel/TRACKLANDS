@@ -37,7 +37,7 @@ export const REVENUE = {
   distPerTile: 0.1,
   distCap: 5.0,
   demandBonus: 1.25,     // town currently needs this cargo
-  xpPerCoin: 0.5,
+  xpPerCoin: 0.3,
 };
 
 // ---------- CONSTRUCTION ----------
@@ -60,7 +60,7 @@ export const COSTS = {
 };
 export const STATION = {
   storage: [60, 120, 240, 480, 960],
-  loadRate: [6, 9, 13, 18, 25],    // units per second
+  loadRate: [8, 12, 16, 22, 30],    // units per second
   radius: [3, 3, 4, 4, 5],
   platforms: [1, 2, 2, 3, 4],
   passengers: [4, 8, 14, 20, 28],  // visual crowd
@@ -132,7 +132,7 @@ export const trainUpgradeCost = (price, lvl) => Math.round(price * 0.22 * Math.p
 
 // ---------- PROGRESSION ----------
 export const MAX_LEVEL = 60;
-export const xpForLevel = (lvl) => Math.round(100 * Math.pow(1.2, lvl - 1) + 40 * (lvl - 1));
+export const xpForLevel = (lvl) => Math.round(120 * Math.pow(1.22, lvl - 1) + 60 * (lvl - 1));
 export const rpForLevel = (lvl) => (lvl % 5 === 0 ? 3 : 1);
 export const RESEARCH_UNLOCK_LEVEL = 3;
 export const LEGACY_LEVEL = 40;
@@ -193,8 +193,8 @@ export const REGION_PREV_OBJECTIVES = 2;
 export const REGION_DEVELOPED_AT = 4;
 
 export const BIOMES = {
-  green: { grass: 0x7fb85a, grass2: 0x6aa84f, amp: 0.7, mtn: 0.0, lakes: 0.12, trees: 0.45, tree: 'oak', roof: [0xb5563f, 0x9c4a3a, 0x7a5a48] },
-  pine: { grass: 0x4f8a4a, grass2: 0x3f7a44, amp: 1.1, mtn: 0.35, lakes: 0.1, trees: 0.7, tree: 'pine', roof: [0x5a4a42, 0x7a3f33, 0x4a5a62] },
+  green: { grass: 0x7fb85a, grass2: 0x6aa84f, amp: 0.7, mtn: 0.0, lakes: 0.12, trees: 0.36, tree: 'oak', roof: [0xb5563f, 0x9c4a3a, 0x7a5a48] },
+  pine: { grass: 0x4f8a4a, grass2: 0x3f7a44, amp: 1.1, mtn: 0.35, lakes: 0.1, trees: 0.6, tree: 'pine', roof: [0x5a4a42, 0x7a3f33, 0x4a5a62] },
   industrial: { grass: 0x8a9a6a, grass2: 0x7a8a60, amp: 0.4, mtn: 0.1, lakes: 0.06, trees: 0.15, tree: 'oak', roof: [0x5a5f66, 0x7a4a3a, 0x4a4f55] },
   plains: { grass: 0xc8b86a, grass2: 0xb9a95c, amp: 0.3, mtn: 0.0, lakes: 0.05, trees: 0.12, tree: 'oak', roof: [0xc26a3f, 0xa05a3a, 0xd08a4a] },
   coast: { grass: 0x86c06a, grass2: 0x74b05e, amp: 0.6, mtn: 0.05, lakes: 0.08, trees: 0.3, tree: 'oak', roof: [0x3f6e9a, 0xe8e2d4, 0x4a8ab0] },

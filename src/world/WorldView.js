@@ -193,7 +193,7 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
         const x = (tx(i) + 0.2 + rng.next() * 0.6) * TILE, z = (tz(i) + 0.2 + rng.next() * 0.6) * TILE;
         const h = this.heightAt(x, z);
         if (h < WATER_LEVEL + 0.1) continue;
-        const s = rng.range(1.5, 2.3) * (W.type[i] === 2 ? 0.8 : 1);
+        const s = rng.range(1.25, 1.85) * (W.type[i] === 2 ? 0.8 : 1);
         lists[kind].push({ i, x, y: h - 0.03, z, s, r: rng.range(0, 6.28), tint: rng.range(0.85, 1.1) });
       }
     }
@@ -250,7 +250,7 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
     const mb = new ModelBuilder();
     mb.sphere(1, 1, 0xffffff);
     const geo = mb.build(); geo.clearGroups();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x6a7080, emissiveIntensity: 0.35 });
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x8a90a8, emissiveIntensity: 0.45, color: 0xe8ecf6 });
     const list = [];
     const rng = new RNG(W.seed + 5);
     for (let z = 0; z < N; z += 2) for (let x = 0; x < N; x += 2) {
@@ -258,8 +258,8 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
       const r = W.region[i];
       if (r === 0) continue;
       const bx = (x + 1) * TILE + rng.range(-0.8, 0.8), bz = (z + 1) * TILE + rng.range(-0.8, 0.8);
-      const by = Math.max(W.tileH[i], 0) + 3.2 + rng.range(0, 1.6);
-      list.push({ r, x: bx, y: by, z: bz, s: rng.range(2.0, 3.1), sy: rng.range(0.55, 0.8), phase: rng.range(0, 6.28) });
+      const by = Math.max(W.tileH[i], 0) + 3.6 + rng.range(0, 1.2);
+      list.push({ r, x: bx, y: by, z: bz, s: rng.range(1.7, 2.5), sy: rng.range(0.42, 0.6), phase: rng.range(0, 6.28) });
     }
     this.cloudList = list;
     this.clouds = new THREE.InstancedMesh(geo, mat, list.length);

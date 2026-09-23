@@ -292,7 +292,7 @@ export class RailRenderer {
     // buffer stops on dead ends (not at stations/depots)
     const sp = net.special.get(i);
     for (const s of stubs) {
-      if (sp) break;
+      if (sp || net.degree(i) > 1) break;
       const e = edge(net, i, s);
       const cx = tileCX(i), cz = tileCZ(i);
       const x = cx + (e[0] - cx) * 0.1, z = cz + (e[2] - cz) * 0.1;

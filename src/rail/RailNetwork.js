@@ -282,9 +282,10 @@ export class RailNetwork {
   findRoute(start, target, opts = {}) {
     const minTier = opts.minTier || 0;
     const avoid = opts.avoid || null;
-    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier}` : null;
+    const rev = !!opts.allowReverse;
+    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier},${rev ? 1 : 0}` : null;
     if (key && this.routeCache.has(key)) return this.routeCache.get(key);
-    const res = this._route(start, target, minTier, avoid);
+    const res = this._route(start, target, minTier, avoid, rev);
     if (key) { if (this.routeCache.size > 3000) this.routeCache.clear(); this.routeCache.set(key, res); }
     return res;
   }
@@ -297,7 +298,7 @@ export class RailNetwork {
     return true;
   }
 
-  _route(start, target, minTier, avoid) {
+  _route(start, target, minTier, avoid, allowRev) {
     const stamp = ++this._rstamp;
     const g = this._rg, prev = this._rprev, seen = this._rseen, heap = this._heap;
     heap.clear();
@@ -308,7 +309,7 @@ export class RailNetwork {
     const tierSpeed = (i) => TRACK_TIERS[this.tier[i]].speed;
     const stepCost = (i, hin, d) => {
       let c = DLEN[d] * Math.sqrt(80 / tierSpeed(i));
-      if (hin != null && hin !== 8) { const t = turnOf(hin, d); if (t === 2) c += 0.35; else if (t === 1) c += 0.08; }
+      if (hin != null && hin !== 8) { const t = turnOf(hin, d); if (t === 3) c += 5; else if (t === 2) c += 0.35; else if (t === 1) c += 0.08; }
       if (avoid && avoid.has(i)) c += 12;
       return c;
     };
@@ -318,7 +319,7 @@ export class RailNetwork {
       if (si === target) return { steps: [], length: 0 };
       for (let d = 0; d < 8; d++) {
         if (!this.hasDir(si, d)) continue;
-        if (start.heading != null && turnOf(start.heading, d) > 2) continue;
+        if (start.heading != null && turnOf(start.heading, d) > 3) continue;
         const j = step(si, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, stepCost(si, start.heading, d) * 0.5, -2 - d);
@@ -337,14 +338,16 @@ export class RailNetwork {
       const m = this.conn[i];
       for (let d = 0; d < 8; d++) {
         if (!((m >> d) & 1)) continue;
-        if (turnOf(h, d) > 2) continue;
+        if (turnOf(h, d) > 3) continue;
         const j = step(i, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, gs + stepCost(i, h, d), s);
       }
+      // shunting: stop at this tile's center, reverse and continue the other way
+      if (allowRev) push(i * 8 + opp(h), gs + 10, s);
     }
     if (found < 0) return null;
-    const states = [];
+    let states = [];
     let s = found, firstOut = null;
     for (;;) {
       states.push(s);
@@ -354,6 +357,10 @@ export class RailNetwork {
       s = p;
     }
     states.reverse();
+    let reverse = false;
+    for (let k = 1; k < states.length; k++) {
+      if ((states[k] >> 3) === (states[k - 1] >> 3)) { states = states.slice(0, k); reverse = true; break; }
+    }
     const steps = [];
     for (let k = 0; k < states.length; k++) {
       const i = states[k] >> 3, h = states[k] & 7;
@@ -363,9 +370,9 @@ export class RailNetwork {
     // choose a smooth continuation at the final tile for nicer geometry
     const last = steps[steps.length - 1];
     let best = null, bt = 9;
-    for (let d = 0; d < 8; d++) if (this.hasDir(last.tile, d) && turnOf(last.inH, d) <= 2 && turnOf(last.inH, d) < bt) { bt = turnOf(last.inH, d); best = d; }
+    for (let d = 0; d < 8; d++) if (this.hasDir(last.tile, d) && turnOf(last.inH, d) <= 3 && turnOf(last.inH, d) < bt) { bt = turnOf(last.inH, d); best = d; }
     last.outH = best;
-    return { steps, length: g[found], firstOut };
+    return { steps, length: g[found], firstOut, reverse };
   }
 
   components() {
@@ -390,9 +397,12 @@ export class RailNetwork {
   // ---------- reservations ----------
   laneKeys(stepObj) {
     const i = stepObj.tile;
-    if (this.degree(i) >= 3) return [i * 2, i * 2 + 1];
+    const sp = this.special.get(i);
+    // junctions are exclusive; station platforms keep one lane per direction
+    if (this.degree(i) >= 3 && !(sp && sp.type === 'station')) return [i * 2, i * 2 + 1];
     const a = stepObj.inH == null ? null : opp(stepObj.inH);
     const b = stepObj.outH;
+    if (sp && sp.type === 'station' && a != null && b != null && this.degree(i) >= 3) return [i * 2 + ((stepObj.inH & 7) < 4 ? 0 : 1)];
     let sense;
     if (a != null && b != null) sense = a < b ? 0 : 1;
     else if (a != null) sense = 0; else sense = 1;

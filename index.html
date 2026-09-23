@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>TRACKLANDS</title>
+  <meta name="description" content="A cozy railway empire builder. Build railways, connect towns and watch the world grow." />
+  <meta name="theme-color" content="#1f2a3a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js" } }</script>
+</head>
+<body>
+  <canvas id="view" aria-label="TRACKLANDS world"></canvas>
+  <div id="labels" aria-hidden="true"></div>
+  <div id="floats" aria-hidden="true"></div>
+
+  <div id="hud" hidden>
+    <header id="topbar"></header>
+    <div id="banner" role="status"></div>
+    <div id="celebrate" aria-live="polite"></div>
+    <nav id="menu-rail" aria-label="Menu"></nav>
+    <aside id="inspector" class="sheet" hidden></aside>
+    <div id="subbar" hidden></div>
+    <footer id="toolbar"></footer>
+    <div id="cursorinfo" hidden></div>
+    <div id="tutorial" hidden></div>
+    <div id="grant" hidden></div>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+  <aside id="panel" class="sheet" hidden></aside>
+  <div id="title" hidden></div>
+  <div id="modal-root"></div>
+  <div id="tooltip" hidden role="tooltip"></div>
+  <pre id="debug" hidden></pre>
+  <div id="busy" hidden><div class="spinner"></div></div>
+  <div id="loading">
+    <div class="load-card">
+      <div class="load-logo">TRACK<span>LANDS</span></div>
+      <div class="load-bar"><i></i></div>
+    </div>
+    <noscript>TRACKLANDS requires JavaScript.</noscript>
+  </div>
+  <script>
+    window.addEventListener('error', function (e) {
+      if (e && e.message && /import|module|three/i.test(e.message)) {
+        var l = document.getElementById('loading');
+        if (l) l.innerHTML = '<div class="fatal"><h1>TRACKLANDS</h1><p>The game could not be loaded. Please reload the page or use a current browser.</p></div>';
+      }
+    });
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
