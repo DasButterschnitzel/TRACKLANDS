@@ -356,6 +356,27 @@ export class TrainSystem {
     return true;
   }
 
+  // Terminus turnaround (turntable): used when the consist is too long to
+  // reverse out of a short spur. The train re-forms at the station and departs.
+  turnaround(t, stn) {
+    const net = this.net;
+    const { st: hs } = this.headInfo(t);
+    if (!hs) return false;
+    const h = hs.inH != null ? opp(hs.inH) : (hs.outH != null ? opp(hs.outH) : null);
+    const r = net.findRoute({ tile: hs.tile, heading: h, fromCenter: true }, stn.tile, { minTier: t._st.minTier, allowReverse: true });
+    if (!r || r.firstOut == null) return false;
+    const first = { tile: hs.tile, inH: null, outH: r.firstOut };
+    if (!net.canReserve(net.laneKeys(first), t.id)) return false;
+    this.clearTrail(t);
+    this.appendStep(t, first);
+    t.s = 0; t.v = 0; t.flip = false; t.lane = 1;
+    this.holdOccupied(t, true);
+    for (const s2 of r.steps) this.appendStep(t, s2);
+    t.stopS = t.steps[t.steps.length - 1].sc;
+    t.via = !!r.reverse;
+    return true;
+  }
+
   // reached a shunting point: reverse direction and continue to the target
   viaReverse(t) {
     const stn = this.game.stations.byId(t.target);
@@ -462,6 +483,12 @@ export class TrainSystem {
     }
     const allowReverse = true;
     const opts = this.planOptions(t, stn.tile, allowReverse);
+    if (!opts.length && here && this.turnaround(t, stn)) opts.push(null);
+    if (opts.length && opts[0] === null) {
+      t.target = stn.id; t.problem = null; t.state = 'run'; t.stateT = 0; t.wait = 0; t.recover = 0; t.lastStepIdx = -1;
+      g.events.emit('trainDepart', t, here);
+      return;
+    }
     if (!opts.length) {
       t.unreachable.set(stn.id, g.time + 45);
       this.releaseClaim(t);
@@ -883,7 +910,7 @@ export class TrainSystem {
       if (t.fade < 1) t.fade = Math.min(1, t.fade + dt * 1.5);
       const total = V.total;
       const sMin = t.ss[0];
-      const inDepot = t.steps[0] && this.net.special.get(t.steps[0].tile)?.type === 'depot';
+      const inDepot = t.steps[0] && t.steps[0].inH == null;
       const laneOff = LANE * t.lane;
       for (let ci = 0; ci < V.cars.length; ci++) {
         const c = V.cars[ci];
