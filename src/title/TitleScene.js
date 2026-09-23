@@ -3,7 +3,9 @@
 import * as THREE from 'three';
 import { RNG, Noise2D } from '../util.js';
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
-import { locoGeometry, wagonGeometry, LOCO_LEN, WAGON_LEN, CAR_GAP } from '../trains/TrainModels.js';
+import { locoGeometry, wagonGeometry } from '../trains/TrainModels.js';
+import { WAGONS, CONSIST, locoLen, LOCOS } from '../config.js';
+const CAR_GAP = CONSIST.gap;
 import { Particles } from '../vfx/Particles.js';
 
 export class TitleScene {
@@ -105,12 +107,12 @@ export class TitleScene {
     this.cars = [];
     const loco = new THREE.Mesh(locoGeometry('pioneer', 'classic_green', 1), MATS);
     loco.castShadow = true;
-    this.cars.push({ mesh: loco, len: LOCO_LEN });
-    const styles = [['log', 'WOOD'], ['coach', null], ['coach', null]];
+    this.cars.push({ mesh: loco, len: locoLen(LOCOS[0]) });
+    const styles = [['timber', 'WOOD'], ['coach', null], ['coach', null]];
     for (const [s, c] of styles) {
-      const w = new THREE.Mesh(wagonGeometry(s, c, true, 'steam', 0x2f6b4a, 0xd9b45a), MATS);
+      const w = new THREE.Mesh(wagonGeometry(s, c, 3, 'steam', 0x2f6b4a, 0xd9b45a), MATS);
       w.castShadow = true;
-      this.cars.push({ mesh: w, len: WAGON_LEN });
+      this.cars.push({ mesh: w, len: WAGONS[s].len });
     }
     for (const c of this.cars) this.scene.add(c.mesh);
     this.pathLen = 0;

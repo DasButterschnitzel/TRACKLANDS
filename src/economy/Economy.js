@@ -39,6 +39,8 @@ export class Economy {
       train(m) { return Math.round(m.price * self.game.difficulty.costMul); },
       trainUpgrade(m, lvl) { return Math.round(trainUpgradeCost(m.price, lvl) * self.game.difficulty.costMul); },
       decor(d) { return Math.round(d.cost * this.mul()); },
+      signal() { return Math.round(COSTS.signal * this.mul()); },
+      waypoint() { return Math.round(COSTS.waypoint * this.mul()); },
       region(r) { return Math.round(REGIONS[r].cost * self.game.difficulty.costMul); },
     };
   }
@@ -82,6 +84,9 @@ export class Economy {
       if (trait === 'long_hauler' && dist > 25) mul += 0.15;
       if (trait === 'heavy_freight' && HEAVY_CARGO.includes(c)) mul += 0.15;
       if (trait === 'express' && (isPax || isMail)) mul += 0.1;
+      // premium / observation / specialised wagons
+      if (train._st.revMul && train._st.revMul[c]) mul += train._st.revMul[c] * Math.min(1, (train._st.caps[c] || 0) ? 1 : 0);
+      if (isPax && train._st.trainRev) mul += train._st.trainRev;
     }
     if (needed) mul *= REVENUE.demandBonus;
     return v * mul * g.difficulty.incomeMul;

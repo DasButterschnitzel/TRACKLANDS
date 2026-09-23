@@ -1,7 +1,7 @@
 // Build tools: track drawing with live preview, stations, depots, bulldozer,
 // decorations, coverage visualization and a short undo window.
 import * as THREE from 'three';
-import { N, TILE, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt } from '../util.js';
+import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt } from '../util.js';
 import { COSTS, DECORATIONS, TRACK_TIERS } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from './RailNetwork.js';
 
@@ -12,6 +12,8 @@ export class Construction {
     this.game = game;
     this.tool = 'select';
     this.tier = 0;
+    this.trackMode = 'double';
+    this.signalType = 'block';
     this.decor = 'oak';
     this.drag = null;
     this.plan = null;
@@ -48,6 +50,37 @@ export class Construction {
     this.tier = t; this.game.events.emit('tool', this.tool);
   }
 
+  setTrackMode(m) { this.trackMode = m === 'single' ? 'single' : 'double'; this.game.events.emit('tool', this.tool); }
+  signalUnlocked(type) {
+    const R = this.game.progression.research;
+    if (type === 'block') return R.has('block_signals');
+    if (type === 'path') return R.has('path_signals');
+    if (type === 'oneway') return R.has('one_way_signals');
+    return false;
+  }
+  setSignalType(t) {
+    if (!this.signalUnlocked(t)) { this.game.ui.error('err_signal_locked'); return; }
+    this.signalType = t; this.game.events.emit('tool', this.tool);
+  }
+  // the exit direction of `tile` closest to world point p
+  dirToward(tile, p) {
+    const net = this.game.net;
+    let best = null, bd = 1e9;
+    for (let d = 0; d < 8; d++) {
+      if (!net.hasDir(tile, d)) continue;
+      const ex = tileCX(tile) + DX[d] * TILE / 2, ez = tileCZ(tile) + DZ[d] * TILE / 2;
+      const dd = Math.hypot(ex - p.x, ez - p.z);
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    return best;
+  }
+  // highlight tiles (used by station edit previews)
+  showTiles(tiles, ok) {
+    let k = 0;
+    for (const t of tiles) { if (t < 0 || k >= 400) continue; this.putQuad(this.ghost, k++, t, ok ? 0x3fc8b8 : 0xd0503f); }
+    this.ghost.count = k; this.flush(this.ghost);
+  }
+
   clearPreview() {
     this.ghost.count = 0; this.cover.count = 0;
     this.lineGeo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
@@ -65,8 +98,9 @@ export class Construction {
   flush(mesh) { mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; }
 
   // ---------- pointer handling ----------
-  hover(tile) {
+  hover(tile, p) {
     this.hoverTile = tile;
+    if (p) this.hoverP = p;
     if (this.drag) return;
     const g = this.game;
     if (this.tool === 'select' || this.tool === 'train' || tile < 0) { this.ghost.count = 0; this.cover.count = 0; this.flush(this.ghost); return; }
@@ -80,6 +114,16 @@ export class Construction {
     } else if (this.tool === 'decor') {
       const err = g.decor.placeError(tile, this.decor);
       ok = !err; info = err ? g.ui.tr(err) : `${fmt(g.economy.costs.decor(DECORATIONS.find((d) => d.id === this.decor)))} ●`;
+    } else if (this.tool === 'signal') {
+      const d = this.hoverP ? this.dirToward(tile, this.hoverP) : null;
+      const err = d == null ? 'err_signal_no_track' : g.net.canPlaceSignal(tile, d);
+      ok = !err;
+      const cur = d != null ? g.net.signalAt(tile, d) : null;
+      info = err ? g.ui.tr(err) : cur ? g.ui.tr('hint_signal_cycle') : `${g.ui.tr('sig_' + this.signalType)} · ${fmt(g.economy.costs.signal())} ●`;
+    } else if (this.tool === 'waypoint') {
+      const has = g.net.waypoints.has(tile);
+      const err = has ? null : this.waypointError(tile);
+      ok = !err; info = err ? g.ui.tr(err) : has ? g.ui.tr('hint_waypoint_remove') : `${fmt(g.economy.costs.waypoint())} ●`;
     } else if (this.tool === 'bulldoze') {
       ok = this.bulldozeTarget(tile) != null;
     } else if (this.tool === 'track') {
@@ -109,7 +153,7 @@ export class Construction {
     this.coverInfo = { towns, inds };
   }
 
-  pointerDown(tile) {
+  pointerDown(tile, p) {
     const g = this.game;
     if (tile < 0) return;
     switch (this.tool) {
@@ -122,6 +166,8 @@ export class Construction {
         this.bulldoze(tile);
         break;
       case 'station': this.placeStation(tile); break;
+      case 'signal': this.placeSignal(tile, p || this.hoverP); break;
+      case 'waypoint': this.toggleWaypoint(tile); break;
       case 'depot': this.placeDepot(tile); break;
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
       default: break;
@@ -155,6 +201,7 @@ export class Construction {
   previewTrack() {
     const g = this.game;
     const plan = g.net.planConstruction(this.drag.a, this.drag.b, this.tier);
+    this.adjustPlanForMode(plan);
     this.plan = plan;
     let k = 0;
     const pts = [];
@@ -182,12 +229,29 @@ export class Construction {
     } else ui.cursorInfo(ui.tr(plan.reason || 'err_no_path'), false);
   }
 
+  // single track is cheaper; dragging double track over single track doubles it
+  adjustPlanForMode(plan) {
+    if (!plan.ok) return;
+    const g = this.game, net = g.net;
+    plan.upgrades = [];
+    if (this.trackMode === 'single') plan.cost = Math.round(plan.cost * 0.65);
+    else for (const t of plan.tiles) if (net.conn[t] && net.single[t] && !net.special.has(t)) plan.upgrades.push(t);
+    if (plan.upgrades.length) {
+      for (const t of plan.upgrades) if (g.trains.tileReserved(t)) { plan.ok = false; plan.reason = 'err_train_on_track'; plan.invalid.push(t); return; }
+      plan.cost += Math.round(plan.upgrades.reduce((a, t) => a + g.economy.costs.trackTile(net.tier[t], net.kind(t)) * 0.4, 0));
+    }
+  }
+
   buildTrack() {
     const g = this.game, net = g.net, plan = this.plan;
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
     if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
-    const prev = plan.tiles.map((t) => ({ t, conn: net.conn[t], tier: net.tier[t] }));
+    const prev = plan.tiles.map((t) => ({ t, conn: net.conn[t], tier: net.tier[t], single: net.single[t] }));
     for (let k = 0; k < plan.dirs.length; k++) net.connect(plan.tiles[k], plan.dirs[k]);
+    for (const p of prev) {
+      if (!p.conn && this.trackMode === 'single' && !net.special.has(p.t)) net.single[p.t] = 1;
+      if (p.conn && this.trackMode === 'double' && (plan.upgrades || []).includes(p.t)) net.single[p.t] = 0;
+    }
     for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, this.tier);
     for (const p of prev) if (p.conn && p.tier > this.tier) net.tier[p.t] = p.tier;
     g.economy.spend(plan.cost, 'construction');
@@ -197,7 +261,7 @@ export class Construction {
       for (const d of [0, 2, 4, 6, 1, 3, 5, 7]) {
         const j = step(end, d);
         if (j < 0 || !net.special.has(j) || net.conn[j]) continue;
-        prev.push({ t: j, conn: 0, tier: net.tier[j] });
+        prev.push({ t: j, conn: 0, tier: net.tier[j], single: 0 });
         net.connect(end, d);
         net.tier[j] = net.tier[end];
         plan.tiles.push(j);
@@ -246,8 +310,9 @@ export class Construction {
     if (!g.net.conn[tile]) g.ui.toast(g.ui.tr('hint_connect_depot'), 'info');
   }
   neighborhoodConn(tile) {
-    const out = [{ t: tile, conn: this.game.net.conn[tile], tier: this.game.net.tier[tile] }];
-    for (let d = 0; d < 8; d++) { const j = step(tile, d); if (j >= 0) out.push({ t: j, conn: this.game.net.conn[j], tier: this.game.net.tier[j] }); }
+    const net = this.game.net;
+    const out = [{ t: tile, conn: net.conn[tile], tier: net.tier[tile], single: net.single[tile] }];
+    for (let d = 0; d < 8; d++) { const j = step(tile, d); if (j >= 0) out.push({ t: j, conn: net.conn[j], tier: net.tier[j], single: net.single[j] }); }
     return out;
   }
 
@@ -260,11 +325,64 @@ export class Construction {
     g.particles.emit('sparkle', tileCX(tile), g.world.view.heightAt(tileCX(tile), tileCZ(tile)) + 0.4, tileCZ(tile), 6, 0.5);
   }
 
+  // ---------- signals & waypoints ----------
+  placeSignal(tile, p) {
+    const g = this.game, net = g.net;
+    if (tile < 0 || !p) return;
+    const d = this.dirToward(tile, p);
+    const err = d == null ? 'err_signal_no_track' : net.canPlaceSignal(tile, d);
+    if (err) { g.ui.error(err); return; }
+    const key = tile * 8 + d;
+    const cur = net.signals.get(key);
+    // cycle: none -> chosen type -> one-way variant -> removed
+    if (!cur) {
+      if (!this.signalUnlocked(this.signalType === 'oneway' ? 'oneway' : this.signalType)) { g.ui.error('err_signal_locked'); return; }
+      const cost = g.economy.costs.signal();
+      if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
+      g.economy.spend(cost, 'construction');
+      const type = this.signalType === 'oneway' ? 'block' : this.signalType;
+      net.signals.set(key, { type, oneway: this.signalType === 'oneway' });
+    } else if (!cur.oneway && this.signalUnlocked('oneway')) cur.oneway = true;
+    else if (cur.type === 'block' && this.signalUnlocked('path') && cur.oneway) { cur.type = 'path'; cur.oneway = false; }
+    else net.signals.delete(key);
+    net.bumpVersion();
+    g.trains.onNetworkChanged(false);
+    g.audio.play('click');
+    g.particles.emit('sparkle', tileCX(tile), net.railH(tile) + 0.8, tileCZ(tile), 4, 0.4);
+    this.hover(tile, p);
+  }
+  waypointError(tile) {
+    const g = this.game, net = g.net;
+    if (tile < 0 || !net.conn[tile]) return 'err_waypoint_track';
+    if (net.degree(tile) !== 2 || net.special.has(tile)) return 'err_waypoint_track';
+    if (!g.economy.canAfford(g.economy.costs.waypoint())) return 'err_no_money';
+    return null;
+  }
+  toggleWaypoint(tile) {
+    const g = this.game, net = g.net;
+    if (net.waypoints.has(tile)) {
+      const wp = net.waypoints.get(tile);
+      net.waypoints.delete(tile);
+      for (const t of g.trains.trains) t.route = t.route.filter((r) => r.wp !== tile);
+      g.ui.toast(g.ui.tr('toast_waypoint_removed', { name: wp.name }), 'info');
+      return;
+    }
+    const err = this.waypointError(tile);
+    if (err) { g.ui.error(err); return; }
+    g.economy.spend(g.economy.costs.waypoint(), 'construction');
+    const id = net.nextWp++;
+    net.waypoints.set(tile, { id, name: g.ui.tr('waypoint') + ' ' + id });
+    g.audio.play('construct');
+    g.particles.ring(tileCX(tile), net.railH(tile) + 0.1, tileCZ(tile), 0xffffff, 2, 0.8);
+  }
+
   // ---------- bulldozer ----------
   bulldozeTarget(tile) {
     const g = this.game;
     if (tile < 0 || !g.progression.regionUnlocked(g.world.region[tile])) return null;
     if (g.decor.at(tile)) return 'decor';
+    if (g.net.waypoints.has(tile)) return 'waypoint';
+    for (let d = 0; d < 8; d++) if (g.net.signals.has(tile * 8 + d)) return 'signal';
     const sp = g.net.special.get(tile);
     if (sp) return sp.type;
     if (g.net.conn[tile]) return 'track';
@@ -278,8 +396,21 @@ export class Construction {
     if (!what) return;
     switch (what) {
       case 'decor': g.decor.remove(tile); break;
+      case 'waypoint': this.toggleWaypoint(tile); return;
+      case 'signal': {
+        for (let d = 0; d < 8; d++) net.signals.delete(tile * 8 + d);
+        net.bumpVersion(); g.trains.onNetworkChanged(false);
+        break;
+      }
       case 'station': {
         const stn = g.stations.stationAt(tile);
+        // outer platform tracks are removed one by one before the whole station
+        const k = g.stations.trackAt(tile);
+        if (stn.tracks.length > 1 && k > 0) {
+          const rr = g.stations.removeTrack(stn, k);
+          if (rr.error) { g.ui.error(rr.error); return; }
+          break;
+        }
         const r = g.stations.remove(stn);
         if (r.error) { g.ui.error(r.error); return; }
         if (r.affected) g.ui.toast(g.ui.tr('info_routes_updated', { n: r.affected }), 'info');
@@ -294,7 +425,7 @@ export class Construction {
         break;
       }
       case 'track': {
-        if (g.trains.tileOccupied(tile)) { g.ui.error('err_train_on_track'); return; }
+        if (g.trains.tileReserved(tile)) { g.ui.error('err_train_on_track'); return; }
         const tier = net.tier[tile];
         const refund = Math.round(g.economy.costs.trackTile(tier, net.kind(tile)) * COSTS.bulldozeRefund);
         net.disconnectTile(tile);
@@ -375,7 +506,7 @@ export class Construction {
   }
   restoreConn(prev) {
     const g = this.game, net = g.net;
-    for (const p of prev) { net.conn[p.t] = p.conn; net.tier[p.t] = p.tier; }
+    for (const p of prev) { net.conn[p.t] = p.conn; net.tier[p.t] = p.tier; net.single[p.t] = p.conn ? (p.single | 0) : 0; }
     // keep reciprocity with tiles outside the restored set
     const set = new Set(prev.map((p) => p.t));
     for (const p of prev) for (let d = 0; d < 8; d++) {

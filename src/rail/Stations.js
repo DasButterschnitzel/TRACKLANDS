@@ -1,13 +1,18 @@
-// Stations and depots: placement, linking to towns and industries, cargo
-// storage, acceptance, upgrades and procedural visuals (with crowds and cargo piles).
+// Stations and depots. A station is a set of parallel platform tracks; every
+// track tile is a real rail-graph element (special tile with its track index).
+// Legacy single-tile stations are one track of length 1. Covers placement,
+// linking to towns/industries, cargo storage, the platform dispatcher API,
+// safe station editing (add track with switch ladders, extend platforms,
+// roles, facilities), statistics, the bottleneck advisor and visuals.
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ } from '../util.js';
-import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES } from '../config.js';
+import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES } from '../config.js';
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
 
 const DIR_NAMES = ['east', 'south', 'south', 'west', 'west', 'north', 'north', 'east'];
+const dirOf = (dx, dz) => { for (let d = 0; d < 8; d++) if (DX[d] === dx && DZ[d] === dz) return d; return -1; };
 
 export class StationSystem {
   constructor(game) {
@@ -17,28 +22,110 @@ export class StationSystem {
     this.nextId = 1;
     this.group = new THREE.Group();
     game.scene.add(this.group);
-    // crowd + cargo instancing
     const pm = new ModelBuilder();
     pm.cyl(0.05, 0.06, 0.16, 6, 0xffffff, { y: 0 });
     pm.sphere(0.045, 0, 0xf0c8a0, { y: 0.2 });
-    this.people = new THREE.InstancedMesh(pm.build(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 800);
+    this.people = new THREE.InstancedMesh(pm.build(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 1200);
     this.people.count = 0; this.people.frustumCulled = false;
     const cm = new ModelBuilder(); cm.box(0.2, 0.16, 0.2, 0xffffff);
-    this.crates = new THREE.InstancedMesh(cm.build(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 1200);
+    this.crates = new THREE.InstancedMesh(cm.build(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 1400);
     this.crates.count = 0; this.crates.frustumCulled = false; this.crates.castShadow = true;
     game.scene.add(this.people, this.crates);
-    this._cargoT = 0;
     this._m = new THREE.Matrix4(); this._c = new THREE.Color();
+    this.claims = new Map();   // trainId -> {stn, track}
   }
 
   byId(id) { return this.list.find((s) => s.id === id); }
   depotById(id) { return this.depots.find((d) => d.id === id); }
   depotAt(tile) { return this.depots.find((d) => d.tile === tile); }
-  stationAt(tile) { return this.list.find((s) => s.tile === tile); }
+  stationAt(tile) { const sp = this.game.net.special.get(tile); return sp && sp.type === 'station' ? this.byId(sp.id) : null; }
+  trackAt(tile) { const sp = this.game.net.special.get(tile); return sp && sp.type === 'station' ? sp.track | 0 : -1; }
+  allTiles(stn) { const out = []; for (const tk of stn.tracks) for (const t of tk.tiles) out.push(t); return out; }
 
   radius(stn) { return STATION.radius[stn.level] + this.game.progression.fx.stationRadius; }
   storage(stn) { return Math.round(STATION.storage[stn.level] * (1 + this.game.progression.fx.storage)); }
-  loadRate(stn) { return STATION.loadRate[stn.level]; }
+  loadRate(stn, cargos) {
+    let r = STATION.loadRate[stn.level];
+    if (cargos && stn.facilities.length) {
+      let best = 1;
+      for (const f of stn.facilities) for (const c of cargos) if (FACILITIES[f] && FACILITIES[f].cargo.includes(c)) best = Math.max(best, FACILITIES[f].mul);
+      r *= best;
+    }
+    return r;
+  }
+  maxTracks() { const R = this.game.progression.research; return R.has('grand_terminals') ? STATION.maxTracksGrand : R.has('station_expansion') ? STATION.maxTracksExp : STATION.maxTracks; }
+  maxLength() { return this.game.progression.research.has('platform_extension') ? STATION.maxLengthExt : STATION.maxLength; }
+
+  // ---------- geometry helpers ----------
+  axisOf(stn) {
+    const net = this.game.net;
+    const t0 = stn.tracks[0];
+    if (t0.tiles.length > 1) {
+      const a = dirOf(tx(t0.tiles[1]) - tx(t0.tiles[0]), tz(t0.tiles[1]) - tz(t0.tiles[0]));
+      return a >= 0 ? a & 3 : 0;
+    }
+    const tile = t0.tiles[0];
+    for (let d = 0; d < 4; d++) if (net.hasDir(tile, d) && net.hasDir(tile, d + 4)) return d;
+    for (const d of [0, 2, 1, 3, 4, 6, 5, 7]) if (net.hasDir(tile, d)) return d & 3;
+    return 0;
+  }
+  // re-index special tiles for a station (track indices and roles)
+  markTiles(stn) {
+    const net = this.game.net;
+    stn.tracks.forEach((tk, k) => { for (const t of tk.tiles) net.special.set(t, { type: 'station', id: stn.id, track: k, role: tk.role }); });
+  }
+
+  // Routing targets for the dispatcher: each track can be entered from either
+  // end; the train stops at the far end (heading constraint).
+  targetsFor(stn, t) {
+    const out = [];
+    const a = this.axisOf(stn);
+    stn.tracks.forEach((tk, k) => {
+      if (tk.role === 'through') return;
+      const n = tk.tiles.length;
+      if (n === 1) { out.push({ tile: tk.tiles[0], heading: null, track: k, len: 1, role: tk.role }); return; }
+      if (tk.dir !== 'rev') out.push({ tile: tk.tiles[n - 1], heading: a, track: k, len: n, role: tk.role });
+      if (tk.dir !== 'fwd') out.push({ tile: tk.tiles[0], heading: (a + 4) & 7, track: k, len: n, role: tk.role });
+    });
+    if (!out.length && stn.tracks.length) {
+      // every track marked "through": still allow stopping on track 1
+      const tk = stn.tracks[0];
+      out.push({ tile: tk.tiles[tk.tiles.length - 1], heading: tk.tiles.length > 1 ? a : null, track: 0, len: tk.tiles.length, role: 'any' });
+    }
+    void t;
+    return out;
+  }
+  platformBusy(stn, k, id) {
+    const net = this.game.net;
+    const tk = stn.tracks[k];
+    if (!tk) return true;
+    for (const tile of tk.tiles) { const a = net.resv[tile * 2], b = net.resv[tile * 2 + 1]; if ((a && a !== id) || (b && b !== id)) return true; }
+    const c = stn.claims && stn.claims.get(k);
+    if (c) for (const tid of c) if (tid !== id) return true;
+    return false;
+  }
+  rolePenalty(stn, k, prio) {
+    const role = stn.tracks[k] ? stn.tracks[k].role : 'any';
+    if (role === 'any') return 0;
+    if (role === 'passenger') return prio === 'passenger' || prio === 'express' || prio === 'mail' ? 0 : 20;
+    if (role === 'freight') return prio === 'freight' || prio === 'service' ? 0 : 20;
+    if (role === 'express') return prio === 'express' ? -1 : prio === 'passenger' ? 6 : 25;
+    return 0;
+  }
+  claimPlatform(stn, k, id) {
+    this.unclaimPlatform(id);
+    if (!stn.claims) stn.claims = new Map();
+    if (!stn.claims.has(k)) stn.claims.set(k, new Set());
+    stn.claims.get(k).add(id);
+    this.claims.set(id, { stn: stn.id, track: k });
+  }
+  unclaimPlatform(id) {
+    const c = this.claims.get(id);
+    if (!c) return;
+    const s = this.byId(c.stn);
+    if (s && s.claims && s.claims.get(c.track)) s.claims.get(c.track).delete(id);
+    this.claims.delete(id);
+  }
 
   // ---------- validation ----------
   placeError(tile, kind) {
@@ -50,25 +137,27 @@ export class StationSystem {
     if (net.special.has(tile)) return 'err_occupied';
     if (kind === 'depot' && net.degree(tile) > 1) return 'err_depot_on_line';
     if (net.degree(tile) >= 3 && kind === 'station') return 'err_station_junction';
+    if (net.conn[tile] && g.trains.tileReserved(tile)) return 'err_train_on_track';
     const cost = kind === 'depot' ? g.economy.costs.depot() : g.economy.costs.station();
     if (!g.economy.canAfford(cost)) return 'err_no_money';
     return null;
   }
 
-  // Which towns/industries a station on `tile` would serve
-  previewLinks(tile, level = 0) {
+  previewLinks(tiles, level = 0) {
     const g = this.game;
+    if (!Array.isArray(tiles)) tiles = [tiles];
     const r = STATION.radius[level] + g.progression.fx.stationRadius;
-    const towns = g.towns.list.filter((t) => cheb(tile, idx(t.x, t.z)) <= r + g.towns.radius(t));
+    const dist = (t) => { let m = 1e9; for (const s of tiles) m = Math.min(m, cheb(s, t)); return m; };
+    const towns = g.towns.list.filter((t) => dist(idx(t.x, t.z)) <= r + g.towns.radius(t));
     const inds = g.industries.list.filter((ind) => {
-      for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (cheb(tile, idx(ind.x + dx, ind.z + dz)) <= r) return true;
+      for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (dist(idx(ind.x + dx, ind.z + dz)) <= r) return true;
       return false;
     });
     return { towns, inds, radius: r };
   }
 
   relink(stn) {
-    const { towns, inds } = this.previewLinks(stn.tile, stn.level);
+    const { towns, inds } = this.previewLinks(this.allTiles(stn), stn.level);
     stn.links = { towns: towns.map((t) => t.id), industries: inds.map((i) => i.id) };
     const acc = new Set(), sup = new Set();
     if (towns.length) { for (const c of TOWN_ACCEPTS) acc.add(c); sup.add('PASSENGERS'); sup.add('MAIL'); }
@@ -113,24 +202,31 @@ export class StationSystem {
     return name;
   }
 
+  newStation(tile, extra) {
+    return Object.assign({
+      id: this.nextId++, tile, level: 0, style: this.game.progression.defaultStationStyle, name: '', stock: {}, claimed: {}, links: null, accepts: null, supplies: null,
+      delivered: 0, picked: 0, created: this.game.time, warn: false, tracks: [{ tiles: [tile], role: 'any', dir: 'both', off: 0 }], facilities: [],
+      claims: new Map(), stats: freshStats(), build: 0,
+    }, extra || {});
+  }
+
   // ---------- building ----------
   build(tile) {
     const g = this.game, net = g.net;
     const err = this.placeError(tile, 'station');
     if (err) return { error: err };
-    const links = this.previewLinks(tile, 0);
-    const stn = {
-      id: this.nextId++, tile, level: 0, style: g.progression.defaultStationStyle, name: this.makeName(tile, links),
-      stock: {}, claimed: {}, links: null, accepts: null, supplies: null, delivered: 0, picked: 0, created: g.time, warn: false,
-    };
+    const links = this.previewLinks([tile], 0);
+    const stn = this.newStation(tile);
+    stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station();
     g.economy.spend(cost, 'construction');
-    net.special.set(tile, { type: 'station', id: stn.id });
+    net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
     const auto = this.autoConnect(tile, 2);
     this.list.push(stn);
     this.relink(stn);
     g.world.view && g.world.view.clearTrees(tile);
     net.bumpVersion();
+    stn.build = 1;
     this.buildVisual(stn);
     g.railView.markDirty(tile);
     for (const t of auto) g.railView.markDirty(t);
@@ -140,7 +236,6 @@ export class StationSystem {
     return { station: stn, cost, auto };
   }
 
-  // Automatically join a new station/depot to adjacent track
   autoConnect(tile, max) {
     const g = this.game, net = g.net;
     const done = [];
@@ -152,7 +247,6 @@ export class StationSystem {
       const sp = net.special.get(j);
       if (sp && sp.type === 'depot') continue;
       if (net.degree(j) >= 3) continue;
-      // prefer neighbors whose existing track points toward us
       let score = 0;
       for (let e = 0; e < 8; e++) if (net.hasDir(j, e) && e === d) score += 2;
       if (net.degree(j) === 1) score += 1;
@@ -182,7 +276,6 @@ export class StationSystem {
     g.economy.spend(cost, 'construction');
     const dep = { id: this.nextId++, tile, name: tr('depot') + ' ' + (this.depots.length + 1) };
     net.special.set(tile, { type: 'depot', id: dep.id });
-    // a depot keeps at most one connection
     if (net.degree(tile) > 1) net.disconnectTile(tile);
     const auto = this.autoConnect(tile, 1);
     this.depots.push(dep);
@@ -195,12 +288,19 @@ export class StationSystem {
     return { depot: dep, cost };
   }
 
+  inUse(tiles) {
+    const T = this.game.trains;
+    for (const t of tiles) if (T.tileReserved(t)) return true;
+    return false;
+  }
+
   remove(stn) {
-    const g = this.game;
-    const occ = g.trains.tileOccupied(stn.tile);
-    if (occ) return { error: 'err_station_in_use' };
+    const g = this.game, net = g.net;
+    const tiles = this.allTiles(stn);
+    if (this.inUse(tiles)) return { error: 'err_station_in_use' };
     this.list = this.list.filter((s) => s !== stn);
-    g.net.special.delete(stn.tile);
+    for (const t of tiles) net.special.delete(t);
+    // extra platform tracks (beyond the original tile) stay as plain track
     if (stn.mesh) { this.group.remove(stn.mesh); stn.mesh.geometry.dispose(); }
     let affected = 0;
     for (const t of g.trains.trains) {
@@ -210,16 +310,19 @@ export class StationSystem {
       if (t.target === stn.id && t.state !== 'run') { t.state = 'idle'; t.stateT = 3; }
       if (t.claim && t.claim.st === stn.id) t.claim = null;
     }
-    g.net.bumpVersion();
+    for (const [id, c] of this.claims) if (c.stn === stn.id) this.claims.delete(id);
+    net.bumpVersion();
+    for (const t of tiles) g.railView.markDirty(t);
     const refund = Math.round(g.economy.costs.station() * COSTS.bulldozeRefund);
     g.economy.earn(refund, 'refund', false);
+    g.trains.onNetworkChanged(false);
     g.events.emit('stationRemoved', stn);
     return { refund, affected };
   }
 
   removeDepot(dep) {
     const g = this.game;
-    if (g.trains.tileOccupied(dep.tile)) return { error: 'err_depot_in_use' };
+    if (g.trains.tileReserved(dep.tile)) return { error: 'err_depot_in_use' };
     this.depots = this.depots.filter((d) => d !== dep);
     g.net.special.delete(dep.tile);
     g.net.disconnectTile(dep.tile);
@@ -233,20 +336,24 @@ export class StationSystem {
   upgradeInfo(stn) {
     const g = this.game;
     const next = stn.level + 1;
-    if (next > 4) return { max: true };
+    if (next > STATION.maxLevel) return { max: true };
     const cost = g.economy.costs.stationUpgrade(next);
     const lvlReq = COSTS.stationUpgradeLevel[next];
-    return { next, cost, lvlReq, ok: g.progression.level >= lvlReq && g.economy.canAfford(cost) };
+    const research = next === STATION.maxLevel ? 'grand_terminals' : null;
+    const okRes = !research || g.progression.research.has(research);
+    return { next, cost, lvlReq, research, ok: g.progression.level >= lvlReq && okRes && g.economy.canAfford(cost) };
   }
   upgrade(stn) {
     const g = this.game;
     const info = this.upgradeInfo(stn);
     if (info.max) return 'err_max_level';
     if (g.progression.level < info.lvlReq) return 'err_level_required';
+    if (info.research && !g.progression.research.has(info.research)) return 'err_research_required';
     if (!g.economy.canAfford(info.cost)) return 'err_no_money';
     g.economy.spend(info.cost, 'construction');
     stn.level++;
     this.relink(stn);
+    stn.build = 1;
     this.buildVisual(stn);
     g.stats.max('maxStationLevel', stn.level + 1);
     g.events.emit('stationUpgraded', stn);
@@ -254,6 +361,214 @@ export class StationSystem {
   }
 
   setStyle(stn, style) { stn.style = style; this.buildVisual(stn); }
+
+  // ---------- station editing ----------
+  // Plan a new parallel track on side (+1 / -1). Returns {error} or a plan.
+  planAddTrack(stn, side) {
+    const g = this.game, net = g.net;
+    if (stn.tracks.length >= this.maxTracks()) return { error: this.maxTracks() < STATION.maxTracksGrand ? 'err_tracks_research' : 'err_max_tracks' };
+    const a = this.axisOf(stn);
+    if (a & 1) return { error: 'err_station_diagonal' };
+    const perp = side > 0 ? (a + 2) & 7 : (a + 6) & 7;
+    const offs = stn.tracks.map((t) => t.off || 0);
+    const ref = stn.tracks[offs.indexOf(side > 0 ? Math.max(...offs) : Math.min(...offs))];
+    const off = (ref.off || 0) + side;
+    const tiles = [];
+    for (const t of ref.tiles) {
+      const j = step(t, perp);
+      if (j < 0) return { error: 'err_out_of_map' };
+      const r = net.tileBlockedReason(j);
+      if (r) return { error: r, bad: j };
+      if (net.kind(j) !== K_NORMAL) return { error: 'err_bad_terrain', bad: j };
+      if (net.conn[j] || net.special.has(j)) return { error: 'err_occupied', bad: j };
+      if (g.decor.at(j)) return { error: 'err_occupied', bad: j };
+      tiles.push(j);
+    }
+    // switch ladders at both ends into the main track (off 0)
+    const main = stn.tracks.find((t) => (t.off || 0) === 0) || stn.tracks[0];
+    const k = Math.abs(off);
+    const ladders = [];
+    const inward = side > 0 ? (perp + 4) & 7 : (perp + 4) & 7;
+    for (const end of [0, 1]) {
+      const dOut = end ? a : (a + 4) & 7;
+      const mainEnd = end ? main.tiles[main.tiles.length - 1] : main.tiles[0];
+      const E = end ? tiles[tiles.length - 1] : tiles[0];
+      const diag = dirOf(DX[dOut] + DX[inward], DZ[dOut] + DZ[inward]);
+      // main line must continue straight for k tiles beyond the end
+      let ok = net.hasDir(mainEnd, dOut), m = mainEnd;
+      const path = [];
+      for (let i = 1; ok && i <= k; i++) {
+        const mi = step(m, dOut);
+        if (mi < 0 || !net.conn[mi] || net.special.has(mi) || !net.hasDir(mi, (dOut + 4) & 7)) { ok = false; break; }
+        if (i < k && !net.hasDir(mi, dOut)) { ok = false; break; }
+        m = mi;
+      }
+      let p = E;
+      for (let i = 1; ok && i <= k; i++) {
+        p = step(p, diag);
+        if (p < 0) { ok = false; break; }
+        if (i < k) {
+          if (net.conn[p] || net.special.has(p) || net.tileBlockedReason(p) || net.kind(p) !== K_NORMAL || g.decor.at(p)) { ok = false; break; }
+        } else if (p !== m) ok = false;
+        path.push(p);
+      }
+      // the merge tile must not already carry a diagonal in the same direction
+      if (ok && net.hasDir(m, (diag + 4) & 7)) ok = false;
+      ladders.push(ok ? { end, from: E, dir: diag, path } : { end, from: E, dir: null, path: [] });
+    }
+    let cost = tiles.length * COSTS.stationTrackTile * g.economy.costs.mul();
+    for (const L of ladders) for (let i = 0; i < L.path.length - 1; i++) cost += g.economy.costs.trackTile(net.tier[ref.tiles[0]], K_NORMAL);
+    return { side, off, tiles, ladders, cost: Math.round(cost), tier: net.tier[ref.tiles[0]] };
+  }
+  addTrack(stn, side) {
+    const g = this.game, net = g.net;
+    const plan = this.planAddTrack(stn, side);
+    if (plan.error) return plan;
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    // ladder merge tiles must not be under a train
+    for (const L of plan.ladders) if (L.path.length && g.trains.tileReserved(L.path[L.path.length - 1])) return { error: 'err_train_on_track' };
+    g.economy.spend(plan.cost, 'construction');
+    const a = this.axisOf(stn);
+    for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);
+    const built = [...plan.tiles];
+    const ladderTiles = [];
+    for (const L of plan.ladders) {
+      if (L.dir == null) continue;
+      let p = L.from;
+      for (const q of L.path) { net.connect(p, L.dir); p = q; }
+      for (const q of L.path.slice(0, -1)) ladderTiles.push(q);
+      built.push(...L.path);
+    }
+    for (const t of built) if (!net.tier[t] || net.tier[t] < plan.tier) net.tier[t] = Math.max(net.tier[t], plan.tier);
+    stn.tracks.push({ tiles: plan.tiles, role: 'any', dir: 'both', off: plan.off, ladder: ladderTiles });
+    this.markTiles(stn);
+    g.world.view.clearTreesMany(built);
+    net.bumpVersion();
+    g.railView.animateBuild(built);
+    stn.build = 1;
+    this.relink(stn);
+    this.buildVisual(stn);
+    g.trains.onNetworkChanged(false);
+    g.stats.inc('trackBuilt', built.length);
+    g.events.emit('stationEdited', stn);
+    return { ok: true, cost: plan.cost, deadEnds: plan.ladders.filter((L) => L.dir == null).length };
+  }
+
+  planExtend(stn, k, end) {
+    const g = this.game, net = g.net;
+    const tk = stn.tracks[k];
+    if (!tk) return { error: 'err_unknown' };
+    if (tk.tiles.length >= this.maxLength()) return { error: this.maxLength() < STATION.maxLengthExt ? 'err_length_research' : 'err_max_length' };
+    const a = this.axisOf(stn);
+    if (tk.tiles.length === 1 && (a & 1)) return { error: 'err_station_diagonal' };
+    const dOut = end ? a : (a + 4) & 7;
+    const E = end ? tk.tiles[tk.tiles.length - 1] : tk.tiles[0];
+    const B = step(E, dOut);
+    if (B < 0) return { error: 'err_out_of_map' };
+    if (net.special.has(B)) return { error: 'err_occupied', bad: B };
+    const r = net.tileBlockedReason(B);
+    if (r) return { error: r, bad: B };
+    if (net.kind(B) !== K_NORMAL) return { error: 'err_bad_terrain', bad: B };
+    if (net.conn[B]) {
+      // existing plain straight track can become platform
+      const back = (dOut + 4) & 7;
+      if (!net.hasDir(B, back) || net.degree(B) > 2 || (net.degree(B) === 2 && !net.hasDir(B, dOut))) return { error: 'err_extend_blocked', bad: B };
+      if (g.trains.tileReserved(B)) return { error: 'err_train_on_track', bad: B };
+      return { tile: B, convert: true, cost: Math.round(COSTS.platformExtend * g.economy.costs.mul()) };
+    }
+    if (g.decor.at(B)) return { error: 'err_occupied', bad: B };
+    // new tile at a dead end: only if the end is not connected outward
+    if (net.hasDir(E, dOut)) return { error: 'err_extend_blocked', bad: B };
+    return { tile: B, convert: false, cost: Math.round((COSTS.platformExtend + COSTS.stationTrackTile) * g.economy.costs.mul()) };
+  }
+  extendPlatform(stn, k, end) {
+    const g = this.game, net = g.net;
+    const plan = this.planExtend(stn, k, end);
+    if (plan.error) return plan;
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    g.economy.spend(plan.cost, 'construction');
+    const tk = stn.tracks[k];
+    const a = this.axisOf(stn);
+    const E = end ? tk.tiles[tk.tiles.length - 1] : tk.tiles[0];
+    if (!plan.convert) {
+      net.connect(E, end ? a : (a + 4) & 7);
+      net.tier[plan.tile] = net.tier[E];
+    }
+    if (end) tk.tiles.push(plan.tile); else tk.tiles.unshift(plan.tile);
+    this.markTiles(stn);
+    g.world.view.clearTrees(plan.tile);
+    net.bumpVersion();
+    g.railView.animateBuild([plan.tile]);
+    stn.build = 1;
+    this.relink(stn);
+    this.buildVisual(stn);
+    g.trains.onNetworkChanged(false);
+    g.events.emit('stationEdited', stn);
+    return { ok: true, cost: plan.cost };
+  }
+
+  canRemoveTrack(stn, k) {
+    if (stn.tracks.length <= 1) return 'err_last_track';
+    const tk = stn.tracks[k];
+    if (!tk || (tk.off || 0) === 0) return 'err_main_track';
+    const offs = stn.tracks.map((t) => t.off || 0);
+    if ((tk.off > 0 && tk.off < Math.max(...offs)) || (tk.off < 0 && tk.off > Math.min(...offs))) return 'err_inner_track';
+    if (this.inUse([...tk.tiles, ...(tk.ladder || [])])) return 'err_station_in_use';
+    return null;
+  }
+  removeTrack(stn, k) {
+    const g = this.game, net = g.net;
+    const err = this.canRemoveTrack(stn, k);
+    if (err) return { error: err };
+    const tk = stn.tracks[k];
+    const tiles = [...tk.tiles, ...(tk.ladder || []).filter((t) => net.degree(t) <= 2 && !net.special.has(t))];
+    for (const t of tk.tiles) net.special.delete(t);
+    for (const t of tiles) net.disconnectTile(t);
+    stn.tracks.splice(k, 1);
+    this.markTiles(stn);
+    net.bumpVersion();
+    for (const t of tiles) { g.railView.markDirty(t); for (let d = 0; d < 8; d++) g.railView.markDirty(step(t, d)); }
+    const refund = Math.round(tk.tiles.length * COSTS.stationTrackTile * g.economy.costs.mul() * COSTS.bulldozeRefund);
+    g.economy.earn(refund, 'refund', false);
+    this.relink(stn);
+    this.buildVisual(stn);
+    g.trains.onNetworkChanged(true);
+    g.events.emit('stationEdited', stn);
+    return { ok: true, refund };
+  }
+
+  setTrackRole(stn, k, role) {
+    if (!PLATFORM_ROLES.includes(role) || !stn.tracks[k]) return;
+    stn.tracks[k].role = role;
+    this.markTiles(stn);
+    this.game.net.bumpVersion();
+    this.buildVisual(stn);
+  }
+  setTrackDir(stn, k, dir) {
+    if (!['both', 'fwd', 'rev'].includes(dir) || !stn.tracks[k]) return;
+    stn.tracks[k].dir = dir;
+  }
+
+  facilityError(stn, id) {
+    const g = this.game;
+    if (!FACILITIES[id]) return 'err_unknown';
+    if (!g.progression.research.has('freight_terminals')) return 'err_research_required';
+    if (stn.facilities.includes(id)) return 'err_done';
+    if (stn.facilities.length >= 2) return 'err_max_facilities';
+    if (!g.economy.canAfford(this.facilityCost())) return 'err_no_money';
+    return null;
+  }
+  facilityCost() { return Math.round(COSTS.facility * this.game.economy.costs.mul()); }
+  buildFacility(stn, id) {
+    const err = this.facilityError(stn, id);
+    if (err) return err;
+    this.game.economy.spend(this.facilityCost(), 'construction');
+    stn.facilities.push(id);
+    stn.build = 1;
+    this.buildVisual(stn);
+    this.game.events.emit('stationEdited', stn);
+    return null;
+  }
 
   // ---------- cargo ----------
   receive(stn, c, n) {
@@ -266,7 +581,6 @@ export class StationSystem {
   }
   onPickup(stn, c, n) { stn.picked += n; this.game.events.emit('cargoPicked', stn, c, n); }
 
-  // Distribute delivered cargo to linked towns / industries
   distribute(stn, c, n) {
     const g = this.game;
     stn.delivered += n;
@@ -281,27 +595,89 @@ export class StationSystem {
     return {};
   }
 
+  // ---------- statistics ----------
+  noteArrival(stn, t, moved) {
+    const S = stn.stats;
+    S.arrivals++;
+    S.recent.push({ time: this.game.time, train: t.id, eff: t.platEff || 1, len: t._st.length, moved, reversed: false });
+    if (S.recent.length > 30) S.recent.shift();
+  }
+  noteWait(stnId, dt) { const s = this.byId(stnId); if (s) { s.stats.wait += dt; } }
+  noteTransfer(stn, c, n) { stn.stats.transfers += n; }
+
   tick(dt) {
-    this._cargoT -= dt;
+    const net = this.game.net;
+    for (const s of this.list) {
+      const S = s.stats;
+      const k = Math.exp(-dt / 120);
+      S.waitEma = S.waitEma * k + (S.wait > S._lastWait ? 1 : 0) * (1 - k);
+      S._lastWait = S.wait;
+      if (!S.util || S.util.length !== s.tracks.length) S.util = s.tracks.map(() => 0);
+      s.tracks.forEach((tk, i) => {
+        let occ = 0;
+        for (const t of tk.tiles) if (net.resv[t * 2] || net.resv[t * 2 + 1]) { occ = 1; break; }
+        S.util[i] = S.util[i] * k + occ * (1 - k);
+      });
+    }
+  }
+
+  // Suggestions for a station: platform length, capacity, storage, turnarounds.
+  advise(stn) {
+    const g = this.game, out = [];
+    const S = stn.stats;
+    const recent = S.recent.filter((r) => g.time - r.time < 900);
+    const short = recent.filter((r) => r.eff < 0.9);
+    if (short.length) {
+      const worst = short.reduce((a, b) => (b.len > a.len ? b : a));
+      const tr0 = g.trains.byId(worst.train);
+      const need = Math.max(1, Math.ceil(worst.len / TILE) - Math.max(...stn.tracks.map((t) => t.tiles.length)));
+      out.push({ key: 'adv_platform_short', p: { train: tr0 ? tr0.name : '', n: need }, act: 'extend' });
+    }
+    const util = S.util && S.util.length ? S.util.reduce((a, b) => a + b, 0) / S.util.length : 0;
+    if (S.waitEma > 0.25 && util > 0.55) out.push({ key: 'adv_add_track', act: 'track' });
+    if (stn.warn) out.push({ key: 'adv_storage', act: 'upgrade' });
+    const turns = recent.filter((r) => r.turned).length;
+    if (turns > 3) out.push({ key: 'adv_turnaround' });
+    const net = g.net;
+    const dead = stn.tracks.some((tk) => tk.tiles.length && [tk.tiles[0], tk.tiles[tk.tiles.length - 1]].some((t) => net.degree(t) <= 1));
+    if (dead && stn.tracks.length === 1 && S.waitEma > 0.3) out.push({ key: 'adv_terminus' });
+    return out;
   }
 
   // ---------- visuals ----------
-  axisYaw(tile) {
-    const net = this.game.net;
-    for (const d of [0, 2, 1, 3, 4, 6, 5, 7]) if (net.hasDir(tile, d)) return Math.atan2(-DZ[d], DX[d]);
-    return 0;
+  frameOf(stn) {
+    const a = this.axisOf(stn);
+    const len = Math.hypot(DX[a], DZ[a]);
+    const ax = [DX[a] / len, DZ[a] / len], pz = [-DZ[a] / len, DX[a] / len];
+    const yaw = Math.atan2(-DZ[a], DX[a]);
+    return { a, ax, pz, yaw, ox: tileCX(stn.tile), oz: tileCZ(stn.tile), oy: this.game.net.railH(stn.tile) };
+  }
+  toLocal(F, tile) {
+    const dx = tileCX(tile) - F.ox, dz = tileCZ(tile) - F.oz;
+    return { x: dx * F.ax[0] + dz * F.ax[1], z: dx * F.pz[0] + dz * F.pz[1], y: this.game.net.railH(tile) - F.oy };
   }
 
   buildVisual(stn) {
     if (stn.mesh) { this.group.remove(stn.mesh); stn.mesh.geometry.dispose(); }
     const style = STATION_STYLES.find((s) => s.id === stn.style) || STATION_STYLES[0];
-    const mb = new ModelBuilder();
-    stationModel(mb, stn.level, style);
-    const mesh = meshFrom(mb.build());
+    const F = this.frameOf(stn);
     const net = this.game.net;
-    mesh.position.set(tileCX(stn.tile), net.railH(stn.tile) + 0.02, tileCZ(stn.tile));
-    mesh.rotation.y = this.axisYaw(stn.tile);
-    stn.yaw = mesh.rotation.y;
+    // local layout of every track tile
+    const tracks = stn.tracks.map((tk) => {
+      const pts = tk.tiles.map((t) => this.toLocal(F, t));
+      const xs = pts.map((p) => p.x);
+      const ends = [tk.tiles[0], tk.tiles[tk.tiles.length - 1]];
+      const deadEnd = [net.degree(ends[0]) <= 1 && !net.hasDir(ends[0], (F.a + 4) & 7), net.degree(ends[1]) <= 1 && !net.hasDir(ends[1], F.a)];
+      return { pts, x0: Math.min(...xs) - TILE / 2, x1: Math.max(...xs) + TILE / 2, z: pts.length ? pts[0].z : 0, y: pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0, role: tk.role, deadEnd };
+    });
+    const mb = new ModelBuilder();
+    stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1);
+    const mesh = meshFrom(mb.build());
+    mesh.position.set(F.ox, F.oy + 0.02, F.oz);
+    mesh.rotation.y = F.yaw;
+    stn.yaw = F.yaw;
+    stn.frame = F;
+    stn.layout = tracks;
     mesh.userData.station = stn.id;
     stn.mesh = mesh;
     this.group.add(mesh);
@@ -324,36 +700,42 @@ export class StationSystem {
 
   refreshOrientation(tile) {
     const s = this.stationAt(tile);
-    if (s) { const y = this.axisYaw(tile); if (Math.abs(y - (s.yaw || 0)) > 1e-3) this.buildVisual(s); }
+    if (s) { const F = this.frameOf(s); if (Math.abs(F.yaw - (s.yaw || 0)) > 1e-3 || s.tracks.length) this.buildVisual(s); }
     const d = this.depotAt(tile);
     if (d) this.buildDepotVisual(d);
   }
 
   updateVisuals(dt, time) {
-    // station placement pulse
     for (const s of this.list) {
+      if (!s.mesh) continue;
       if (s.pulse > 0) { s.pulse = Math.max(0, s.pulse - dt * 1.6); const k = 1 + Math.sin(s.pulse * Math.PI) * 0.12; s.mesh.scale.set(1, k, 1); }
+      // construction animation: grows up out of the ground
+      if (s.build > 0) {
+        s.build = Math.max(0, s.build - dt * (this.game.settings.reducedMotion ? 10 : 1.4));
+        const e = 1 - s.build;
+        s.mesh.scale.y = Math.max(0.05, 1 - Math.pow(1 - e, 3) * 0 - s.build * 0.95);
+        if (s.build > 0 && Math.random() < dt * 8) this.game.particles.emit('dust', s.mesh.position.x + (Math.random() - 0.5) * 2, s.mesh.position.y + 0.2, s.mesh.position.z + (Math.random() - 0.5) * 2, 1);
+      }
     }
-    // crowds and cargo, updated at a light cadence
-    this._vis = (this._vis || 0) - dt;
     const m = this._m, c = this._c;
     const q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
     let np = 0;
     const shirts = [0x3f6e9a, 0xc94f4f, 0xe0a33a, 0x5aa66a, 0x8a5ab0, 0xe8e2d4, 0x2b2b2b];
     for (const s of this.list) {
-      if (!s.mesh) continue;
+      if (!s.mesh || !s.layout) continue;
       const pax = s.stock.PASSENGERS || 0;
-      const want = s.links && s.links.towns.length ? Math.min(STATION.passengers[s.level], Math.ceil(pax / 3)) : 0;
+      const want = s.links && s.links.towns.length ? Math.min(STATION.passengers[s.level] * Math.min(3, s.tracks.length), Math.ceil(pax / 3)) : 0;
       const cy = Math.cos(s.yaw), sy = Math.sin(s.yaw);
-      const plen = [1.4, 2.2, 3.0, 3.4, 3.8][s.level];
+      const L = s.layout;
       for (let k = 0; k < want && np < this.people.instanceMatrix.count; k++) {
         const r1 = ((s.id * 7919 + k * 104729) % 1000) / 1000, r2 = ((s.id * 31 + k * 977) % 1000) / 1000;
-        const side = s.level === 0 ? 1 : (k % 2 ? 1 : -1);
-        const lx = (r1 - 0.5) * plen * 0.9 + Math.sin(time * 0.3 + k) * 0.05, lz = side * (0.8 + r2 * 0.12);
+        const tk = L[k % L.length];
+        const side = k % 2 ? 1 : -1;
+        const lx = tk.x0 + 0.3 + r1 * (tk.x1 - tk.x0 - 0.6) + Math.sin(time * 0.3 + k) * 0.05, lz = tk.z + side * (0.8 + r2 * 0.14);
         const wx = s.mesh.position.x + lx * cy + lz * sy, wz = s.mesh.position.z - lx * sy + lz * cy;
         const bob = Math.abs(Math.sin(time * 2 + k * 1.7)) * 0.015;
         q.setFromAxisAngle(up, r1 * 6.28);
-        p.set(wx, s.mesh.position.y + 0.25 + bob, wz);
+        p.set(wx, s.mesh.position.y + tk.y + 0.25 + bob, wz);
         m.compose(p, q, sc);
         this.people.setMatrixAt(np, m);
         this.people.setColorAt(np, c.set(shirts[(s.id + k) % shirts.length]));
@@ -363,13 +745,16 @@ export class StationSystem {
     this.people.count = np;
     this.people.instanceMatrix.needsUpdate = true;
     if (this.people.instanceColor) this.people.instanceColor.needsUpdate = true;
+    this._vis = (this._vis || 0) - dt;
     if (this._vis > 0) return;
     this._vis = 0.4;
     let nc = 0;
     for (const s of this.list) {
-      if (!s.mesh) continue;
+      if (!s.mesh || !s.layout) continue;
       const cap = this.storage(s);
       const cy = Math.cos(s.yaw), sy = Math.sin(s.yaw);
+      const minZ = Math.min(...s.layout.map((l) => l.z));
+      const x0 = s.layout[0].x0;
       let slot = 0;
       for (const cid in s.stock) {
         if (cid === 'PASSENGERS') continue;
@@ -377,7 +762,7 @@ export class StationSystem {
         const n = Math.min(8, Math.ceil((amt / cap) * 8));
         for (let k = 0; k < n && nc < this.crates.instanceMatrix.count; k++, slot++) {
           const row = Math.floor(slot / 6), col = slot % 6;
-          const lx = -0.75 + col * 0.26, lz = -(1.15 + row * 0.24);
+          const lx = x0 + 0.25 + col * 0.26, lz = minZ - (1.15 + row * 0.24);
           const wx = s.mesh.position.x + lx * cy + lz * sy, wz = s.mesh.position.z - lx * sy + lz * cy;
           q.setFromAxisAngle(up, s.yaw);
           const stack = (k % 2) * 0.16;
@@ -399,7 +784,11 @@ export class StationSystem {
   serialize() {
     return {
       nextId: this.nextId,
-      stations: this.list.map((s) => ({ id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked })),
+      stations: this.list.map((s) => ({
+        id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
+        tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities,
+        stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers },
+      })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
     };
   }
@@ -409,11 +798,30 @@ export class StationSystem {
     this.nextId = d.nextId || 1;
     for (const s of d.stations || []) {
       if (typeof s.tile !== 'number' || s.tile < 0 || s.tile >= N * N || net.special.has(s.tile)) continue;
-      const stn = { id: s.id, tile: s.tile, level: Math.max(0, Math.min(4, s.level | 0)), style: s.style || 'classic', name: String(s.name || 'Station'), stock: {}, claimed: {}, delivered: s.delivered || 0, picked: s.picked || 0, warn: false };
-      for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
-      net.special.set(stn.tile, { type: 'station', id: stn.id });
-      this.list.push(stn);
+      const stn = this.newStation(s.tile, { id: s.id });
       this.nextId = Math.max(this.nextId, stn.id + 1);
+      stn.level = Math.max(0, Math.min(STATION.maxLevel, s.level | 0));
+      stn.style = s.style || 'classic';
+      stn.name = String(s.name || 'Station');
+      stn.delivered = s.delivered || 0; stn.picked = s.picked || 0;
+      for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
+      // tracks: validate tiles (in map, free, has rail except legacy single tile)
+      const tracks = [];
+      const used = new Set([s.tile]);
+      if (Array.isArray(s.tracks)) s.tracks.forEach((tk, k) => {
+        if (!tk || !Array.isArray(tk.tiles)) return;
+        const tiles = tk.tiles.filter((t) => typeof t === 'number' && t >= 0 && t < N * N && (!net.special.has(t)) && (k === 0 || !used.has(t)));
+        if (k === 0 && !tiles.includes(s.tile)) return;
+        if (!tiles.length) return;
+        for (const t of tiles) used.add(t);
+        tracks.push({ tiles, role: PLATFORM_ROLES.includes(tk.role) ? tk.role : 'any', dir: ['both', 'fwd', 'rev'].includes(tk.dir) ? tk.dir : 'both', off: tk.off | 0, ladder: Array.isArray(tk.ladder) ? tk.ladder.filter((t) => typeof t === 'number') : [] });
+      });
+      if (!tracks.length) tracks.push({ tiles: [s.tile], role: 'any', dir: 'both', off: 0, ladder: [] });
+      stn.tracks = tracks;
+      stn.facilities = Array.isArray(s.facilities) ? s.facilities.filter((f) => FACILITIES[f]).slice(0, 2) : [];
+      if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
+      this.list.push(stn);
+      this.markTiles(stn);
     }
     for (const dd of d.depots || []) {
       if (typeof dd.tile !== 'number' || net.special.has(dd.tile)) continue;
@@ -424,92 +832,140 @@ export class StationSystem {
     }
   }
   buildAllVisuals() {
-    for (const s of this.list) { this.relink(s); this.buildVisual(s); s.pulse = 0; }
+    for (const s of this.list) { this.relink(s); this.buildVisual(s); s.pulse = 0; s.build = 0; }
     for (const d of this.depots) this.buildDepotVisual(d);
   }
 }
 
-// ---------- station models (local frame: track along X, lanes at z=±0.34) ----------
+function freshStats() { return { arrivals: 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: 0, recent: [], util: [] }; }
+
+// ---------- station models (local frame: tracks along X at z = offset, lanes at ±0.34) ----------
 const POST = 0x4a4f55, BENCH = 0x7a5a3a, LAMP = 0xfff0c0, PLAT = 0xc9c2b4, EDGE = 0xe8d27a, CLOCK = 0xf4f0e6;
 
-function lampPost(mb, x, z) {
-  mb.cyl(0.02, 0.025, 0.6, 5, POST, { x, y: 0.25, z });
-  mb.sphere(0.05, 0, LAMP, { x, y: 0.88, z, glow: true });
+function lampPost(mb, x, z, y = 0) {
+  mb.cyl(0.02, 0.025, 0.6, 5, POST, { x, y: y + 0.25, z });
+  mb.sphere(0.05, 0, LAMP, { x, y: y + 0.88, z, glow: true });
 }
 
-export function stationModel(mb, level, style) {
+// tracks: [{x0, x1, z, y, role, deadEnd:[start,end]}]
+export function stationComplexModel(mb, level, style, tracks, facilities, cramped) {
   const wall = style.wall, roof = style.roof;
-  const plen = [1.6, 2.4, 3.2, 3.6, 4.0][level];
-  const sides = level === 0 ? [1] : [1, -1];
-  for (const s of sides) {
-    mb.box(plen, 0.24, 0.34, PLAT, { y: 0, z: s * 0.84 });
-    mb.box(plen, 0.02, 0.04, EDGE, { y: 0.24, z: s * 0.68 });
+  const zs = tracks.map((t) => t.z);
+  const zMax = Math.max(...zs), zMin = Math.min(...zs);
+  const x0 = Math.min(...tracks.map((t) => t.x0)), x1 = Math.max(...tracks.map((t) => t.x1));
+  const midX = (x0 + x1) / 2;
+  // platforms on both sides of every track (adjacent tracks share an island)
+  for (const tk of tracks) {
+    const plen = tk.x1 - tk.x0 - 0.1, cx = (tk.x0 + tk.x1) / 2;
+    const col = tk.role === 'freight' ? 0xa8a296 : tk.role === 'express' ? 0xd8d0c0 : PLAT;
+    for (const s of [1, -1]) {
+      if (tk.role === 'through') continue;
+      mb.box(plen, 0.24, 0.32, col, { x: cx, y: tk.y, z: tk.z + s * 0.84 });
+      mb.box(plen, 0.02, 0.04, tk.role === 'express' ? 0xd04040 : EDGE, { x: cx, y: tk.y + 0.24, z: tk.z + s * 0.69 });
+    }
+    // lamps and benches every tile
+    for (let x = tk.x0 + 0.5; x < tk.x1 - 0.2; x += TILE) {
+      if (tk.role !== 'through') { lampPost(mb, x, tk.z + 0.95, tk.y); if (level >= 1) mb.box(0.4, 0.06, 0.12, BENCH, { x: x + 0.6, y: tk.y + 0.34, z: tk.z - 0.95 }); }
+    }
+    // buffer stops at dead ends
+    tk.deadEnd.forEach((dead, i) => {
+      if (!dead) return;
+      const x = i ? tk.x1 - 0.12 : tk.x0 + 0.12;
+      for (const lane of [0.34, -0.34]) { mb.box(0.12, 0.2, 0.34, 0xc94f4f, { x, y: tk.y + 0.1, z: tk.z + lane }); mb.box(0.04, 0.06, 0.2, LAMP, { x: x + (i ? -0.07 : 0.07), y: tk.y + 0.3, z: tk.z + lane, glow: true }); }
+    });
+    // platform number sign
+    if (tk.role !== 'through') { mb.cyl(0.015, 0.015, 0.5, 4, POST, { x: tk.x0 + 0.3, y: tk.y + 0.24, z: tk.z + 0.8 }); mb.box(0.16, 0.16, 0.03, 0x2f5f8a, { x: tk.x0 + 0.3, y: tk.y + 0.78, z: tk.z + 0.8 }); }
+    // canopies
+    if (level >= 2 && tk.role !== 'through') for (const s of [1, -1]) {
+      for (let x = tk.x0 + 0.4; x <= tk.x1 - 0.3; x += 0.9) mb.cyl(0.025, 0.025, 0.6, 5, POST, { x, y: tk.y + 0.24, z: tk.z + s * 0.92 });
+      mb.box(plen, 0.05, 0.46, roof, { x: cx, y: tk.y + 0.84, z: tk.z + s * 0.86, rx: s * 0.12 });
+    }
   }
-  if (level === 0) {
-    // halt shelter
-    for (const x of [-0.35, 0.35]) mb.cyl(0.025, 0.025, 0.5, 5, POST, { x, y: 0.24, z: 0.92 });
-    mb.box(0.9, 0.05, 0.36, roof, { y: 0.74, z: 0.86 });
-    mb.box(0.5, 0.06, 0.12, BENCH, { y: 0.36, z: 0.92 });
-    mb.box(0.02, 0.18, 0.3, shade(wall, 0.9), { x: -0.4, y: 0.3, z: 0.86 });
-    mb.box(0.36, 0.14, 0.03, 0x2f5f8a, { x: 0.65, y: 0.62, z: 0.9 });
-    mb.cyl(0.015, 0.015, 0.4, 4, POST, { x: 0.65, y: 0.24, z: 0.9 });
-    lampPost(mb, -0.7, 0.95);
+  const y0 = Math.max(...tracks.map((t) => t.y));
+  if (level === 0 && tracks.length === 1) {
+    const tk = tracks[0], cx = (tk.x0 + tk.x1) / 2;
+    for (const x of [-0.35, 0.35]) mb.cyl(0.025, 0.025, 0.5, 5, POST, { x: cx + x, y: tk.y + 0.24, z: tk.z + 0.92 });
+    mb.box(0.9, 0.05, 0.36, roof, { x: cx, y: tk.y + 0.74, z: tk.z + 0.86 });
+    mb.box(0.5, 0.06, 0.12, BENCH, { x: cx, y: tk.y + 0.36, z: tk.z + 0.92 });
+    mb.box(0.02, 0.18, 0.3, shade(wall, 0.9), { x: cx - 0.4, y: tk.y + 0.3, z: tk.z + 0.86 });
     return;
   }
-  const bw = [0, 1.4, 1.9, 2.6, 3.2][level];
-  const bh = [0, 0.62, 0.8, 1.0, 1.2][level];
-  const bz = 1.55;
-  mb.box(bw, bh, 0.8, wall, { y: 0, z: bz });
-  mb.box(bw + 0.08, 0.06, 0.88, shade(wall, 0.8), { y: bh, z: bz });
-  mb.roof(bw + 0.1, 0.36 + level * 0.06, 0.92, roof, { y: bh + 0.04, z: bz });
-  // windows & door
+  // station building beside the outermost track on the +z side
+  const lv = Math.max(1, level);
+  const bw = [1.4, 1.4, 1.9, 2.6, 3.2, 3.8][lv];
+  const bh = [0.62, 0.62, 0.8, 1.0, 1.2, 1.4][lv];
+  const bz = zMax + 1.55;
+  mb.box(bw, bh, 0.8, wall, { x: midX, y: y0, z: bz });
+  mb.box(bw + 0.08, 0.06, 0.88, shade(wall, 0.8), { x: midX, y: y0 + bh, z: bz });
+  mb.roof(bw + 0.1, 0.36 + lv * 0.06, 0.92, roof, { x: midX, y: y0 + bh + 0.04, z: bz });
   const wins = Math.max(2, Math.floor(bw / 0.35));
   for (let k = 0; k < wins; k++) {
-    const x = -bw / 2 + 0.2 + k * ((bw - 0.4) / Math.max(1, wins - 1));
-    mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: bh * 0.45, z: bz - 0.41, glow: true });
-    if (level >= 3) mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: bh * 0.78, z: bz - 0.41, glow: true });
+    const x = midX - bw / 2 + 0.2 + k * ((bw - 0.4) / Math.max(1, wins - 1));
+    mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: y0 + bh * 0.45, z: bz - 0.41, glow: true });
+    if (lv >= 3) mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: y0 + bh * 0.78, z: bz - 0.41, glow: true });
   }
-  mb.box(0.24, 0.36, 0.03, shade(roof, 0.8), { y: 0.0, z: bz - 0.41 });
-  lampPost(mb, -plen / 2 + 0.2, 0.95); lampPost(mb, plen / 2 - 0.2, 0.95);
-  lampPost(mb, -plen / 2 + 0.2, -0.95); lampPost(mb, plen / 2 - 0.2, -0.95);
-  mb.box(0.5, 0.06, 0.12, BENCH, { x: 0.4, y: 0.34, z: 0.95 });
-  mb.box(0.5, 0.06, 0.12, BENCH, { x: -0.4, y: 0.34, z: -0.95 });
-  if (level >= 2) {
-    // clock tower
-    const th = 1.5 + level * 0.3;
-    mb.box(0.42, th, 0.42, wall, { x: bw / 2 - 0.1, y: 0, z: bz + 0.1 });
-    mb.cone(0.36, 0.5, 4, roof, { x: bw / 2 - 0.1, y: th, z: bz + 0.1, ry: Math.PI / 4 });
-    mb.cyl(0.15, 0.15, 0.03, 12, CLOCK, { x: bw / 2 - 0.1, y: th - 0.3, z: bz - 0.12, rx: Math.PI / 2, center: true, glow: true });
-    // platform canopies
+  mb.box(0.24, 0.36, 0.03, shade(roof, 0.8), { x: midX, y: y0, z: bz - 0.41 });
+  if (lv >= 2) {
+    const th = 1.5 + lv * 0.3;
+    mb.box(0.42, th, 0.42, wall, { x: midX + bw / 2 - 0.1, y: y0, z: bz + 0.1 });
+    mb.cone(0.36, 0.5, 4, roof, { x: midX + bw / 2 - 0.1, y: y0 + th, z: bz + 0.1, ry: Math.PI / 4 });
+    mb.cyl(0.15, 0.15, 0.03, 12, CLOCK, { x: midX + bw / 2 - 0.1, y: y0 + th - 0.3, z: bz - 0.12, rx: Math.PI / 2, center: true, glow: true });
+  }
+  if (lv >= 3) {
+    mb.box(0.9, bh * 0.75, 0.7, shade(wall, 0.95), { x: midX - bw / 2 - 0.4, y: y0, z: bz });
+    mb.roof(1.0, 0.3, 0.8, roof, { x: midX - bw / 2 - 0.4, y: y0 + bh * 0.75, z: bz });
+    // train shed roof over all tracks
+    const w = zMax - zMin + 2.1, zc = (zMax + zMin) / 2;
+    for (const x of [x0 + 0.3, midX, x1 - 0.3]) for (const s of [1, -1]) mb.cyl(0.03, 0.03, 1.05, 6, POST, { x, y: y0 + 0.24, z: zc + s * (w / 2 - 0.1) });
+    mb.box(x1 - x0, 0.06, w, shade(roof, 1.15), { x: midX, y: y0 + 1.28, z: zc });
+  }
+  if (lv >= 4) {
+    const w = zMax - zMin + 2.1, zc = (zMax + zMin) / 2;
+    for (let x = x0 + 0.1; x <= x1 - 0.1; x += 0.45) mb.torus(w / 2, 0.04, Math.PI, 0x6a7580, { x, y: y0 + 1.3, z: zc, ry: Math.PI / 2 });
+    mb.box(x1 - x0, 0.04, 0.05, 0x6a7580, { x: midX, y: y0 + 1.3 + w / 2, z: zc });
     for (const s of [1, -1]) {
-      for (let x = -plen / 2 + 0.3; x <= plen / 2 - 0.3; x += 0.7) mb.cyl(0.025, 0.025, 0.6, 5, POST, { x, y: 0.24, z: s * 0.92 });
-      mb.box(plen - 0.2, 0.05, 0.5, roof, { y: 0.84, z: s * 0.86, rx: s * 0.12 });
+      const tx0 = midX + s * (bw / 2 + 0.3);
+      mb.box(0.5, 2.4, 0.5, wall, { x: tx0, y: y0, z: bz - 0.2 });
+      mb.cone(0.42, 0.7, 4, roof, { x: tx0, y: y0 + 2.4, z: bz - 0.2, ry: Math.PI / 4 });
+      mb.cyl(0.01, 0.01, 0.5, 4, POST, { x: tx0, y: y0 + 3.05, z: bz - 0.2 });
+      mb.box(0.24, 0.14, 0.01, 0xc94f4f, { x: tx0 + 0.12, y: y0 + 3.4, z: bz - 0.2 });
     }
   }
-  if (level >= 3) {
-    // wings
-    mb.box(0.9, bh * 0.75, 0.7, shade(wall, 0.95), { x: -bw / 2 - 0.4, y: 0, z: bz });
-    mb.roof(1.0, 0.3, 0.8, roof, { x: -bw / 2 - 0.4, y: bh * 0.75, z: bz });
-    // full canopy over tracks
-    for (const x of [-plen / 2 + 0.2, 0, plen / 2 - 0.2]) for (const s of [1, -1]) mb.cyl(0.03, 0.03, 1.05, 6, POST, { x, y: 0.24, z: s * 0.95 });
-    mb.box(plen, 0.06, 2.1, shade(roof, 1.15), { y: 1.28 });
+  if (lv >= 5) {
+    // central station: glass atrium on the forecourt
+    mb.box(bw * 0.7, 0.9, 0.7, 0x9ec8e0, { x: midX, y: y0, z: bz + 0.75, glow: true });
+    mb.box(bw * 0.72, 0.05, 0.74, shade(roof, 0.9), { x: midX, y: y0 + 0.9, z: bz + 0.75 });
   }
-  if (level >= 4) {
-    // grand terminal arched vault and twin towers
-    for (let x = -plen / 2 + 0.1; x <= plen / 2 - 0.1; x += 0.45) mb.torus(1.05, 0.04, Math.PI, 0x6a7580, { x, y: 1.3, ry: Math.PI / 2 });
-    mb.box(plen, 0.04, 0.05, 0x6a7580, { y: 2.33 });
-    for (const s of [1, -1]) {
-      mb.box(0.5, 2.4, 0.5, wall, { x: s * (plen / 2 + 0.1), y: 0, z: bz - 0.2 });
-      mb.cone(0.42, 0.7, 4, roof, { x: s * (plen / 2 + 0.1), y: 2.4, z: bz - 0.2, ry: Math.PI / 4 });
-      mb.cyl(0.01, 0.01, 0.5, 4, POST, { x: s * (plen / 2 + 0.1), y: 3.05, z: bz - 0.2 });
-      mb.box(0.24, 0.14, 0.01, 0xc94f4f, { x: s * (plen / 2 + 0.1) + 0.12, y: 3.4, z: bz - 0.2 });
+  // footbridge across the tracks
+  if (tracks.length > 1 && !cramped) {
+    const bx = x1 - 0.7, zc = (zMax + zMin) / 2, w = zMax - zMin + 1.9;
+    const h = level >= 3 ? 1.55 : 1.45;
+    mb.box(0.5, 0.06, w, 0x7a7f86, { x: bx, y: y0 + h, z: zc });
+    for (const s of [1, -1]) mb.box(0.02, 0.24, w, 0x5a5f66, { x: bx + s * 0.24, y: y0 + h + 0.06, z: zc });
+    for (const tk of tracks) for (const s of [1, -1]) {
+      if (tk.role === 'through') continue;
+      const z = tk.z + s * 0.9;
+      mb.box(0.12, h, 0.12, 0x6a6f76, { x: bx, y: tk.y + 0.24, z });
     }
+    if (level >= 2) mb.box(0.56, 0.05, w, roof, { x: bx, y: y0 + h + 0.46, z: zc });
   }
+  // freight facilities on the -z side
+  facilities.forEach((f, i) => {
+    const fx = x0 + 0.8 + i * 1.6, fz = zMin - 1.45;
+    if (f === 'grain_silo') { for (const dx of [-0.3, 0.3]) { mb.cyl(0.28, 0.28, 1.4, 10, 0xd8d0b8, { x: fx + dx, y: y0, z: fz }); mb.cone(0.3, 0.25, 10, 0xb8b0a0, { x: fx + dx, y: y0 + 1.4, z: fz }); } }
+    else if (f === 'coal_loader') { mb.box(0.8, 0.9, 0.7, 0x4a4f55, { x: fx, y: y0 + 0.5, z: fz }); for (const s of [-1, 1]) mb.box(0.08, 0.5, 0.08, 0x3a3d42, { x: fx + s * 0.3, y: y0, z: fz }); mb.box(0.3, 0.06, 0.9, 0x2a2c30, { x: fx, y: y0 + 1.0, z: fz + 0.6, rx: -0.4 }); }
+    else if (f === 'tank_farm') { for (const dx of [-0.35, 0.35]) mb.cyl(0.32, 0.32, 0.7, 12, 0xd8dde2, { x: fx + dx, y: y0, z: fz }); mb.box(0.9, 0.04, 0.06, 0x8a5a3a, { x: fx, y: y0 + 0.5, z: fz + 0.3 }); }
+    else if (f === 'timber_yard') { for (let k = 0; k < 3; k++) mb.hcyl(0.1, 1.1, 7, 0x9a6b3f, { x: fx, y: y0 + 0.1 + k * 0.17, z: fz - 0.2 + (k % 2) * 0.18 }); mb.box(0.06, 1.2, 0.06, 0xd8a030, { x: fx + 0.6, y: y0, z: fz }); mb.box(0.8, 0.06, 0.06, 0xd8a030, { x: fx + 0.25, y: y0 + 1.15, z: fz }); }
+    else if (f === 'container_crane') {
+      for (const dx of [-0.5, 0.5]) for (const dz of [-0.35, 0.35]) mb.box(0.08, 1.5, 0.08, 0xd06030, { x: fx + dx, y: y0, z: fz + dz });
+      mb.box(1.1, 0.12, 0.8, 0xd06030, { x: fx, y: y0 + 1.5, z: fz });
+      mb.box(0.8, 0.42, 0.45, 0x2f6fa8, { x: fx, y: y0, z: fz });
+    }
+  });
 }
 
 export function depotModel(mb) {
   const wall = 0x9a6a4a, roof = 0x4a4f58;
-  // shed with doorway at +X
   mb.box(1.5, 0.08, 1.2, 0x7a7068, { y: 0 });
   mb.box(1.4, 0.95, 0.1, wall, { y: 0, z: 0.55 });
   mb.box(1.4, 0.95, 0.1, wall, { y: 0, z: -0.55 });
@@ -522,6 +978,11 @@ export function depotModel(mb) {
   mb.box(0.3, 0.6, 0.02, 0x3a4a5a, { x: -0.2, y: 0.25, z: -0.61, glow: true });
   mb.cyl(0.06, 0.07, 0.4, 6, 0x5a5a5a, { x: -0.4, y: 1.2, z: 0.3 });
   mb.box(0.4, 0.16, 0.03, 0xe0a33a, { x: 0.74, y: 1.02, rz: 0, ry: Math.PI / 2 });
+}
+
+// Legacy single-tile model (title scene / previews)
+export function stationModel(mb, level, style) {
+  stationComplexModel(mb, level, style, [{ x0: -1, x1: 1, z: 0, y: 0, role: 'any', deadEnd: [false, false] }], [], false);
 }
 
 export { DX, DZ, inMap, TILE };

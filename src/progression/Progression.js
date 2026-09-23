@@ -7,7 +7,7 @@ import {
 
 const FX_KEYS = ['trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
   'stationRadius', 'cargoIncome', 'mailIncome', 'paxIncome', 'paxProd', 'mailProd', 'townReq', 'industryProd', 'processing', 'industryGrowth',
-  'income', 'buildingCost', 'contractReward', 'legacyDiscount'];
+  'income', 'buildingCost', 'contractReward', 'legacyDiscount', 'switchTime', 'junctionSpeed', 'brake'];
 
 export class Progression {
   constructor(game) {
@@ -34,7 +34,7 @@ export class Progression {
   recomputeFx() {
     const fx = {};
     for (const k of FX_KEYS) fx[k] = 0;
-    for (const r of RESEARCH) if (this.research.has(r.id)) for (const k in r.fx) fx[k] += r.fx[k];
+    for (const r of RESEARCH) if (this.research.has(r.id)) for (const k in r.fx) fx[k] = (fx[k] || 0) + r.fx[k];
     fx.legacyDiscount = Math.min(0.25, this.legacy.count * 0.05);
     fx.income += Math.min(0.2, this.legacy.count * 0.03);
     this.fx = fx;

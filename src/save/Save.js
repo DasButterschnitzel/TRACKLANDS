@@ -66,8 +66,41 @@ export function migrate(d) {
     if (d.progression && !d.progression.legacy) d.progression.legacy = { count: 0 };
     v = 2;
   }
+  if (v === 2) {
+    migrateV2toV3(d);
+    v = 3;
+  }
   d.saveVersion = v;
   return v === SAVE_VERSION ? d : v > SAVE_VERSION ? d : null;
+}
+
+// v2 -> v3: consists, platforms, signals and schedules. Idempotent: every field
+// is only filled when missing, so running it twice changes nothing.
+export function migrateV2toV3(d) {
+  if (d.stations && Array.isArray(d.stations.stations)) {
+    for (const s of d.stations.stations) {
+      if (!s || typeof s.tile !== 'number') continue;
+      // legacy single-tile station = one track with one (double-faced) platform
+      if (!Array.isArray(s.tracks) || !s.tracks.length) s.tracks = [{ tiles: [s.tile], role: 'any', dir: 'both' }];
+      if (!Array.isArray(s.facilities)) s.facilities = [];
+      if (typeof s.level !== 'number') s.level = 0;
+    }
+  }
+  if (Array.isArray(d.trains)) {
+    for (const t of d.trains) {
+      if (!t) continue;
+      // consist is inferred with world context on load (TrainSystem.deserialize)
+      if (!Array.isArray(t.consist)) t.legacyConsist = true;
+      if (Array.isArray(t.route)) t.route = t.route.filter((r) => r && typeof r.st === 'number').map((r) => Object.assign({ act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null }, r));
+      if (!t.priority) t.priority = null;
+    }
+  }
+  if (d.net && typeof d.net === 'object') {
+    if (!Array.isArray(d.net.signals)) d.net.signals = [];
+    if (!Array.isArray(d.net.waypoints)) d.net.waypoints = [];
+    if (typeof d.net.single !== 'string') d.net.single = '';
+  }
+  return d;
 }
 
 export function validate(d) {

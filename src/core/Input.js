@@ -105,8 +105,8 @@ export class Input {
     if (!ptr) {
       // hover (mouse)
       if (e.target === this.el) {
-        const { tile } = this.tileAt(e.clientX, e.clientY);
-        if (tile !== this.hoverTile) { this.hoverTile = tile; C.hover(tile); }
+        const { tile, p } = this.tileAt(e.clientX, e.clientY);
+        if (tile !== this.hoverTile || C.tool === 'signal') { this.hoverTile = tile; C.hover(tile, p); }
         this.game.ui.pointerMoved(e.clientX, e.clientY);
       }
       return;
@@ -184,6 +184,10 @@ export class Input {
       case '5': g.ui.openTrainShop(); break;
       case '6': g.construction.setTool('bulldoze'); break;
       case '7': g.construction.setTool('decor'); break;
+      case '8': g.construction.setTool('signal'); break;
+      case '9': g.construction.setTool('waypoint'); break;
+      case 'o': g.ui.toggleOverlayMenu(); break;
+      case 't': g.ui.openPanel('trains'); break;
       case 'q': g.camera.rotate(-1); break;
       case 'e': g.camera.rotate(1); break;
       case '+': case '=': g.camera.zoom(0.8); break;

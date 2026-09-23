@@ -10,6 +10,8 @@ import { RailNetwork } from './rail/RailNetwork.js';
 import { RailRenderer } from './rail/RailRenderer.js';
 import { StationSystem } from './rail/Stations.js';
 import { Construction } from './rail/Construction.js';
+import { RailFurniture } from './rail/RailFurniture.js';
+import { Overlays } from './ui/Overlays.js';
 import { IndustrySystem } from './world/Industries.js';
 import { TownSystem } from './world/Towns.js';
 import { DecorSystem } from './world/Decor.js';
@@ -66,6 +68,8 @@ export class Game {
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);
+    this.furniture = new RailFurniture(this);
+    this.overlays = new Overlays(this);
 
     if (save) this.restore(save);
     else this.fresh(opts);
@@ -209,6 +213,23 @@ export class Game {
   }
   focusOn(sel, zoom) { const p = this.entityPos(sel); if (p) this.camera.focus(p.x, p.z, zoom); }
 
+  // Network-wide bottleneck advisor: stations, single-track sections, deadlocks.
+  advisor() {
+    const out = [];
+    for (const s of this.stations.list) for (const a of this.stations.advise(s)) out.push({ ...a, station: s.id, name: s.name });
+    const net = this.net;
+    net.computeRuns();
+    const runHeat = new Map();
+    for (let i = 0; i < N * N; i++) if (net.runId[i] >= 0 && net.waitHeat[i] > 0) runHeat.set(net.runId[i], Math.max(runHeat.get(net.runId[i]) || 0, net.waitHeat[i]));
+    for (const [rid, h] of runHeat) if (h > 60) {
+      let tile = -1; for (let i = 0; i < N * N; i++) if (net.runId[i] === rid) { tile = i; break; }
+      out.push({ key: 'adv_single_track', tile, p: { n: Math.round(h) } });
+    }
+    for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, p: { n: inc.trains.length } });
+    for (const t of this.trains.trains) if (t._st.rating === 'overloaded') out.push({ key: 'adv_overloaded', train: t.id, p: { name: t.name } });
+    return out;
+  }
+
   setSpeed(s) { this.speed = s; this.events.emit('speed', s); }
   togglePause() { this.setSpeed(this.speed === 0 ? (this._lastSpeed || 1) : (this._lastSpeed = this.speed, 0)); }
 
@@ -295,6 +316,14 @@ export class Game {
     E.on('weather', (w) => this.ui.weatherChanged(w));
     E.on('stationUpgraded', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.camera.shake(0.2); });
     E.on('trainRecovered', (t) => ui.toast(ui.tr('toast_train_recovered', { name: t.name }), 'info', 'train'));
+    E.on('deadlockResolved', (t, how) => ui.toast(ui.tr('toast_deadlock_' + how, { name: t.name }), 'info', 'train'));
+    E.on('trainRunaround', (t) => {
+      const loco = t.visual && t.visual.cars[0] && t.visual.cars[0].mesh;
+      if (!loco) return;
+      const v = this.near(loco.position);
+      if (v > 0.2) { A.play('chuff', { vol: v * 0.5 }); P.emit(locoModel(t.model).kind.startsWith('steam') ? 'steam' : 'dust', loco.position.x, loco.position.y + 0.6, loco.position.z, 5); }
+    });
+    E.on('stationEdited', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
     E.on('stationBuilt', () => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
     E.on('stationsRelinked', () => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
   }
@@ -310,8 +339,9 @@ export class Game {
     this.economy.tick(dt);
     this.progression.tick(dt);
     const decay = Math.exp(-dt / 90);
-    const tr = this.net.traffic;
-    for (let i = 0; i < tr.length; i++) if (tr[i] > 0.001) tr[i] *= decay;
+    const tr = this.net.traffic, wh = this.net.waitHeat;
+    const wdecay = Math.exp(-dt / 240);
+    for (let i = 0; i < tr.length; i++) { if (tr[i] > 0.001) tr[i] *= decay; if (wh[i] > 0.001) wh[i] *= wdecay; }
   }
 
   frame(dt) {
@@ -329,6 +359,8 @@ export class Game {
     this.env.update(dt, gameDt, this.clock);
     this.world.view.update(dt, this.clock);
     this.railView.update(dt);
+    this.furniture.update(dt);
+    this.overlays.update(dt);
     this.trains.updateVisuals(dt);
     this.stations.updateVisuals(dt, this.clock);
     this.industries.updateVisuals(dt, this.clock);

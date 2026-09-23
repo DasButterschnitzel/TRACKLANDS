@@ -9,7 +9,7 @@ import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml } from './util.js';
 import { icon } from './ui/icons.js';
-import { DIFFICULTY } from './config.js';
+import { DIFFICULTY, SAVE_VERSION } from './config.js';
 
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
@@ -184,6 +184,8 @@ class App {
     setTimeout(() => {
       let data = opts.save;
       if (data) {
+        // keep an untouched copy of any older save before migrating it
+        if ((data.saveVersion | 0) > 0 && (data.saveVersion | 0) < SAVE_VERSION) this.store.put('pre_v' + SAVE_VERSION, data);
         data = migrate(JSON.parse(JSON.stringify(data)));
         const err = validate(data);
         if (!data || err) { shell.hidden = true; this.loadFailed(); return; }

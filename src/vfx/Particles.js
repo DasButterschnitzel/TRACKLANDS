@@ -10,6 +10,7 @@ const TYPES = {
   sparkle: { life: 1.1, size: [0.35, 0.05], col: [1.0, 0.86, 0.4], a: 1.0, vy: 2.5, spread: 1.8, grow: 0, drag: 1.5, glow: 1 },
   coin: { life: 1.2, size: [0.45, 0.2], col: [1.0, 0.8, 0.25], a: 1.0, vy: 3.2, spread: 0.6, grow: 0, drag: 1.2, glow: 1, grav: 3 },
   confetti: { life: 2.6, size: [0.3, 0.3], col: null, a: 1.0, vy: 6, spread: 3.2, grow: 0, drag: 0.8, grav: 5 },
+  spark: { life: 0.35, size: [0.22, 0.05], col: [0.75, 0.9, 1.0], a: 1.0, vy: 0.8, spread: 0.6, grow: 0, drag: 2, glow: 1, grav: 4 },
   mist: { life: 3.5, size: [2.5, 5.0], col: [1, 1, 1], a: 0.35, vy: 1.8, spread: 2.5, grow: 1, drag: 0.3 },
 };
 const CONF = [[0.9, 0.35, 0.35], [0.35, 0.7, 0.9], [0.95, 0.8, 0.3], [0.45, 0.8, 0.5], [0.7, 0.45, 0.85]];

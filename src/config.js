@@ -1,8 +1,8 @@
 // Central balancing and content configuration. Gameplay code reads from here only.
 
 export const CREATOR_NAME = ''; // Set to credit the creator in the Credits panel.
-export const GAME_VERSION = '1.0.0';
-export const SAVE_VERSION = 2;
+export const GAME_VERSION = '2.0.0';
+export const SAVE_VERSION = 3;
 
 export const DIFFICULTY = {
   relaxed: { money: 5000, costMul: 0.7, growthMul: 0.8, incomeMul: 1.15 },
@@ -13,22 +13,59 @@ export const DIFFICULTY = {
 // ---------- CARGO ----------
 // group decides wagon style: log, bulk, liquid, crate, flat, pax, mail
 export const CARGO = {
-  WOOD: { value: 6, color: 0x9a6b3f, group: 'log' },
-  GRAIN: { value: 7, color: 0xe2c35a, group: 'bulk' },
-  FOOD: { value: 10, color: 0xd9744f, group: 'crate' },
-  ORE: { value: 8, color: 0x8a6f63, group: 'bulk' },
-  COAL: { value: 8, color: 0x3b3b40, group: 'bulk' },
-  LUMBER: { value: 11, color: 0xd1a46b, group: 'flat' },
-  STEEL: { value: 16, color: 0x8fa3b3, group: 'flat' },
-  OIL: { value: 12, color: 0x2e2a2a, group: 'liquid' },
-  FUEL: { value: 18, color: 0xe0a33a, group: 'liquid' },
-  GOODS: { value: 22, color: 0x5aa6c8, group: 'crate' },
-  MACHINERY: { value: 30, color: 0x6b7f5a, group: 'flat' },
-  MAIL: { value: 9, color: 0xc94f4f, group: 'mail' },
-  PASSENGERS: { value: 7, color: 0x4f86c9, group: 'pax' },
+  WOOD: { value: 6, color: 0x9a6b3f, group: 'log', mass: 1.0 },
+  GRAIN: { value: 7, color: 0xe2c35a, group: 'bulk', mass: 0.9 },
+  FOOD: { value: 10, color: 0xd9744f, group: 'crate', mass: 0.8 },
+  ORE: { value: 8, color: 0x8a6f63, group: 'bulk', mass: 1.8 },
+  COAL: { value: 8, color: 0x3b3b40, group: 'bulk', mass: 1.5 },
+  LUMBER: { value: 11, color: 0xd1a46b, group: 'flat', mass: 1.0 },
+  STEEL: { value: 16, color: 0x8fa3b3, group: 'flat', mass: 1.8 },
+  OIL: { value: 12, color: 0x2e2a2a, group: 'liquid', mass: 1.1 },
+  FUEL: { value: 18, color: 0xe0a33a, group: 'liquid', mass: 1.0 },
+  GOODS: { value: 22, color: 0x5aa6c8, group: 'crate', mass: 0.8 },
+  MACHINERY: { value: 30, color: 0x6b7f5a, group: 'flat', mass: 2.2 },
+  MAIL: { value: 9, color: 0xc94f4f, group: 'mail', mass: 0.3 },
+  PASSENGERS: { value: 7, color: 0x4f86c9, group: 'pax', mass: 0.1 },
 };
 export const CARGO_IDS = Object.keys(CARGO);
 export const TOWN_ACCEPTS = ['PASSENGERS', 'MAIL', 'FOOD', 'WOOD', 'LUMBER', 'GOODS', 'STEEL', 'FUEL', 'MACHINERY'];
+// ---------- WAGONS ----------
+// Data-driven rolling stock. `carries` is the single source of truth for cargo
+// compatibility (UI, loading, AI and economy all read it). len in world units,
+// mass in tonnes (empty), cap in cargo units, vmax km/h.
+export const WAGONS = {
+  coach: { len: 1.4, mass: 18, cap: 10, carries: ['PASSENGERS'], cost: 120, vmax: 160, cls: 'pax' },
+  commuter: { len: 1.4, mass: 17, cap: 14, carries: ['PASSENGERS'], cost: 170, vmax: 120, loadMul: 1.5, cls: 'pax' },
+  premium: { len: 1.5, mass: 22, cap: 7, carries: ['PASSENGERS'], cost: 320, vmax: 200, revMul: 0.35, cls: 'pax', research: 'passenger_comfort' },
+  hs_coach: { len: 1.55, mass: 20, cap: 18, carries: ['PASSENGERS'], cost: 900, vmax: 480, cls: 'pax', research: 'high_speed_coaches', express: true },
+  observation: { len: 1.45, mass: 20, cap: 7, carries: ['PASSENGERS'], cost: 420, vmax: 160, revMul: 0.2, trainRev: 0.08, cls: 'pax', research: 'passenger_comfort' },
+  cab_car: { len: 1.45, mass: 24, cap: 7, carries: ['PASSENGERS'], cost: 650, vmax: 200, cab: true, cls: 'pax', research: 'push_pull' },
+  mail_van: { len: 1.3, mass: 15, cap: 12, carries: ['MAIL'], cost: 110, vmax: 160, cls: 'mail' },
+  boxcar: { len: 1.3, mass: 15, cap: 10, carries: ['FOOD', 'GOODS', 'MAIL'], cost: 100, vmax: 120, cls: 'freight' },
+  timber: { len: 1.4, mass: 13, cap: 10, carries: ['WOOD', 'LUMBER'], cost: 90, vmax: 110, cls: 'freight' },
+  hopper: { len: 1.25, mass: 16, cap: 10, carries: ['GRAIN', 'COAL', 'ORE'], cost: 110, vmax: 110, cls: 'freight' },
+  coal_hopper: { len: 1.2, mass: 17, cap: 13, carries: ['COAL'], cost: 150, vmax: 110, cls: 'freight', research: 'specialized_wagons' },
+  ore_hopper: { len: 1.05, mass: 18, cap: 13, carries: ['ORE'], cost: 150, vmax: 100, cls: 'freight', research: 'specialized_wagons' },
+  tank: { len: 1.3, mass: 16, cap: 10, carries: ['OIL', 'FUEL'], cost: 140, vmax: 120, cls: 'freight' },
+  flatbed: { len: 1.4, mass: 12, cap: 10, carries: ['LUMBER', 'STEEL', 'WOOD', 'MACHINERY'], cost: 90, vmax: 120, cls: 'freight' },
+  reefer: { len: 1.35, mass: 18, cap: 12, carries: ['FOOD'], cost: 200, vmax: 140, cls: 'freight', research: 'specialized_wagons', revMul: 0.1 },
+  container: { len: 1.55, mass: 14, cap: 14, carries: ['GOODS', 'FOOD', 'MAIL'], cost: 260, vmax: 160, cls: 'freight', research: 'containerization' },
+  machinery_flat: { len: 1.5, mass: 20, cap: 10, carries: ['MACHINERY', 'STEEL'], cost: 220, vmax: 100, cls: 'freight', research: 'heavy_haul', revMul: 0.15 },
+  brake_van: { len: 0.95, mass: 14, cap: 0, carries: [], cost: 80, vmax: 120, brake: 0.25, cls: 'service' },
+  caboose: { len: 1.0, mass: 12, cap: 0, carries: [], cost: 120, vmax: 140, brake: 0.2, cls: 'service' },
+};
+export const WAGON_IDS = Object.keys(WAGONS);
+export const wagonsFor = (cargo) => WAGON_IDS.filter((w) => WAGONS[w].carries.includes(cargo));
+export const CONSIST = { maxVehicles: 14, maxLocos: 2, maxLocosHeavy: 3, gap: 0.12, ratingExcellent: 6, ratingGood: 3.5, ratingHeavy: 2 };
+// Locomotive body length (world units); steam engines with tenders are longer.
+export const LOCO_LEN = { pioneer: 1.45, ironhill: 1.95, meadow_tank: 1.6, atlas: 2.25, silverline: 2.3 };
+export const locoLen = (m) => LOCO_LEN[m.id] || (m.kind === 'hst' || m.kind === 'maglev' ? 2.0 : 1.8);
+export const locoMass = (m) => Math.round((m.kind === 'hst' || m.kind === 'maglev' ? 20 : 30) + m.power / (m.kind.startsWith('steam') ? 22 : 30));
+// diesel/electric/high speed/maglev units can lead from either end; steam must turn
+export const locoBidir = (m) => !m.kind.startsWith('steam');
+// train priority classes (higher wins at contention)
+export const PRIORITY = { express: 4, passenger: 3, mail: 2, freight: 1, service: 0 };
+
 export const HEAVY_CARGO = ['ORE', 'COAL', 'STEEL', 'MACHINERY'];
 
 export const REVENUE = {
@@ -51,20 +88,37 @@ export const COSTS = {
   bridgeExtra: 45,
   tunnelExtra: 110,
   station: 150,
-  stationUpgrade: [0, 400, 1500, 6000, 25000],
-  stationUpgradeLevel: [1, 2, 6, 12, 20], // company level needed for station level index
+  stationUpgrade: [0, 400, 1500, 6000, 25000, 70000],
+  stationUpgradeLevel: [1, 2, 6, 12, 20, 28], // company level needed for station level index
   depot: 250,
   bulldozeRefund: 0.5,
   treeClear: 2,
   trainSellRefund: 0.5,
+  stationTrackTile: 70,    // per new platform-track tile
+  platformExtend: 55,      // per converted platform tile
+  signal: 30,
+  waypoint: 20,
+  facility: 1200,
 };
 export const STATION = {
-  storage: [60, 120, 240, 480, 960],
-  loadRate: [8, 12, 16, 22, 30],    // units per second
-  radius: [3, 3, 4, 4, 5],
-  platforms: [1, 2, 2, 3, 4],
-  passengers: [4, 8, 14, 20, 28],  // visual crowd
+  storage: [60, 120, 240, 480, 960, 1600],
+  loadRate: [8, 12, 16, 22, 30, 40],    // units per second
+  radius: [3, 3, 4, 4, 5, 5],
+  passengers: [4, 8, 14, 20, 28, 36],  // visual crowd
+  maxLevel: 5,                          // internal index (displayed as level 6)
+  maxTracks: 2, maxTracksExp: 4, maxTracksGrand: 8,
+  maxLength: 3, maxLengthExt: 6,
+  minPlatformEff: 0.72,                 // loading speed floor for trains longer than the platform
 };
+// Freight facilities boost loading of matching cargo at a station.
+export const FACILITIES = {
+  grain_silo: { cargo: ['GRAIN', 'FOOD'], mul: 1.8 },
+  coal_loader: { cargo: ['COAL', 'ORE'], mul: 1.8 },
+  tank_farm: { cargo: ['OIL', 'FUEL'], mul: 1.8 },
+  timber_yard: { cargo: ['WOOD', 'LUMBER'], mul: 1.8 },
+  container_crane: { cargo: ['GOODS', 'MACHINERY', 'STEEL', 'MAIL'], mul: 1.8 },
+};
+export const PLATFORM_ROLES = ['any', 'passenger', 'freight', 'express', 'through'];
 
 // ---------- INDUSTRIES ----------
 // rate = production cycles per minute at level 0. recipes consume `in` and produce `out`.
@@ -148,12 +202,30 @@ export const RESEARCH = [
   { id: 'electric_rail', cat: 'rail', cost: 8, req: ['reinforced_rail'], fx: {} },
   { id: 'high_speed_rail', cat: 'rail', cost: 15, req: ['electric_rail', 'improved_curves'], fx: {} },
   { id: 'maglev_tech', cat: 'rail', cost: 25, req: ['high_speed_rail'], fx: {} },
+  // SIGNALS
+  { id: 'block_signals', cat: 'signals', cost: 2, req: [], fx: {} },
+  { id: 'path_signals', cat: 'signals', cost: 3, req: ['block_signals'], fx: {} },
+  { id: 'one_way_signals', cat: 'signals', cost: 3, req: ['block_signals'], fx: {} },
+  { id: 'fast_switches', cat: 'signals', cost: 4, req: ['path_signals'], fx: { switchTime: -0.5, junctionSpeed: 0.25 } },
+  { id: 'cab_signalling', cat: 'signals', cost: 7, req: ['fast_switches'], fx: { brake: 0.25, trainSpeed: 0.04 } },
   // TRAINS
   { id: 'better_boilers', cat: 'trains', cost: 2, req: [], fx: { trainSpeed: 0.08 } },
   { id: 'fast_couplings', cat: 'trains', cost: 3, req: ['better_boilers'], fx: { trainAccel: 0.15 } },
   { id: 'efficient_engines', cat: 'trains', cost: 4, req: ['better_boilers'], fx: { opCost: -0.2 } },
   { id: 'long_consists', cat: 'trains', cost: 6, req: ['fast_couplings'], fx: { capacity: 0.15 } },
   { id: 'train_maintenance', cat: 'trains', cost: 8, req: ['efficient_engines'], fx: { trainSpeed: 0.08, opCost: -0.1 } },
+  { id: 'specialized_wagons', cat: 'trains', cost: 3, req: ['better_boilers'], fx: {} },
+  { id: 'passenger_comfort', cat: 'trains', cost: 3, req: [], fx: {} },
+  { id: 'push_pull', cat: 'trains', cost: 4, req: ['passenger_comfort'], fx: {} },
+  { id: 'containerization', cat: 'trains', cost: 5, req: ['specialized_wagons'], fx: {} },
+  { id: 'heavy_haul', cat: 'trains', cost: 6, req: ['long_consists'], fx: {} },
+  { id: 'high_speed_coaches', cat: 'trains', cost: 8, req: ['push_pull', 'electric_rail'], fx: {} },
+  // STATIONS
+  { id: 'platform_extension', cat: 'stations', cost: 2, req: [], fx: {} },
+  { id: 'station_expansion', cat: 'stations', cost: 3, req: ['platform_extension'], fx: {} },
+  { id: 'freight_terminals', cat: 'stations', cost: 4, req: ['station_expansion'], fx: {} },
+  { id: 'station_dispatch', cat: 'stations', cost: 4, req: ['station_expansion'], fx: { loadSpeed: 0.1 } },
+  { id: 'grand_terminals', cat: 'stations', cost: 9, req: ['station_expansion', 'station_dispatch'], fx: {} },
   // LOGISTICS
   { id: 'fast_loading', cat: 'logistics', cost: 2, req: [], fx: { loadSpeed: 0.25 } },
   { id: 'station_storage', cat: 'logistics', cost: 3, req: ['fast_loading'], fx: { storage: 0.5 } },
@@ -176,7 +248,7 @@ export const RESEARCH = [
   { id: 'market_insight', cat: 'economy', cost: 5, req: ['smart_finance'], fx: { contractReward: 0.3 } },
   { id: 'trade_networks', cat: 'economy', cost: 7, req: ['subsidies'], fx: { income: 0.1 } },
 ];
-export const RESEARCH_CATS = ['rail', 'trains', 'logistics', 'cities', 'industry', 'economy'];
+export const RESEARCH_CATS = ['rail', 'signals', 'trains', 'stations', 'logistics', 'cities', 'industry', 'economy'];
 
 // ---------- REGIONS ----------
 export const REGIONS = [

@@ -40,7 +40,18 @@ export class RailNetwork {
     this.special = new Map(); // tile -> {type:'station'|'depot', id}
     this.version = 1;
     this.resv = new Int32Array(N * N * 2);
+    this.single = new Uint8Array(N * N);        // 1 = single track (one shared lane)
+    this.signals = new Map();                   // tile*8+dir -> {type:'block'|'path', oneway}
+    this.waypoints = new Map();                 // tile -> {id, name}
+    this.jres = new Map();                      // junction tile -> Map(trainId -> [a, b])
+    this.switches = new Map();                  // junction tile -> {a, b, pa, pb, t}
+    this.runId = new Int32Array(N * N).fill(-1);
+    this.runDir = new Int8Array(N * N).fill(-1);
+    this.runLocks = new Map();                  // runId -> {sense, ids:Set}
+    this._runsVersion = -1;
+    this.nextWp = 1;
     this.traffic = new Float32Array(N * N);
+    this.waitHeat = new Float32Array(N * N);
     this.routeCache = new Map();
     this.cacheVersion = 0;
     this._comp = null; this._compVersion = -1;
@@ -271,9 +282,12 @@ export class RailNetwork {
   }
   disconnectTile(i) {
     const m = this.conn[i];
-    for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const j = step(i, d); if (j >= 0) { this.conn[j] &= ~(1 << opp(d)); if (!this.conn[j]) this.tier[j] = 0; } }
+    for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const j = step(i, d); if (j >= 0) { this.conn[j] &= ~(1 << opp(d)); this.signals.delete(j * 8 + opp(d)); if (!this.conn[j]) { this.tier[j] = 0; this.single[j] = 0; this.waypoints.delete(j); } } }
     this.conn[i] = 0;
     this.tier[i] = 0;
+    this.single[i] = 0;
+    for (let d = 0; d < 8; d++) this.signals.delete(i * 8 + d);
+    this.waypoints.delete(i);
   }
 
   // ---------- routing ----------
@@ -283,9 +297,10 @@ export class RailNetwork {
     const minTier = opts.minTier || 0;
     const avoid = opts.avoid || null;
     const rev = !!opts.allowReverse;
-    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier},${rev ? 1 : 0}` : null;
+    const th = opts.targetHeading == null ? -1 : opts.targetHeading;
+    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier},${rev ? 1 : 0},${th},${opts.stopStations ? 1 : 0}` : null;
     if (key && this.routeCache.has(key)) return this.routeCache.get(key);
-    const res = this._route(start, target, minTier, avoid, rev);
+    const res = this._route(start, target, minTier, avoid, rev, th);
     if (key) { if (this.routeCache.size > 3000) this.routeCache.clear(); this.routeCache.set(key, res); }
     return res;
   }
@@ -298,7 +313,21 @@ export class RailNetwork {
     return true;
   }
 
-  _route(start, target, minTier, avoid, allowRev) {
+  // one-way signals forbid leaving a tile against their direction
+  exitAllowed(i, d) {
+    const sg = this.onewayAt.get(i);
+    return sg == null || sg === d;
+  }
+  get onewayAt() {
+    if (this._owV !== this.version) {
+      this._ow = new Map();
+      for (const [k, sg] of this.signals) if (sg.oneway) this._ow.set(k >> 3, k & 7);
+      this._owV = this.version;
+    }
+    return this._ow;
+  }
+
+  _route(start, target, minTier, avoid, allowRev, th = -1) {
     const stamp = ++this._rstamp;
     const g = this._rg, prev = this._rprev, seen = this._rseen, heap = this._heap;
     heap.clear();
@@ -311,6 +340,10 @@ export class RailNetwork {
       let c = DLEN[d] * Math.sqrt(80 / tierSpeed(i));
       if (hin != null && hin !== 8) { const t = turnOf(hin, d); if (t === 3) c += 5; else if (t === 2) c += 0.35; else if (t === 1) c += 0.08; }
       if (avoid && avoid.has(i)) c += 12;
+      // prefer bypass tracks over occupied platforms when passing through stations
+      const sp = this.special.get(i);
+      if (sp && sp.type === 'station' && i !== target) c += sp.role === 'through' ? -0.2 : 1.2;
+      if (this.single[i]) c += 0.15;
       return c;
     };
     // initial expansion
@@ -320,6 +353,7 @@ export class RailNetwork {
       for (let d = 0; d < 8; d++) {
         if (!this.hasDir(si, d)) continue;
         if (start.heading != null && turnOf(start.heading, d) > 3) continue;
+        if (!this.exitAllowed(si, d)) continue;
         const j = step(si, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, stepCost(si, start.heading, d) * 0.5, -2 - d);
@@ -334,17 +368,18 @@ export class RailNetwork {
       const gs = g[s];
       if (gs > g[s] + 1e-9) continue;
       const i = s >> 3, h = s & 7;
-      if (i === target) { found = s; break; }
+      if (i === target && (th < 0 || h === th)) { found = s; break; }
       const m = this.conn[i];
       for (let d = 0; d < 8; d++) {
         if (!((m >> d) & 1)) continue;
         if (turnOf(h, d) > 3) continue;
+        if (!this.exitAllowed(i, d)) continue;
         const j = step(i, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, gs + stepCost(i, h, d), s);
       }
       // shunting: stop at this tile's center, reverse and continue the other way
-      if (allowRev) push(i * 8 + opp(h), gs + 10, s);
+      if (allowRev && !this.onewayAt.has(i)) push(i * 8 + opp(h), gs + 10, s);
     }
     if (found < 0) return null;
     let states = [];
@@ -369,10 +404,14 @@ export class RailNetwork {
     }
     // choose a smooth continuation at the final tile for nicer geometry
     const last = steps[steps.length - 1];
-    let best = null, bt = 9;
-    for (let d = 0; d < 8; d++) if (this.hasDir(last.tile, d) && turnOf(last.inH, d) <= 3 && turnOf(last.inH, d) < bt) { bt = turnOf(last.inH, d); best = d; }
-    last.outH = best;
+    last.outH = this.smoothExit(last.tile, last.inH);
     return { steps, length: g[found], firstOut, reverse };
+  }
+
+  smoothExit(tile, inH) {
+    let best = null, bt = 9;
+    for (let d = 0; d < 8; d++) if (this.hasDir(tile, d) && turnOf(inH, d) <= 3 && turnOf(inH, d) < bt) { bt = turnOf(inH, d); best = d; }
+    return best;
   }
 
   components() {
@@ -395,27 +434,199 @@ export class RailNetwork {
   connected(a, b) { const c = this.components(); return c[a] >= 0 && c[a] === c[b]; }
 
   // ---------- reservations ----------
+  // Keys: >= 0 index into resv (tile*2 + lane sense). Junction steps use a
+  // negative path key (see jkey) checked for compatibility against other paths.
+  isJunction(i) { const sp = this.special.get(i); return this.degree(i) >= 3 && !(sp && sp.type === 'station'); }
   laneKeys(stepObj) {
     const i = stepObj.tile;
     const sp = this.special.get(i);
-    // junctions are exclusive; station platforms keep one lane per direction
-    if (this.degree(i) >= 3 && !(sp && sp.type === 'station')) return [i * 2, i * 2 + 1];
-    const a = stepObj.inH == null ? null : opp(stepObj.inH);
-    const b = stepObj.outH;
-    if (sp && sp.type === 'station' && a != null && b != null && this.degree(i) >= 3) return [i * 2 + ((stepObj.inH & 7) < 4 ? 0 : 1)];
+    const a = stepObj.inH == null ? 8 : opp(stepObj.inH);
+    const b = stepObj.outH == null ? 8 : stepObj.outH;
+    if (this.isJunction(i)) return [-(1 + i * 81 + a * 9 + b)];
+    if (this.single[i] && !(sp && sp.type === 'station')) return [i * 2];
+    if (sp && sp.type === 'station' && a !== 8 && b !== 8 && this.degree(i) >= 3) return [i * 2 + ((stepObj.inH & 7) < 4 ? 0 : 1)];
     let sense;
-    if (a != null && b != null) sense = a < b ? 0 : 1;
-    else if (a != null) sense = 0; else sense = 1;
+    if (a !== 8 && b !== 8) sense = a < b ? 0 : 1;
+    else if (a !== 8) sense = 0; else sense = 1;
     return [i * 2 + sense];
   }
-  canReserve(keys, id) { for (const k of keys) { const r = this.resv[k]; if (r !== 0 && r !== id) return false; } return true; }
-  reserve(keys, id) { for (const k of keys) this.resv[k] = id; }
-  release(keys, id) { for (const k of keys) if (this.resv[k] === id) this.resv[k] = 0; }
-  holder(keys, id) { for (const k of keys) { const r = this.resv[k]; if (r !== 0 && r !== id) return r; } return 0; }
+  static decodeJ(k) { const v = -k - 1; return { tile: Math.floor(v / 81), a: Math.floor(v / 9) % 9, b: v % 9 }; }
+  // two paths through a junction can coexist only when they use the same pair
+  // of legs in opposite directions (double track: each on its own lane)
+  pathsCompatible(p, q) {
+    if (p[0] === 8 || p[1] === 8 || q[0] === 8 || q[1] === 8) return false;
+    return p[0] === q[1] && p[1] === q[0];
+  }
+  _jOk(k, id) {
+    const { tile, a, b } = RailNetwork.decodeJ(k);
+    const m = this.jres.get(tile);
+    if (!m) return true;
+    for (const [tid, paths] of m) {
+      if (tid === id) continue;
+      for (const p of paths) if (!this.pathsCompatible(p, [a, b])) return false;
+    }
+    return true;
+  }
+  canReserve(keys, id) {
+    for (const k of keys) {
+      if (k < 0) { if (!this._jOk(k, id)) return false; continue; }
+      const r = this.resv[k]; if (r !== 0 && r !== id) return false;
+    }
+    return true;
+  }
+  reserve(keys, id) {
+    for (const k of keys) {
+      if (k >= 0) { this.resv[k] = id; continue; }
+      const { tile, a, b } = RailNetwork.decodeJ(k);
+      let m = this.jres.get(tile);
+      if (!m) { m = new Map(); this.jres.set(tile, m); }
+      const list = m.get(id) || [];
+      if (!list.some((p) => p[0] === a && p[1] === b)) list.push([a, b]);
+      m.set(id, list);
+      this.setSwitch(tile, a, b);
+    }
+  }
+  release(keys, id) {
+    for (const k of keys) {
+      if (k >= 0) { if (this.resv[k] === id) this.resv[k] = 0; continue; }
+      const { tile, a, b } = RailNetwork.decodeJ(k);
+      const m = this.jres.get(tile);
+      if (!m) continue;
+      const list = m.get(id);
+      if (!list) continue;
+      const nl = list.filter((p) => !(p[0] === a && p[1] === b));
+      if (nl.length) m.set(id, nl); else m.delete(id);
+      if (!m.size) this.jres.delete(tile);
+    }
+  }
+  holder(keys, id) {
+    for (const k of keys) {
+      if (k < 0) {
+        const { tile, a, b } = RailNetwork.decodeJ(k);
+        const m = this.jres.get(tile);
+        if (m) for (const [tid, paths] of m) if (tid !== id && paths.some((p) => !this.pathsCompatible(p, [a, b]))) return tid;
+        continue;
+      }
+      const r = this.resv[k]; if (r !== 0 && r !== id) return r;
+    }
+    return 0;
+  }
+  keyHolder(k) {
+    if (k >= 0) return this.resv[k];
+    const { tile } = RailNetwork.decodeJ(k);
+    const m = this.jres.get(tile);
+    if (m) for (const tid of m.keys()) return tid;
+    return 0;
+  }
+  // holder of any lane on a tile (for overlays)
+  tileHolder(i) {
+    if (this.resv[i * 2]) return this.resv[i * 2];
+    if (this.resv[i * 2 + 1]) return this.resv[i * 2 + 1];
+    const m = this.jres.get(i);
+    if (m) for (const tid of m.keys()) return tid;
+    return 0;
+  }
+  clearReservations() { this.resv.fill(0); this.jres.clear(); this.runLocks.clear(); }
+
+  // ---------- switches (animated blades, locked while a path is reserved) ----------
+  setSwitch(tile, a, b) {
+    const key = a < b ? [a, b] : [b, a];
+    let sw = this.switches.get(tile);
+    if (!sw) { sw = { a: key[0], b: key[1], pa: key[0], pb: key[1], t: 1 }; this.switches.set(tile, sw); return; }
+    if (sw.a === key[0] && sw.b === key[1]) return;
+    sw.pa = sw.a; sw.pb = sw.b; sw.a = key[0]; sw.b = key[1]; sw.t = 0;
+  }
+  switchReady(tile, a, b) {
+    const sw = this.switches.get(tile);
+    if (!sw) return true;
+    const key = a < b ? [a, b] : [b, a];
+    return sw.t >= 1 && sw.a === key[0] && sw.b === key[1];
+  }
+  switchTime() { return 0.7 * (1 + (this.game.progression.fx.switchTime || 0)); }
+  tickSwitches(dt) {
+    const T = this.switchTime();
+    for (const [tile, sw] of this.switches) {
+      if (!this.isJunction(tile)) { this.switches.delete(tile); continue; }
+      if (sw.t < 1) sw.t = Math.min(1, sw.t + dt / T);
+    }
+  }
+
+  // ---------- single-track runs (direction locks) ----------
+  computeRuns() {
+    if (this._runsVersion === this.version) return;
+    this._runsVersion = this.version;
+    this.runId.fill(-1); this.runDir.fill(-1);
+    const isRun = (i) => i >= 0 && this.conn[i] && this.single[i] && !this.isJunction(i) && !this.special.has(i);
+    let rid = 0;
+    for (let i = 0; i < N * N; i++) {
+      if (!isRun(i) || this.runId[i] >= 0) continue;
+      // walk to one end of the chain
+      let start = i, prevT = -1, guard = 0;
+      for (;;) {
+        let nxt = -1;
+        for (let d = 0; d < 8; d++) if (this.hasDir(start, d)) { const j = step(start, d); if (j !== prevT && isRun(j) && j !== i) { nxt = j; break; } }
+        if (nxt < 0 || guard++ > N * N) break;
+        prevT = start; start = nxt;
+        if (start === i) break;
+      }
+      // walk forward assigning ids and forward direction
+      let cur = start, prev = -1; guard = 0;
+      while (cur >= 0 && this.runId[cur] < 0 && guard++ < N * N) {
+        this.runId[cur] = rid;
+        let fwd = -1, nextT = -1;
+        for (let d = 0; d < 8; d++) {
+          if (!this.hasDir(cur, d)) continue;
+          const j = step(cur, d);
+          if (j === prev) continue;
+          fwd = d; if (isRun(j) && this.runId[j] < 0) nextT = j;
+          break;
+        }
+        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && step(cur, d) === prev) fwd = opp(d);
+        this.runDir[cur] = fwd;
+        prev = cur; cur = nextT;
+      }
+      rid++;
+    }
+    this.runLocks.clear();
+  }
+  runSense(stepObj) {
+    const f = this.runDir[stepObj.tile];
+    if (stepObj.outH != null) return stepObj.outH === f ? 0 : 1;
+    if (stepObj.inH != null) return opp(stepObj.inH) === f ? 1 : 0;
+    return 0;
+  }
+  runLockOk(rid, sense, id) {
+    const L = this.runLocks.get(rid);
+    if (!L || !L.ids.size) return true;
+    if (L.sense === sense) return true;
+    return L.ids.size === 1 && L.ids.has(id);
+  }
+  runLockAdd(rid, sense, id) {
+    let L = this.runLocks.get(rid);
+    if (!L || !L.ids.size || (L.ids.size === 1 && L.ids.has(id))) { L = { sense, ids: new Set() }; this.runLocks.set(rid, L); }
+    L.ids.add(id);
+  }
+  runLockDrop(rid, id) {
+    const L = this.runLocks.get(rid);
+    if (L) { L.ids.delete(id); if (!L.ids.size) this.runLocks.delete(rid); }
+  }
+
+  // ---------- signals ----------
+  signalAt(tile, dir) { return dir == null ? null : this.signals.get(tile * 8 + dir) || null; }
+  canPlaceSignal(tile, dir) {
+    if (!this.conn[tile] || !this.hasDir(tile, dir)) return 'err_signal_no_track';
+    if (this.isJunction(tile)) return 'err_signal_junction';
+    if (this.special.has(tile)) return 'err_signal_station';
+    return null;
+  }
 
   // ---------- serialization ----------
   serialize() {
-    return { conn: b64(this.conn), tier: b64(this.tier) };
+    return {
+      conn: b64(this.conn), tier: b64(this.tier), single: b64(this.single),
+      signals: [...this.signals].map(([k, v]) => [k, v.type, v.oneway ? 1 : 0]),
+      waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
+    };
   }
   deserialize(d) {
     if (!d) return;
@@ -430,6 +641,21 @@ export class RailNetwork {
       }
       if (this.tier[i] > 3) this.tier[i] = 0;
     }
+    if (typeof d.single === 'string' && d.single) { const sg = unb64(d.single); if (sg.length === N * N) this.single.set(sg); }
+    for (let i = 0; i < N * N; i++) if (!this.conn[i]) this.single[i] = 0; else if (this.single[i] > 1) this.single[i] = 1;
+    if (Array.isArray(d.signals)) for (const e of d.signals) {
+      if (!Array.isArray(e)) continue;
+      const [k, type, ow] = e;
+      if (typeof k !== 'number' || (type !== 'block' && type !== 'path')) continue;
+      if (!this.hasDir(k >> 3, k & 7)) continue;
+      this.signals.set(k, { type, oneway: !!ow });
+    }
+    if (Array.isArray(d.waypoints)) for (const e of d.waypoints) {
+      if (!Array.isArray(e) || !this.conn[e[0]]) continue;
+      this.waypoints.set(e[0], { id: e[1] | 0, name: String(e[2] || 'Waypoint') });
+      this.nextWp = Math.max(this.nextWp, (e[1] | 0) + 1);
+    }
+    if (d.nextWp) this.nextWp = Math.max(this.nextWp, d.nextWp | 0);
     this.bumpVersion();
   }
 }

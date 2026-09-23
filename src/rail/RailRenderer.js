@@ -130,13 +130,13 @@ export class RailRenderer {
   }
 
   // centerline samples for a curve through tile i between connection dirs a and b (null = center)
-  curve(i, a, b) {
+  curve(i, a, b, minN = 2) {
     const net = this.game.net;
     const cx = tileCX(i), cz = tileCZ(i), cy = net.railH(i);
     const P0 = a == null ? [cx, cy, cz] : edge(net, i, a);
     const P2 = b == null ? [cx, cy, cz] : edge(net, i, b);
     const straight = a == null || b == null || opp(a) === b;
-    const n = straight ? 2 : 8;
+    const n = straight ? minN : 8;
     const pts = [];
     for (let k = 0; k <= n; k++) {
       const t = k / n;
@@ -162,9 +162,20 @@ export class RailRenderer {
     const kind = net.kind(i);
     const tier = net.tier[i];
     const S = TIER_STYLE[tier];
+    const sp0 = net.special.get(i);
+    const single = !!net.single[i] && !(sp0 && sp0.type === 'station');
     const { pairs, stubs } = net.tilePairs(i);
-    const curves = pairs.map(([a, b]) => this.curve(i, a, b));
-    for (const s of stubs) curves.push(this.curve(i, s, null));
+    const curves = pairs.map(([a, b]) => this.curve(i, a, b, single ? 6 : 2));
+    for (const s of stubs) curves.push(this.curve(i, s, null, single ? 6 : 2));
+    // lane spread per curve point: 0 on single track, ramping to double at transitions
+    const pairList = [...pairs, ...stubs.map((s) => [s, null])];
+    const spreads = pairList.map(([a, b], ci) => {
+      const cv = curves[ci];
+      if (!single) return cv.map(() => 1);
+      const dbl = (d) => { if (d == null) return 0; const j = step(i, d); return j >= 0 && net.conn[j] && (!net.single[j] || (net.special.get(j) || {}).type === 'station') ? 1 : 0; };
+      const fa = dbl(a), fb = dbl(b);
+      return cv.map((_, k) => { const t = k / (cv.length - 1); return Math.max(fa * Math.max(0, 1 - t / 0.55), fb * Math.max(0, 1 - (1 - t) / 0.55)); });
+    });
     if (kind === K_TUNNEL) {
       // portals where the tunnel meets open ground
       for (let d = 0; d < 8; d++) {
@@ -197,7 +208,8 @@ export class RailRenderer {
             gb.quad(a1, a0, [a0[0], y0 + rh, a0[2]], [a1[0], y1 + rh, a1[2]], tier >= 1 ? 0x5a6068 : 0x6b4a33, delay);
           }
         } else {
-          const wt = tier === 3 ? 0.7 : 0.62, wb = 0.8, y0 = p.y + 0.08, y1 = q.y + 0.08, yb0 = p.y - 0.1, yb1 = q.y - 0.1;
+          const sp_ = single ? Math.max(spreads[curves.indexOf(cv)][k], spreads[curves.indexOf(cv)][k + 1]) : 1;
+          const wt = (tier === 3 ? 0.7 : 0.62) - (1 - sp_) * 0.24, wb = 0.8 - (1 - sp_) * 0.24, y0 = p.y + 0.08, y1 = q.y + 0.08, yb0 = p.y - 0.1, yb1 = q.y - 0.1;
           const col = S.ballast;
           const Lt0 = [p.x + p.nx * wt, y0, p.z + p.nz * wt], Rt0 = [p.x - p.nx * wt, y0, p.z - p.nz * wt];
           const Lt1 = [q.x + q.nx * wt, y1, q.z + q.nz * wt], Rt1 = [q.x - q.nx * wt, y1, q.z - q.nz * wt];
@@ -215,29 +227,32 @@ export class RailRenderer {
           }
         }
       }
-      // sleepers and rails for both lanes
+      // sleepers and rails for both lanes (merged into one on single track)
       const top = bridge ? 0.0 : 0.08;
-      for (const lane of [LANE, -LANE]) {
+      const spr = spreads[curves.indexOf(cv)];
+      const laneSet = single && spr.every((v) => v === 0) ? [0] : [LANE, -LANE];
+      for (const lane of laneSet) {
         let acc = 0.15;
         for (let k = 0; k < cv.length - 1; k++) {
           const p = cv[k], q = cv[k + 1];
           const seg = Math.hypot(q.x - p.x, q.z - p.z);
           while (acc < seg) {
             const f = acc / seg;
-            const x = p.x + (q.x - p.x) * f + p.nx * lane, z = p.z + (q.z - p.z) * f + p.nz * lane, y = p.y + (q.y - p.y) * f + top + 0.02;
-            gb.box(x, y, z, 0.05, 0.022, 0.25, Math.atan2(-p.tz, p.tx), tier === 3 ? S.sleeper : S.sleeper, delay);
+            const lo = lane * (spr[k] + (spr[k + 1] - spr[k]) * f);
+            const x = p.x + (q.x - p.x) * f + p.nx * lo, z = p.z + (q.z - p.z) * f + p.nz * lo, y = p.y + (q.y - p.y) * f + top + 0.02;
+            gb.box(x, y, z, 0.05, 0.022, 0.25, Math.atan2(-p.tz, p.tx), S.sleeper, delay);
             acc += tier === 3 ? 0.36 : 0.3;
           }
           acc -= seg;
         }
         for (const r of [0.12, -0.12]) {
-          const off = lane + r;
           for (let k = 0; k < cv.length - 1; k++) {
             const p = cv[k], q = cv[k + 1];
-            const a0 = [p.x + p.nx * (off - 0.022), p.y + top + 0.09, p.z + p.nz * (off - 0.022)];
-            const b0 = [p.x + p.nx * (off + 0.022), p.y + top + 0.09, p.z + p.nz * (off + 0.022)];
-            const a1 = [q.x + q.nx * (off - 0.022), q.y + top + 0.09, q.z + q.nz * (off - 0.022)];
-            const b1 = [q.x + q.nx * (off + 0.022), q.y + top + 0.09, q.z + q.nz * (off + 0.022)];
+            const o0 = lane * spr[k] + r, o1 = lane * spr[k + 1] + r;
+            const a0 = [p.x + p.nx * (o0 - 0.022), p.y + top + 0.09, p.z + p.nz * (o0 - 0.022)];
+            const b0 = [p.x + p.nx * (o0 + 0.022), p.y + top + 0.09, p.z + p.nz * (o0 + 0.022)];
+            const a1 = [q.x + q.nx * (o1 - 0.022), q.y + top + 0.09, q.z + q.nz * (o1 - 0.022)];
+            const b1 = [q.x + q.nx * (o1 + 0.022), q.y + top + 0.09, q.z + q.nz * (o1 + 0.022)];
             gb.quad(a0, a1, b1, b0, S.rail, delay);
             const lo = -0.05;
             gb.quad([b0[0], b0[1] + lo, b0[2]], b0, b1, [b1[0], b1[1] + lo, b1[2]], 0x6a6e74, delay);
@@ -247,7 +262,7 @@ export class RailRenderer {
       }
       // overhead line for electric / high speed
       if (tier >= 2) {
-        for (const lane of [LANE, -LANE]) {
+        for (const lane of single ? [0] : [LANE, -LANE]) {
           for (let k = 0; k < cv.length - 1; k++) {
             const p = cv[k], q = cv[k + 1];
             const h = 1.32;
@@ -297,7 +312,7 @@ export class RailRenderer {
       const cx = tileCX(i), cz = tileCZ(i);
       const x = cx + (e[0] - cx) * 0.1, z = cz + (e[2] - cz) * 0.1;
       const yaw = Math.atan2(-DZ[s], DX[s]);
-      for (const lane of [LANE, -LANE]) {
+      for (const lane of single ? [0] : [LANE, -LANE]) {
         const nx = -Math.sin(-yaw) * 0, lx = Math.sin(yaw) * lane, lz = Math.cos(yaw) * lane;
         void nx;
         gb.box(x + lx, net.railH(i) + 0.22, z + lz, 0.06, 0.1, 0.18, yaw, 0xc94f4f, delay);
