@@ -30,8 +30,8 @@ export const RailUIMixin = {
   kmh(v) { return Math.round((v / TILE) * KMH_PER_TILE_S); },
 
   // ---------- consist preview (rendered side view) ----------
-  consistPreview(veh, livery, cargo) {
-    const key = 'C:' + serializeConsist(veh).join(',') + ':' + livery + ':' + (cargo || []).map((l) => l.c + l.n).join(',');
+  consistPreview(veh, livery, cargo, scope = 'train') {
+    const key = 'C:' + serializeConsist(veh).join(',') + ':' + livery + ':' + scope + ':' + (cargo || []).map((l) => l.c + l.n).join(',');
     this.cprev = this.cprev || new Map();
     if (this.cprev.has(key)) return this.cprev.get(key);
     if (this.cprev.size > 60) this.cprev.clear();
@@ -47,17 +47,18 @@ export const RailUIMixin = {
     } catch (e) { return ''; }
     const lead = veh.find((v) => v.k === 'L');
     const lm = locoModel(lead ? lead.id : 'pioneer');
-    const cols = liveryColors(lm, livery);
+    const cols = liveryColors(lm, scope === 'loco' ? 'classic_green' : livery);
     const grp = new THREE.Group();
     const st = computeStats(veh, null, this.game.progression.fx);
     const loads = assignLoads(st, cargo || []).wagons;
-    let x = 0, wi = 0;
+    let x = 0, wi = 0, vi = 0;
     const total = veh.reduce((a, v) => a + vehLen(v), 0) + (veh.length - 1) * CONSIST.gap;
     for (const v of veh) {
       const len = vehLen(v);
       let geo;
       if (v.k === 'L') geo = locoGeometry(v.id, livery, 0);
-      else { const w = loads[wi++]; geo = wagonGeometry(v.id, w && w.c, w && w.n ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0, lm.kind, cols.body, cols.trim); }
+      else { const w = loads[wi++]; geo = wagonGeometry(v.id, w && w.c, w && w.n ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0, lm.kind, cols.body, cols.trim, (vi * 3) & 3); }
+      vi++;
       const m = new THREE.Mesh(geo, MATS);
       // front of the train on the left, matching the vehicle strip
       m.position.x = -total / 2 + x + len / 2;
@@ -83,11 +84,11 @@ export const RailUIMixin = {
   // ---------- Train Builder ----------
   openBuilder(opts) {
     const g = this.game;
-    const b = { trainId: null, depotId: null, veh: [], sel: -1, cat: 'loco', replace: false, cargos: new Set(), name: '', livery: g.progression.defaultLivery };
+    const b = { trainId: null, depotId: null, veh: [], sel: -1, cat: 'loco', replace: false, cargos: new Set(), name: '', livery: g.progression.defaultLivery, liveryScope: 'train' };
     if (opts.trainId != null) {
       const t = g.trains.byId(opts.trainId);
       if (!t) return;
-      b.trainId = t.id; b.veh = cloneConsist(t.pendingVeh || t.veh); b.name = t.name; b.livery = t.livery;
+      b.trainId = t.id; b.veh = cloneConsist(t.pendingVeh || t.veh); b.name = t.name; b.livery = t.livery; b.liveryScope = t.liveryScope || 'train';
       for (const c in t._st.caps) b.cargos.add(c);
     } else {
       const deps = g.stations.depots;
@@ -180,7 +181,7 @@ export const RailUIMixin = {
     const main = t
       ? `<button class="btn primary" data-act="bldApply" ${err || (cost.net > 0 && !g.economy.canAfford(cost.net)) ? 'disabled' : ''}>${icon('check')} ${this.tr('bld_apply')} · ${cost.net >= 0 ? fmt(cost.net) + '●' : '+' + fmt(-cost.net) + '●'}</button>`
       : `<button class="btn primary" data-act="bldBuy" ${buyErr ? `disabled data-tip="${this.tr(buyErr)}"` : ''}>${icon('coin', 'mini')} ${this.tr('buy_train')} · ${fmt(cost.net)}●</button>`;
-    return `<div class="bpreview"><img alt="" src="${this.consistPreview(vs, b.livery, t ? t.cargo : null)}"/></div>
+    return `<div class="bpreview"><img alt="" src="${this.consistPreview(vs, b.livery, t ? t.cargo : null, b.liveryScope)}"/></div>
       <div class="vstrip" role="list">${strip || `<span class="muted">${this.tr('bld_empty')}</span>`}</div>
       ${selRow}
       ${err ? `<div class="card warn small">${icon('warn', 'mini')} ${this.tr(err)}</div>` : ''}
@@ -193,6 +194,7 @@ export const RailUIMixin = {
       <h4>${this.tr('bld_details')}</h4>
       <label class="set"><span>${this.tr('name')}</span><input class="inp" maxlength="28" value="${esc(b.name || '')}" placeholder="${this.tr('auto_name')}" data-change="bldName"/></label>
       <label class="set"><span>${this.tr('livery')}</span><select data-change="bldLivery">${liv}</select></label>
+      <div class="seg small" role="group" aria-label="${this.tr('livery_scope')}"><button class="${b.liveryScope !== 'loco' ? 'on' : ''}" data-act="bldLiveryScope" data-arg="train">${this.tr('livery_scope_train')}</button><button class="${b.liveryScope === 'loco' ? 'on' : ''}" data-act="bldLiveryScope" data-arg="loco">${this.tr('livery_scope_loco')}</button></div>
       ${!t ? `<label class="set"><span>${this.tr('depot')}</span><select data-change="bldDepot">${depots.map((d) => `<option value="${d.id}" ${d.id === b.depotId ? 'selected' : ''}>${esc(d.name)}${g.net.conn[d.tile] ? '' : ' — ' + this.tr('not_connected')}</option>`).join('')}</select></label>` : ''}
       <h4>${this.tr('bld_templates')}</h4><div class="tpls">${tpls || `<span class="muted small">${this.tr('bld_no_templates')}</span>`}</div>
       <button class="btn ghost small" data-act="bldSaveTpl">${this.tr('bld_save_tpl')}</button>`;
@@ -389,12 +391,13 @@ export const RailUIMixin = {
         re();
       },
       bldAutoFit: () => this.railActions().bldAuto(null, null, null, true),
+      bldLiveryScope: (a) => { const B = b(); if (!B) return; B.liveryScope = a === 'loco' ? 'loco' : 'train'; re(); },
       bldBuy: () => {
         const B = b(), G = g();
         const dep = G.stations.depotById(B.depotId);
         const r = G.trains.buy(B.veh, dep, B.name || null);
         if (r.error) { this.error(r.error); return; }
-        r.train.livery = B.livery;
+        r.train.livery = B.livery; r.train.liveryScope = B.liveryScope === 'loco' ? 'loco' : 'train';
         this.bld = null;
         this.closePanel();
         G.select({ type: 'train', id: r.train.id });
@@ -406,7 +409,7 @@ export const RailUIMixin = {
         const e = G.trains.applyConsist(t, B.veh);
         if (e) { this.error(e); return; }
         if (B.name) t.name = B.name.slice(0, 28);
-        t.livery = B.livery; t.visualSig = null;
+        t.livery = B.livery; t.liveryScope = B.liveryScope === 'loco' ? 'loco' : 'train'; t.visualSig = null;
         this.toast(this.tr(t.pendingVeh ? 'toast_consist_pending' : 'toast_consist_applied', { name: t.name }), 'good', 'train');
         this.app.audio.play('construct');
         re();
@@ -417,7 +420,7 @@ export const RailUIMixin = {
         const dep = G.stations.depotById(t.homeDepot) || G.stations.depots.find((d) => G.net.conn[d.tile]);
         const r = G.trains.buy(t.pendingVeh || t.veh, dep, null);
         if (r.error) { this.error(r.error); return; }
-        r.train.livery = t.livery; r.train.mode = t.mode; r.train.route = JSON.parse(JSON.stringify(t.route)); r.train.filter = t.filter ? [...t.filter] : null;
+        r.train.livery = t.livery; r.train.liveryScope = t.liveryScope; r.train.mode = t.mode; r.train.route = JSON.parse(JSON.stringify(t.route)); r.train.filter = t.filter ? [...t.filter] : null;
         this.toast(this.tr('toast_train_bought', { name: r.train.name }), 'good', 'train');
       },
       bldSaveTpl: async () => {

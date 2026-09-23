@@ -1,27 +1,323 @@
 // Procedural locomotive and wagon models. Each model is built facing +X with its
 // base on the rail top at y=0 and its length matching the consist data
 // (locoLen / WAGONS[id].len). Geometry is cached per appearance key.
+//
+// Design rules (see src/style.js SCALE.vehicle): every vehicle shares the body
+// width, floor height, buffer/coupler height and roof line, so any consist
+// lines up; each traction era has its own silhouette language:
+//   steam    boiler, chimney, domes, cab, large spoked drivers with rods
+//   diesel   rectangular hoods, big cab, engine grilles, roof fans, handrails
+//   electric clean boxy bodies, pantographs, roof insulators, modern lights
+//   hst      long aerodynamic nose, continuous window band, bellows, skirts
+//   maglev   wrap-around skirt over the guideway, no visible wheels, glow line
 import * as THREE from 'three';
 import { ModelBuilder, shade } from '../core/ModelBuilder.js';
 import { CARGO, LOCOS, LIVERIES, WAGONS, locoLen } from '../config.js';
+import { SCALE, PAL } from '../style.js';
 
+const VS = SCALE.vehicle;
+const W = VS.width, FLOOR = VS.floor, ROOF = VS.roof, BUF = VS.buffer, GZ = VS.glassInset;
+const DARK = PAL.underframe, WHEEL = PAL.wheel, STEEL = PAL.steel, GLASS = PAL.glass, BRASS = PAL.brass, LIGHT = PAL.headlight, RED_L = PAL.tailLight;
 const cache = new Map();
-const DARK = 0x2a2c30, WHEEL = 0x1f2024, STEEL = 0x8c939a, GLASS = 0x2d3b48, BRASS = 0xd9b45a, LIGHT = 0xfff2c0, RED_L = 0xff5a4a;
 
-function wheels(mb, n, x0, x1, r = 0.13, col = WHEEL) {
-  for (let k = 0; k < n; k++) {
-    const x = x0 + (k * (x1 - x0)) / Math.max(1, n - 1);
-    mb.wheel(r, 0.06, 10, col, { x, y: r, z: 0.22 });
-    mb.wheel(r, 0.06, 10, col, { x, y: r, z: -0.22 });
+// ---------- running gear ----------
+// wheel with a lighter hub so it reads as a wheel from a distance
+function wheel(mb, x, y, r, z, col = WHEEL, seg = 10) {
+  mb.wheel(r, 0.05, seg, col, { x, y, z });
+  mb.wheel(r * 0.42, 0.055, 6, STEEL, { x, y, z: z + Math.sign(z) * 0.004 });
+}
+function wheelset(mb, x, r = VS.wheel) { for (const z of [0.22, -0.22]) wheel(mb, x, r, r, z, WHEEL, 8); }
+// bogie: side frames with axle boxes, 2 or 3 axles
+function bogie(mb, x, axles = 2, col = DARK, r = VS.wheel) {
+  const wb = axles === 3 ? 0.44 : 0.26;
+  mb.box(wb + 0.24, 0.09, 0.08, col, { x, y: r - 0.02, z: 0.27 });
+  mb.box(wb + 0.24, 0.09, 0.08, col, { x, y: r - 0.02, z: -0.27 });
+  mb.box(0.18, 0.06, 0.46, col, { x, y: r + 0.02 });               // bolster
+  for (let k = 0; k < axles; k++) {
+    const ax = x - wb / 2 + (k * wb) / Math.max(1, axles - 1);
+    wheelset(mb, ax, r);
+    for (const z of [0.3, -0.3]) mb.box(0.06, 0.06, 0.03, shade(col, 1.3), { x: ax, y: r - 0.03, z });
   }
 }
-function bogie(mb, x, col = DARK, r = 0.1) {
-  mb.box(0.42, 0.1, 0.5, col, { x, y: 0.05 });
-  for (const dx of [-0.12, 0.12]) for (const z of [0.23, -0.23]) mb.wheel(r, 0.05, 8, WHEEL, { x: x + dx, y: r, z });
+function bogiesAt(mb, L, axles = 2, col = DARK) { for (const s of [-1, 1]) bogie(mb, s * (L / 2 - VS.bogieInset - (axles === 3 ? 0.08 : 0)), axles, col); }
+// buffers with round heads at the standard height
+function buffers(mb, L, col = DARK) {
+  for (const s of [-1, 1]) for (const z of [0.17, -0.17]) {
+    mb.cyl(0.025, 0.025, 0.07, 6, col, { x: s * (L / 2 + 0.005), y: BUF, z, rz: Math.PI / 2, center: true });
+    mb.cyl(0.042, 0.042, 0.015, 8, STEEL, { x: s * (L / 2 + 0.04), y: BUF, z, rz: Math.PI / 2, center: true });
+  }
 }
-function bogies(mb, len, col = DARK) { for (const s of [-1, 1]) bogie(mb, s * (len / 2 - 0.32), col); }
-function buffers(mb, len, y = 0.2, col = DARK) {
-  for (const s of [-1, 1]) for (const z of [0.17, -0.17]) mb.cyl(0.03, 0.03, 0.08, 6, col, { x: s * (len / 2 + 0.01), y, z, rz: Math.PI / 2, center: true });
+function bufferBeam(mb, L, col) { for (const s of [-1, 1]) mb.box(0.05, 0.1, W, col, { x: s * (L / 2 - 0.025), y: BUF - 0.05 }); }
+function underframe(mb, L, col = DARK, beam = null) {
+  mb.box(L - 0.04, 0.07, W - 0.04, col, { y: FLOOR - 0.07 });
+  buffers(mb, L);
+  if (beam != null) bufferBeam(mb, L, beam);
+}
+function headlights(mb, x, y, spread, dir = 1, red = false) {
+  for (const z of spread ? [spread, -spread] : [0]) mb.box(0.03, 0.045, 0.07, red ? RED_L : LIGHT, { x: x + dir * 0.012, y, z, glow: true });
+}
+function sideWindows(mb, x0, x1, y, h, n, w, glassCol = GLASS, z = GZ) {
+  for (let k = 0; k < n; k++) {
+    const x = x0 + (k + 0.5) * ((x1 - x0) / n);
+    mb.box(w, h, 0.02, glassCol, { x, y, z, glow: true });
+    mb.box(w, h, 0.02, glassCol, { x, y, z: -z, glow: true });
+  }
+}
+function grille(mb, x, y, w, h, z, col) {
+  mb.box(w, h, 0.02, shade(col, 0.55), { x, y, z });
+  const n = Math.max(2, Math.round(h / 0.035));
+  for (let k = 0; k < n; k++) mb.box(w * 0.94, 0.012, 0.025, shade(col, 0.85), { x, y: y + (k + 0.5) * (h / n), z });
+}
+function handrail(mb, x0, x1, y, z) { mb.box(x1 - x0, 0.015, 0.015, STEEL, { x: (x0 + x1) / 2, y, z }); for (const x of [x0, (x0 + x1) / 2, x1]) mb.box(0.015, 0.1, 0.015, STEEL, { x, y: y - 0.1, z }); }
+function roofFan(mb, x, y) { mb.cyl(0.075, 0.075, 0.03, 10, shade(DARK, 1.4), { x, y }); mb.cyl(0.055, 0.055, 0.032, 10, DARK, { x, y: y + 0.005 }); }
+// pantograph: base, two arms forming a diamond-like Z, collector head
+function pantograph(mb, x, y, raised = true, dir = 1) {
+  mb.box(0.22, 0.03, 0.26, DARK, { x, y });
+  for (const z of [0.1, -0.1]) mb.cyl(0.022, 0.022, 0.05, 6, 0xe8e2d4, { x: x - 0.08, y: y - 0.04, z });
+  if (!raised) { mb.box(0.3, 0.02, 0.02, STEEL, { x: x + 0.02 * dir, y: y + 0.05 }); return; }
+  const a = 0.62 * dir;
+  mb.box(0.03, 0.26, 0.03, STEEL, { x: x + 0.05 * dir, y: y + 0.02, rz: a });
+  mb.box(0.03, 0.24, 0.03, STEEL, { x: x - 0.02 * dir, y: y + 0.2, rz: -a });
+  mb.box(0.07, 0.02, 0.36, STEEL, { x: x - 0.07 * dir, y: y + 0.31 });
+}
+
+// ---------- steam ----------
+function drivers(mb, n, x0, x1, r, rodCol) {
+  const xs = [];
+  for (let k = 0; k < n; k++) xs.push(x0 + (k * (x1 - x0)) / Math.max(1, n - 1));
+  for (const x of xs) for (const z of [0.23, -0.23]) {
+    wheel(mb, x, r, r, z, WHEEL, 14);
+    mb.box(0.07, 0.05, 0.02, shade(WHEEL, 1.5), { x: x - r * 0.45, y: r * 0.6, z: z + Math.sign(z) * 0.03 }); // counterweight
+  }
+  // coupling rods linking the drivers, at crank-pin height
+  if (n > 1) for (const z of [0.285, -0.285]) mb.box(x1 - x0 + 0.08, 0.025, 0.018, rodCol, { x: (x0 + x1) / 2, y: r * 0.75, z });
+  return xs;
+}
+function steamLoco(mb, m, L, body, trim, detail) {
+  const big = m.kind === 'steam2';
+  const tender = L >= 1.9;
+  const tank = m.id === 'meadow_tank' || m.id === 'pioneer';
+  const stream = m.id === 'silverline';
+  const Le = tender ? L * 0.62 : L;                 // engine part
+  const ex = L / 2 - Le / 2;                        // engine centre x
+  const r = big ? 0.25 : m.id === 'pioneer' ? 0.19 : 0.21;  // boiler radius
+  const accent = detail >= 2 ? BRASS : trim;
+  const front = ex + Le / 2;
+  const by = 0.3 + r;                               // boiler centre height
+  const nDrive = m.id === 'pioneer' ? 2 : m.id === 'meadow_tank' ? 2 : big ? 4 : 3;
+  const dr = big ? 0.17 : m.id === 'pioneer' ? 0.14 : 0.15;
+  // frame + running board
+  mb.box(Le, 0.08, 0.5, DARK, { x: ex, y: 0.2 });
+  mb.box(Le * 0.8, 0.02, W + 0.06, shade(DARK, 1.2), { x: ex + Le * 0.05, y: 0.3 });
+  const dx0 = ex - Le * 0.26, dx1 = ex + Le * (big ? 0.18 : 0.12);
+  drivers(mb, nDrive, dx0, dx1, dr, STEEL);
+  if (big || m.id === 'ironhill' || m.id === 'meadow_tank') wheelset(mb, front - 0.2, 0.09);         // leading truck
+  if (m.id === 'meadow_tank' || big) wheelset(mb, ex - Le / 2 + 0.16, 0.09);                          // trailing truck
+  // cylinders + main rod to the first driver
+  for (const z of [0.27, -0.27]) {
+    mb.hcyl(0.07, 0.24, 8, stream ? shade(body, 0.8) : DARK, { x: front - 0.3, y: 0.24, z });
+    mb.box(front - 0.3 - dx1, 0.03, 0.02, STEEL, { x: (front - 0.3 + dx1) / 2, y: dr * 0.8 + 0.02, z: z + Math.sign(z) * 0.03 });
+  }
+  const bl = Le * 0.62, bx = ex + Le * 0.14;
+  if (stream) {
+    // streamlined casing: full-width shroud with a rounded nose and skirts
+    const s0 = ex - Le / 2 + 0.46, s1 = front - 0.32, sc = (s0 + s1) / 2, sl = s1 - s0;
+    mb.box(sl, 0.5, W + 0.04, body, { x: sc, y: 0.26 });
+    mb.hcyl(r + 0.04, sl, 12, body, { x: sc, y: by });
+    mb.taper(0.32, W + 0.04, by + r + 0.04 - 0.26, W * 0.46, 0.24, shade(body, 1.08), { x: front - 0.16, y: 0.26, yb1: 0.1 });
+    mb.box(sl + 0.3, 0.04, W + 0.06, trim, { x: sc + 0.15, y: 0.46 });
+    for (const z of [W / 2 + 0.03, -W / 2 - 0.03]) mb.box(sl, 0.14, 0.02, shade(body, 0.7), { x: sc, y: 0.24, z });
+    headlights(mb, front - 0.01, 0.46, 0, 1);
+  } else {
+    mb.hcyl(r, bl, 12, body, { x: bx, y: by });
+    for (const f of [0.38, -0.05, -0.36]) mb.hcyl(r + 0.012, 0.035, 12, accent, { x: bx + bl * f, y: by });   // boiler bands
+    // smokebox + door
+    mb.hcyl(r + 0.01, 0.2, 12, shade(DARK, 1.15), { x: front - 0.16, y: by });
+    mb.cyl(r * 0.8, r * 0.8, 0.03, 12, shade(DARK, 1.4), { x: front - 0.05, y: by, rz: Math.PI / 2, center: true });
+    // chimney, steam dome, sand dome
+    const chH = (big ? 0.16 : 0.22) + detail * 0.02;
+    mb.cyl(0.06, 0.05, chH, 8, DARK, { x: front - 0.17, y: by + r - 0.03 });
+    mb.cyl(0.085, 0.065, 0.045, 8, DARK, { x: front - 0.17, y: by + r - 0.03 + chH - 0.02 });
+    mb.cyl(0.075, 0.08, 0.1, 8, accent, { x: bx + bl * 0.02, y: by + r - 0.04 });
+    mb.sphere(0.075, 0, accent, { x: bx + bl * 0.02, y: by + r + 0.06, sy: 0.6 });
+    mb.cyl(0.06, 0.065, 0.07, 8, body, { x: bx + bl * 0.25, y: by + r - 0.04 });
+    mb.sphere(0.06, 0, body, { x: bx + bl * 0.25, y: by + r + 0.03, sy: 0.6 });
+    mb.cyl(0.02, 0.02, 0.07, 6, BRASS, { x: bx - bl * 0.3, y: by + r - 0.02 });                              // whistle
+    headlights(mb, front - 0.02, by + r * 0.7, 0, 1);
+    if (big) for (const z of [0.29, -0.29]) mb.box(0.34, 0.3, 0.02, shade(body, 0.75), { x: front - 0.26, y: by - 0.12, z }); // smoke deflectors
+  }
+  // buffer beam (livery trim, classic red when trim is dark)
+  mb.box(0.05, 0.09, W, trim === 0x2b2b2b ? PAL.freightRed : trim, { x: front, y: BUF - 0.045 });
+  if (m.id === 'ironhill') mb.taper(0.1, W, 0.16, W * 0.84, 0.04, DARK, { x: front + 0.02, y: 0.02 });   // pilot
+  if (tank) for (const z of [0.25, -0.25]) mb.box(bl * 0.72, 0.28, 0.1, body, { x: bx - 0.05, y: 0.3, z });   // side tanks
+  // cab with overhanging roof, spectacle and side windows
+  const cabX = ex - Le / 2 + 0.24;
+  mb.box(0.44, 0.5, W + 0.04, body, { x: cabX, y: 0.28 });
+  mb.box(0.54, 0.05, W + 0.14, shade(body, 0.65), { x: cabX, y: 0.78 });
+  for (const z of [0.12, -0.12]) mb.cyl(0.05, 0.05, 0.02, 8, GLASS, { x: cabX + 0.225, y: 0.62, z, rz: Math.PI / 2, center: true, glow: true });
+  for (const z of [GZ + 0.02, -GZ - 0.02]) mb.box(0.24, 0.15, 0.02, GLASS, { x: cabX + 0.02, y: 0.55, z, glow: true });
+  mb.box(0.44, 0.03, W + 0.05, accent, { x: cabX, y: 0.44 });
+  buffers(mb, L);
+  if (tender) {
+    const Lt = L - Le - 0.06, tx = -L / 2 + Lt / 2;
+    mb.box(Lt, 0.08, 0.5, DARK, { x: tx, y: 0.2 });
+    bogie(mb, tx - Lt * 0.26, 2, DARK, 0.09); bogie(mb, tx + Lt * 0.26, 2, DARK, 0.09);
+    mb.box(Lt * 0.96, 0.42, W + 0.02, body, { x: tx, y: 0.26 });
+    mb.box(Lt * 0.96, 0.035, W + 0.04, accent, { x: tx, y: 0.46 });
+    mb.box(Lt * 0.66, 0.08, W - 0.08, PAL.coal, { x: tx + Lt * 0.1, y: 0.66 });
+    mb.sphere(0.16, 0, 0x26262a, { x: tx + Lt * 0.12, y: 0.72, sx: 2.2, sy: 0.55, sz: 1.3 });
+    mb.cyl(0.05, 0.05, 0.04, 8, DARK, { x: tx - Lt * 0.32, y: 0.68 });                                     // water filler
+    headlights(mb, -L / 2 - 0.005, 0.46, 0.15, -1, true);
+  } else {
+    mb.box(0.24, 0.32, W, shade(body, 0.85), { x: -L / 2 + 0.13, y: 0.3 });                                 // bunker
+    mb.box(0.18, 0.06, W - 0.12, PAL.coal, { x: -L / 2 + 0.13, y: 0.62 });
+    headlights(mb, -L / 2 - 0.005, 0.46, 0.15, -1, true);
+  }
+}
+
+// ---------- diesel ----------
+function dieselLoco(mb, m, L, body, trim, detail) {
+  const accent = detail >= 2 ? BRASS : trim;
+  const heavy = m.id === 'cargoking';
+  const cabUnit = m.id === 'metrorunner';
+  underframe(mb, L, DARK, shade(DARK, 1.3));
+  bogiesAt(mb, L, heavy ? 3 : 2);
+  mb.box(L - 0.1, 0.03, W + 0.06, shade(DARK, 1.2), { y: FLOOR });                      // walkway
+  if (cabUnit) {
+    // passenger cab unit: full-width carbody with rounded nose at both ends
+    const bodyL = L - 0.5;
+    mb.box(bodyL, 0.5, W, body, { y: FLOOR + 0.02 });
+    for (const s of [1, -1]) {
+      mb.taper(0.25, W, 0.5, W * 0.8, 0.3, body, { x: s * (bodyL / 2 + 0.125), y: FLOOR + 0.02, yb1: 0.04, flip: s < 0 });
+      mb.taper(0.12, W - 0.06, 0.1, W * 0.74, 0.1, GLASS, { x: s * (bodyL / 2 + 0.06), y: FLOOR + 0.43, yb1: -0.07, flip: s < 0, glow: true });
+      headlights(mb, s * (L / 2 - 0.02), FLOOR + 0.12, 0.13, s, s < 0);
+    }
+    mb.box(bodyL + 0.3, 0.05, W + 0.02, accent, { y: FLOOR + 0.16 });
+    sideWindows(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + 0.32, 0.1, 4, 0.14);
+    for (const x of [-0.25, 0.1]) roofFan(mb, x, FLOOR + 0.52);
+    grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, GZ + 0.005, body); grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, -GZ - 0.005, body);
+    return;
+  }
+  // hood unit: short hood - cab - long hood (cab-forward for the heavy unit)
+  const cabW = 0.34, cabX = heavy ? L / 2 - 0.3 : L / 2 - 0.55;
+  const hoodW = W - 0.12, hoodH = heavy ? 0.4 : 0.36;
+  const longX0 = -L / 2 + 0.1, longX1 = cabX - cabW / 2;
+  mb.box(longX1 - longX0, hoodH, hoodW, body, { x: (longX0 + longX1) / 2, y: FLOOR + 0.02 });
+  if (!heavy) { const sx0 = cabX + cabW / 2, sx1 = L / 2 - 0.1; mb.box(sx1 - sx0, hoodH * 0.8, hoodW, body, { x: (sx0 + sx1) / 2, y: FLOOR + 0.02 }); headlights(mb, sx1, FLOOR + hoodH * 0.8 - 0.05, 0.1, 1); }
+  else { mb.taper(0.15, W, 0.44, W * 0.8, 0.34, body, { x: L / 2 - 0.055, y: FLOOR + 0.02, yb1: 0.04 }); headlights(mb, L / 2 + 0.02, FLOOR + 0.12, 0.14, 1); }
+  // cab
+  mb.box(cabW, 0.56, W, body, { x: cabX, y: FLOOR + 0.02 });
+  mb.box(cabW + 0.06, 0.04, W + 0.04, shade(body, 0.7), { x: cabX, y: FLOOR + 0.58 });
+  for (const s of [1, -1]) mb.box(0.02, 0.13, W - 0.1, GLASS, { x: cabX + s * (cabW / 2 + 0.005), y: FLOOR + 0.38, glow: true });
+  for (const z of [GZ, -GZ]) mb.box(cabW * 0.7, 0.12, 0.02, GLASS, { x: cabX, y: FLOOR + 0.38, z, glow: true });
+  // livery stripe, grilles, fans, exhaust, handrails
+  mb.box(L - 0.12, 0.04, W + 0.005, accent, { y: FLOOR + 0.12 });
+  const nG = heavy ? 4 : 3;
+  for (let k = 0; k < nG; k++) { const x = longX0 + 0.15 + k * ((longX1 - longX0 - 0.3) / Math.max(1, nG - 1)); grille(mb, x, FLOOR + 0.16, 0.14, hoodH - 0.22, hoodW / 2 + 0.005, body); grille(mb, x, FLOOR + 0.16, 0.14, hoodH - 0.22, -hoodW / 2 - 0.005, body); }
+  for (let k = 0; k < (heavy ? 3 : 2); k++) roofFan(mb, longX0 + 0.18 + k * 0.22, FLOOR + hoodH + 0.02);
+  mb.cyl(0.03, 0.03, 0.08 + detail * 0.02, 6, DARK, { x: longX1 - 0.12, y: FLOOR + hoodH + 0.02 });
+  for (const z of [W / 2 + 0.02, -W / 2 - 0.02]) handrail(mb, longX0, longX1, FLOOR + 0.3, z);
+  headlights(mb, -L / 2 + 0.08, FLOOR + hoodH - 0.05, 0.1, -1, true);
+}
+
+// ---------- electric ----------
+function electricLoco(mb, m, L, body, trim, detail) {
+  const accent = detail >= 2 ? BRASS : trim;
+  const heavy = m.id === 'voltstream_e3';
+  const sleek = m.id === 'falcon';
+  underframe(mb, L, DARK, shade(DARK, 1.2));
+  bogiesAt(mb, L, heavy ? 3 : 2);
+  const H = heavy ? 0.56 : 0.52;
+  const noseL = sleek ? 0.32 : 0.12;
+  const bodyL = L - 2 * noseL - 0.02;
+  mb.box(bodyL, H, W, body, { y: FLOOR });
+  for (const s of [1, -1]) {
+    const x = s * (bodyL / 2 + noseL / 2);
+    if (sleek) {
+      mb.taper(noseL, W, H, W * 0.86, H * 0.72, body, { x, y: FLOOR, flip: s < 0 });
+      mb.taper(noseL * 0.8, W - 0.04, 0.13, W * 0.74, 0.13, GLASS, { x: x - s * noseL * 0.1, y: FLOOR + H - 0.12, yb1: -H * 0.224, flip: s < 0, glow: true });
+    } else {
+      mb.taper(noseL, W, H, W - 0.04, H - 0.06, body, { x, y: FLOOR, yb1: 0.02, flip: s < 0 });
+      mb.box(0.02, 0.14, W - 0.1, GLASS, { x: s * (L / 2 - 0.02), y: FLOOR + H - 0.22, glow: true });
+    }
+    headlights(mb, s * (L / 2 - 0.01), FLOOR + 0.1, 0.15, s, s < 0);
+    headlights(mb, s * (L / 2 - (sleek ? 0.2 : 0.03)), FLOOR + H - 0.05, 0, s, false);
+  }
+  // livery band + window band / louvre grilles
+  mb.box(L - 0.06, 0.05, W + 0.005, accent, { y: FLOOR + 0.14 });
+  if (sleek) { mb.box(bodyL * 0.94, 0.02, W + 0.006, shade(accent, 1.2), { y: FLOOR + 0.2 }); sideWindows(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + H - 0.2, 0.1, 5, 0.12); }
+  else { const n = heavy ? 5 : 4; for (let k = 0; k < n; k++) { const x = -bodyL / 2 + 0.2 + k * ((bodyL - 0.4) / (n - 1)); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, GZ, body); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, -GZ, body); } }
+  // roof: equipment, insulators, two pantographs (rear one raised)
+  const ry = FLOOR + H;
+  mb.box(bodyL * 0.5, 0.04, W * 0.6, shade(DARK, 1.3), { y: ry });
+  for (const x of [-0.12, 0.12]) mb.cyl(0.025, 0.025, 0.05, 6, 0xe8e2d4, { x, y: ry + 0.02 });
+  pantograph(mb, -L / 2 + 0.45, ry + 0.02, true, -1);
+  pantograph(mb, L / 2 - 0.45, ry + 0.02, false, 1);
+  if (detail >= 3) mb.box(bodyL * 0.4, 0.02, 0.02, BRASS, { y: FLOOR + 0.3, z: GZ + 0.01 });
+}
+
+// ---------- high speed power car ----------
+function hstLoco(mb, m, L, body, trim, detail) {
+  const accent = detail >= 2 ? BRASS : trim;
+  const freight = m.id === 'novarail';
+  const duck = m.id === 'vector_hst';
+  const noseL = m.id === 'arrowline_300' || duck ? 0.9 : freight ? 0.55 : 0.7;
+  const H = 0.5, x0 = -L / 2, xn = L / 2 - noseL;   // body from x0 to xn, nose from xn to L/2
+  mb.box(L - 0.1, 0.06, W - 0.08, DARK, { y: FLOOR - 0.06 });
+  bogie(mb, x0 + 0.34); bogie(mb, xn - 0.1);
+  mb.box(xn - x0, H, W, body, { x: (x0 + xn) / 2, y: FLOOR });
+  // nose in three tapered sections for a smooth low-poly profile
+  const segs = duck ? [[0.35, 1, 0.94, 0, 0.9], [0.3, 0.94, 0.76, 0.02, 0.62], [0.25, 0.76, 0.5, 0.04, 0.3]]
+    : [[0.4, 1, 0.9, 0, 0.8], [0.3, 0.9, 0.66, 0.02, 0.52], [0.3, 0.66, 0.36, 0.05, 0.22]];
+  let x = xn, prevH = H, prevLift = 0;
+  const tot = segs.reduce((a, s) => a + s[0], 0);
+  for (const [f, w0, w1, lift, h1] of segs) {
+    const len = noseL * (f / tot);
+    mb.taper(len, W * w0, prevH, W * w1, H * h1, body, { x: x + len / 2, y: FLOOR + prevLift, yb1: lift - prevLift });
+    x += len; prevH = H * h1; prevLift = lift;
+  }
+  // windscreen follows the first nose section
+  const e1 = H * segs[0][4];
+  mb.taper(noseL * (segs[0][0] / tot), W * 0.9, 0.11, W * 0.72, 0.11, GLASS, { x: xn + noseL * (segs[0][0] / tot) / 2, y: FLOOR + H - 0.1, yb1: e1 - H, glow: true });
+  // skirt, livery flash along the nose, lights
+  mb.box(L - 0.2, 0.08, W + 0.01, shade(body, 0.75), { x: -0.1, y: FLOOR - 0.02 });
+  mb.box(xn - x0, 0.05, W + 0.006, accent, { x: (x0 + xn) / 2, y: FLOOR + 0.12 });
+  mb.taper(noseL * 0.9, W + 0.006, 0.05, W * 0.4, 0.03, accent, { x: xn + noseL * 0.45, y: FLOOR + 0.12, yb1: 0.04 });
+  headlights(mb, L / 2 - noseL * 0.2, FLOOR + 0.14, 0.12, 1);
+  headlights(mb, x0, FLOOR + 0.2, 0.15, -1, true);
+  if (!freight) sideWindows(mb, x0 + 0.15, xn - 0.05, FLOOR + H - 0.2, 0.1, 3, 0.14);
+  else for (let k = 0; k < 3; k++) { grille(mb, x0 + 0.25 + k * 0.25, FLOOR + 0.2, 0.16, 0.18, GZ, body); grille(mb, x0 + 0.25 + k * 0.25, FLOOR + 0.2, 0.16, 0.18, -GZ, body); }
+  // rear gangway bellows to the coaches
+  mb.box(0.06, H - 0.08, W - 0.14, DARK, { x: x0 - 0.02, y: FLOOR + 0.04 });
+  pantograph(mb, x0 + 0.4, FLOOR + H, true, -1);
+  mb.box(0.4, 0.03, W * 0.5, shade(DARK, 1.3), { x: x0 + 0.85, y: FLOOR + H });
+}
+
+// ---------- maglev ----------
+function maglevLoco(mb, m, L, body, trim, detail) {
+  const accent = detail >= 2 ? 0x9ff6ff : trim;
+  const needle = m.id === 'magna_m3';
+  const noseL = needle ? 0.95 : 0.7, H = 0.5, x0 = -L / 2, xn = L / 2 - noseL;
+  // guideway skirt wrapping down around the beam, no wheels
+  mb.box(L * 0.94, 0.16, W * 0.72, DARK, { x: -noseL * 0.2, y: 0.02 });
+  mb.box(L * 0.9, 0.03, 0.03, PAL.maglevGlow, { x: -noseL * 0.2, y: 0.08, z: W * 0.36 + 0.01, glow: true });
+  mb.box(L * 0.9, 0.03, 0.03, PAL.maglevGlow, { x: -noseL * 0.2, y: 0.08, z: -W * 0.36 - 0.01, glow: true });
+  mb.box(xn - x0, H, W + 0.04, body, { x: (x0 + xn) / 2, y: FLOOR - 0.04 });
+  const segs = needle ? [[0.3, 1, 0.9, 0, 0.84], [0.35, 0.9, 0.6, 0.03, 0.5], [0.35, 0.6, 0.2, 0.08, 0.14]] : [[0.4, 1, 0.9, 0, 0.8], [0.35, 0.9, 0.62, 0.03, 0.46], [0.25, 0.62, 0.3, 0.07, 0.18]];
+  let x = xn, prevH = H, prevLift = 0;
+  const tot = segs.reduce((a, s) => a + s[0], 0);
+  for (const [f, w0, w1, lift, h1] of segs) {
+    const len = noseL * (f / tot);
+    mb.taper(len, (W + 0.04) * w0, prevH, (W + 0.04) * w1, H * h1, body, { x: x + len / 2, y: FLOOR - 0.04 + prevLift, yb1: lift - prevLift });
+    x += len; prevH = H * h1; prevLift = lift;
+  }
+  const m1 = H * segs[0][4];
+  mb.taper(noseL * (segs[0][0] / tot), W * 0.94, 0.11, W * 0.76, 0.11, GLASS, { x: xn + noseL * (segs[0][0] / tot) / 2, y: FLOOR - 0.04 + H - 0.1, yb1: m1 - H, glow: true });
+  mb.box(xn - x0, 0.08, 0.02, GLASS, { x: (x0 + xn) / 2, y: FLOOR + H - 0.2, z: W / 2 + 0.025, glow: true });
+  mb.box(xn - x0, 0.08, 0.02, GLASS, { x: (x0 + xn) / 2, y: FLOOR + H - 0.2, z: -W / 2 - 0.025, glow: true });
+  mb.box(xn - x0 + noseL * 0.6, 0.04, W + 0.05, accent, { x: (x0 + xn) / 2 + noseL * 0.3, y: FLOOR + 0.1 });
+  headlights(mb, L / 2 - noseL * 0.15, FLOOR + 0.08, 0.1, 1);
+  mb.box(0.06, H - 0.1, W - 0.12, DARK, { x: x0 - 0.02, y: FLOOR });
 }
 
 export function liveryColors(model, liveryId) {
@@ -36,277 +332,158 @@ export function couplerGeometry() {
   return mb.build();
 }
 
-// ---------- locomotives ----------
-function steamLoco(mb, m, L, body, trim, detail) {
-  const big = m.kind === 'steam2';
-  const tender = L >= 1.9;
-  const tankEngine = m.id === 'meadow_tank' || m.id === 'pioneer';
-  const Le = tender ? L * 0.64 : L;          // engine part
-  const ex = L / 2 - Le / 2;                 // engine center x
-  const r = big ? 0.25 : 0.21;
-  const accent = detail >= 2 ? BRASS : trim;
-  mb.box(Le, 0.1, 0.56, DARK, { x: ex, y: 0.16 });
-  const nDrive = big ? 4 : 3;
-  wheels(mb, nDrive, ex - Le * 0.3, ex + Le * 0.22, big ? 0.16 : 0.14);
-  if (big) wheels(mb, 1, ex + Le * 0.4, ex + Le * 0.4, 0.09);  // pony truck
-  const bl = Le * 0.62, bx = ex + Le * 0.14;
-  mb.hcyl(r, bl, 12, body, { x: bx, y: 0.26 + r });
-  for (const f of [0.35, -0.2]) mb.hcyl(r + 0.02, 0.05, 12, accent, { x: bx + bl * f, y: 0.26 + r });
-  const front = ex + Le / 2;
-  mb.cyl(r * 1.02, r * 1.02, 0.06, 12, DARK, { x: front - 0.2, y: 0.26 + r, rz: Math.PI / 2, center: true });
-  const chH = 0.22 + detail * 0.03;
-  mb.cyl(0.07, 0.055, chH, 8, DARK, { x: front - 0.24, y: 0.26 + r * 2 - 0.02 });
-  mb.cyl(0.095, 0.07, 0.05, 8, DARK, { x: front - 0.24, y: 0.26 + r * 2 + chH - 0.04 });
-  mb.cyl(0.07, 0.07, 0.1, 8, accent, { x: bx, y: 0.26 + r * 2 - 0.03 });
-  if (tankEngine) {
-    // side water tanks
-    for (const z of [0.25, -0.25]) mb.box(bl * 0.7, 0.26, 0.1, body, { x: bx - 0.05, y: 0.24, z });
-  }
-  const cabX = ex - Le / 2 + 0.24;
-  mb.box(0.44, 0.5, 0.58, body, { x: cabX, y: 0.22 });
-  mb.box(0.52, 0.06, 0.64, shade(body, 0.7), { x: cabX, y: 0.72 });
-  mb.box(0.02, 0.16, 0.4, GLASS, { x: cabX + 0.23, y: 0.48 });
-  mb.box(0.28, 0.14, 0.02, GLASS, { x: cabX, y: 0.48, z: 0.295 });
-  mb.box(0.28, 0.14, 0.02, GLASS, { x: cabX, y: 0.48, z: -0.295 });
-  mb.box(0.12, 0.08, 0.5, accent, { x: front + 0.02, y: 0.12 });
-  mb.hcyl(0.07, 0.22, 8, DARK, { x: front - 0.3, y: 0.24, z: 0.25 });
-  mb.hcyl(0.07, 0.22, 8, DARK, { x: front - 0.3, y: 0.24, z: -0.25 });
-  mb.box(Le * 0.5, 0.03, 0.02, STEEL, { x: ex, y: 0.15, z: 0.3 });
-  mb.box(Le * 0.5, 0.03, 0.02, STEEL, { x: ex, y: 0.15, z: -0.3 });
-  mb.cyl(0.05, 0.05, 0.05, 8, LIGHT, { x: front - 0.17, y: 0.36 + r, rz: Math.PI / 2, center: true, glow: true });
-  if (big) for (const z of [0.27, -0.27]) mb.box(0.36, 0.26, 0.02, shade(body, 0.8), { x: front - 0.28, y: 0.3 + r, z }); // smoke deflectors
-  if (m.id === 'silverline') mb.hcyl(r + 0.03, 0.18, 12, shade(body, 1.2), { x: front - 0.12, y: 0.26 + r, sx: 1.1 });
-  buffers(mb, L, 0.2);
-  if (tender) {
-    const Lt = L - Le - 0.06, tx = -L / 2 + Lt / 2;
-    mb.box(Lt, 0.08, 0.52, DARK, { x: tx, y: 0.16 });
-    wheels(mb, big ? 3 : 2, tx - Lt * 0.32, tx + Lt * 0.32, 0.1);
-    mb.box(Lt * 0.96, 0.4, 0.54, body, { x: tx, y: 0.24 });
-    mb.box(Lt * 0.96, 0.04, 0.56, trim, { x: tx, y: 0.36 });
-    mb.box(Lt * 0.6, 0.08, 0.44, 0x1e1e22, { x: tx + Lt * 0.12, y: 0.64 }); // coal
-    mb.sphere(0.16, 0, 0x26262a, { x: tx + Lt * 0.12, y: 0.7, sx: 2.2, sy: 0.6, sz: 1.3 });
-  } else {
-    mb.box(0.22, 0.28, 0.5, shade(body, 0.85), { x: -L / 2 + 0.12, y: 0.26 }); // bunker
-    mb.box(0.18, 0.06, 0.4, 0x1e1e22, { x: -L / 2 + 0.12, y: 0.54 });
-  }
-  if (detail >= 1) mb.box(0.03, 0.22, 0.4, shade(body, 0.8), { x: front - 0.2, y: 0.3 });
-}
-
-function scaleX(geo, f) { geo.scale(f, 1, 1); geo.computeBoundingSphere(); geo.computeBoundingBox(); return geo; }
-
 export function locoGeometry(modelId, liveryId, detail = 0) {
   const key = `L:${modelId}:${liveryId}:${detail}`;
   if (cache.has(key)) return cache.get(key);
   const model = LOCOS.find((m) => m.id === modelId) || LOCOS[0];
   const { body, trim } = liveryColors(model, liveryId);
   const mb = new ModelBuilder();
-  const Lr = locoLen(model);
-  const L = 1.6;          // non-steam models are authored at 1.6 and stretched
-  const accent = detail >= 2 ? BRASS : trim;
-  let stretch = Lr / L;
+  const L = locoLen(model);
   switch (model.kind) {
-    case 'steam':
-    case 'steam2': steamLoco(mb, model, Lr, body, trim, detail); stretch = 1; break;
-    case 'diesel': {
-      mb.box(L, 0.12, 0.56, DARK, { y: 0.14 });
-      bogies(mb, L);
-      mb.box(L * 0.92, 0.46, 0.52, body, { y: 0.26 });
-      mb.box(L * 0.92, 0.05, 0.54, trim, { y: 0.4 });
-      mb.box(0.32, 0.2, 0.54, body, { x: 0.52, y: 0.72 });
-      mb.box(0.02, 0.12, 0.44, GLASS, { x: 0.69, y: 0.76 });
-      mb.box(0.24, 0.1, 0.02, GLASS, { x: 0.52, y: 0.78, z: 0.275 });
-      mb.box(0.24, 0.1, 0.02, GLASS, { x: 0.52, y: 0.78, z: -0.275 });
-      for (let k = 0; k < 4; k++) mb.box(0.14, 0.12, 0.02, shade(body, 0.6), { x: -0.5 + k * 0.2, y: 0.5, z: 0.265 });
-      for (let k = 0; k < 4; k++) mb.box(0.14, 0.12, 0.02, shade(body, 0.6), { x: -0.5 + k * 0.2, y: 0.5, z: -0.265 });
-      mb.box(0.3, 0.04, 0.3, DARK, { x: -0.2, y: 0.72 });
-      mb.cyl(0.04, 0.04, 0.06 + detail * 0.02, 6, DARK, { x: -0.1, y: 0.74 });
-      mb.box(0.04, 0.06, 0.1, LIGHT, { x: 0.74, y: 0.34, glow: true });
-      mb.box(0.04, 0.05, 0.08, RED_L, { x: -0.74, y: 0.34, glow: true });
-      for (const s of [1, -1]) mb.box(0.06, 0.03, 0.56, accent, { x: s * 0.77, y: 0.18 });
-      break;
-    }
-    case 'electric': {
-      mb.box(L, 0.1, 0.56, DARK, { y: 0.14 });
-      bogies(mb, L);
-      mb.box(L * 0.96, 0.56, 0.54, body, { y: 0.24 });
-      mb.box(L * 0.96, 0.06, 0.56, trim, { y: 0.36 });
-      for (const s of [1, -1]) {
-        mb.box(0.1, 0.36, 0.5, shade(body, 0.9), { x: s * 0.78, y: 0.28, rz: -0.25 * s });
-        mb.box(0.02, 0.14, 0.44, GLASS, { x: s * 0.8, y: 0.6, rz: -0.25 * s });
-        mb.box(0.04, 0.05, 0.1, s > 0 ? LIGHT : RED_L, { x: s * 0.83, y: 0.3, glow: true });
-      }
-      for (let k = 0; k < 5; k++) mb.box(0.12, 0.1, 0.02, GLASS, { x: -0.5 + k * 0.22, y: 0.56, z: 0.275 });
-      for (let k = 0; k < 5; k++) mb.box(0.12, 0.1, 0.02, GLASS, { x: -0.5 + k * 0.22, y: 0.56, z: -0.275 });
-      mb.box(0.3, 0.03, 0.3, DARK, { x: -0.2, y: 0.8 });
-      mb.box(0.03, 0.26, 0.03, STEEL, { x: -0.2, y: 0.82, rz: 0.5 });
-      mb.box(0.03, 0.26, 0.03, STEEL, { x: -0.1, y: 0.92, rz: -0.6 });
-      mb.box(0.06, 0.02, 0.36, STEEL, { x: -0.05, y: 1.04 });
-      break;
-    }
-    case 'hst': {
-      mb.box(L * 0.7, 0.08, 0.52, DARK, { x: -0.2, y: 0.12 });
-      bogies(mb, L);
-      mb.box(L * 0.72, 0.52, 0.52, body, { x: -0.22, y: 0.22 });
-      mb.box(L * 0.72, 0.07, 0.54, trim, { x: -0.22, y: 0.3 });
-      for (let k = 0; k < 4; k++) {
-        const tt = k / 4;
-        mb.box(0.12, 0.52 * (1 - tt * 0.7), 0.52 * (1 - tt * 0.35), body, { x: 0.38 + k * 0.1, y: 0.22 });
-      }
-      mb.box(0.3, 0.05, 0.4, GLASS, { x: 0.46, y: 0.6, rz: -0.35 });
-      mb.box(0.06, 0.05, 0.08, LIGHT, { x: 0.78, y: 0.28, z: 0.14, glow: true });
-      mb.box(0.06, 0.05, 0.08, LIGHT, { x: 0.78, y: 0.28, z: -0.14, glow: true });
-      for (let k = 0; k < 4; k++) mb.box(0.14, 0.1, 0.02, GLASS, { x: -0.7 + k * 0.2, y: 0.54, z: 0.265 });
-      for (let k = 0; k < 4; k++) mb.box(0.14, 0.1, 0.02, GLASS, { x: -0.7 + k * 0.2, y: 0.54, z: -0.265 });
-      mb.box(0.24, 0.03, 0.2, DARK, { x: -0.5, y: 0.74 });
-      mb.box(0.03, 0.2, 0.03, STEEL, { x: -0.5, y: 0.76, rz: 0.6 });
-      mb.box(0.05, 0.02, 0.3, STEEL, { x: -0.42, y: 0.9 });
-      break;
-    }
-    case 'maglev':
-    default: {
-      mb.box(L * 0.9, 0.14, 0.4, DARK, { y: 0.02 });
-      mb.box(L * 0.74, 0.5, 0.56, body, { x: -0.18, y: 0.16 });
-      mb.box(L * 0.74, 0.05, 0.58, trim, { x: -0.18, y: 0.2 });
-      for (let k = 0; k < 6; k++) {
-        const tt = k / 6;
-        mb.box(0.08, 0.5 * (1 - tt * 0.75), 0.56 * (1 - tt * 0.4), body, { x: 0.43 + k * 0.07, y: 0.16 });
-      }
-      mb.box(0.36, 0.04, 0.46, GLASS, { x: 0.42, y: 0.56, rz: -0.28 });
-      mb.box(L * 0.7, 0.08, 0.02, GLASS, { x: -0.2, y: 0.5, z: 0.285 });
-      mb.box(L * 0.7, 0.08, 0.02, GLASS, { x: -0.2, y: 0.5, z: -0.285 });
-      mb.box(L * 0.8, 0.03, 0.03, 0x7ff0ff, { y: 0.1, z: 0.21, glow: true });
-      mb.box(L * 0.8, 0.03, 0.03, 0x7ff0ff, { y: 0.1, z: -0.21, glow: true });
-      mb.box(0.05, 0.04, 0.3, LIGHT, { x: 0.83, y: 0.22, glow: true });
-      break;
-    }
+    case 'steam': case 'steam2': steamLoco(mb, model, L, body, trim, detail); break;
+    case 'diesel': dieselLoco(mb, model, L, body, trim, detail); break;
+    case 'electric': electricLoco(mb, model, L, body, trim, detail); break;
+    case 'hst': hstLoco(mb, model, L, body, trim, detail); break;
+    default: maglevLoco(mb, model, L, body, trim, detail);
   }
-  if (detail >= 3) { mb.box(0.5, 0.03, 0.02, BRASS, { x: 0, y: 0.34, z: 0.29 }); mb.box(0.5, 0.03, 0.02, BRASS, { x: 0, y: 0.34, z: -0.29 }); }
   const g = mb.build();
-  if (stretch !== 1) scaleX(g, stretch);
   cache.set(key, g);
   return g;
 }
 
 // ---------- wagons ----------
 function frame(mb, L, eraKind, col = DARK) {
-  mb.box(L, 0.08, 0.52, col, { y: 0.16 });
-  if (eraKind === 'maglev') mb.box(L * 0.9, 0.14, 0.38, DARK, { y: 0.02 });
-  else bogies(mb, L);
-  buffers(mb, L, 0.2);
+  if (eraKind === 'maglev') {
+    mb.box(L - 0.04, 0.07, W - 0.04, col, { y: FLOOR - 0.07 });
+    mb.box(L * 0.92, 0.16, W * 0.72, DARK, { y: 0.02 });
+    mb.box(L * 0.88, 0.03, 0.03, PAL.maglevGlow, { y: 0.08, z: W * 0.36 + 0.01, glow: true });
+    mb.box(L * 0.88, 0.03, 0.03, PAL.maglevGlow, { y: 0.08, z: -W * 0.36 - 0.01, glow: true });
+  } else { underframe(mb, L, col); bogiesAt(mb, L); }
 }
-function windowsRow(mb, L, y, h, n, w, glassCol = GLASS) {
-  for (let k = 0; k < n; k++) {
-    const x = -L / 2 + 0.2 + (k + 0.5) * ((L - 0.4) / n);
-    mb.box(w, h, 0.02, glassCol, { x, y, z: 0.265, glow: true });
-    mb.box(w, h, 0.02, glassCol, { x, y, z: -0.265, glow: true });
-  }
-}
+function gangway(mb, L, H = 0.46) { for (const s of [-1, 1]) mb.box(0.05, H - 0.08, W - 0.16, DARK, { x: s * (L / 2 + 0.01), y: FLOOR + 0.04 }); }
 // heap of bulk cargo; fill 1..3
 function heap(mb, L, w, y, col, fill) {
   if (!fill) return;
-  const h = 0.06 + fill * 0.05;
+  const h = 0.05 + fill * 0.045;
   mb.box(L, 0.05, w, col, { y: y - 0.02 });
-  mb.sphere(0.2, 0, col, { y: y + h * 0.3, sx: (L / 0.4) * 0.95, sy: h * 3, sz: (w / 0.4) * 1.05 });
+  mb.sphere(0.2, 1, col, { y: y + h * 0.25, sx: (L / 0.4) * 0.95, sy: h * 3, sz: (w / 0.4) * 1.05 });
+  mb.sphere(0.05, 0, shade(col, 0.8), { x: L * 0.2, y: y + h * 0.9, sz: 1.2 });
+  mb.sphere(0.04, 0, shade(col, 1.2), { x: -L * 0.15, y: y + h * 0.8 });
 }
+// deterministic per-vehicle weathering so a freight train is not a clone row
+const variantTint = (c, v) => (v ? shade(c, [1, 0.92, 1.07, 0.86][v & 3]) : c);
 
 // fill: 0 empty, 1..3 load level. cargoId: what the wagon currently carries.
-export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimCol) {
+// variant: 0..3 per-vehicle weathering for freight stock.
+export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimCol, variant = 0) {
   const w = WAGONS[wagonId] ? wagonId : 'boxcar';
-  const key = `W:${w}:${cargoId || ''}:${fill | 0}:${eraKind}:${liveryBody}:${trimCol}`;
+  const key = `W:${w}:${cargoId || ''}:${fill | 0}:${eraKind}:${liveryBody}:${trimCol}:${variant | 0}`;
   if (cache.has(key)) return cache.get(key);
   const mb = new ModelBuilder();
   const L = WAGONS[w].len;
   const modern = eraKind === 'electric' || eraKind === 'hst' || eraKind === 'maglev';
   const cc = cargoId ? CARGO[cargoId].color : 0x999999;
   const loaded = fill > 0;
+  const V = variant | 0;
   switch (w) {
     case 'coach':
     case 'commuter':
     case 'premium':
     case 'cab_car': {
       frame(mb, L, eraKind);
-      const body = w === 'premium' ? shade(liveryBody, 0.6) : liveryBody;
+      const body = w === 'premium' ? shade(liveryBody, 0.62) : liveryBody;
       const trim = w === 'premium' ? BRASS : trimCol;
-      mb.box(L * 0.98, 0.46, 0.52, body, { y: 0.22 });
-      mb.box(L * 0.98, 0.05, 0.54, trim, { y: 0.3 });
-      if (w === 'commuter') mb.box(L * 0.98, 0.1, 0.535, shade(trim, 0.9), { y: 0.56 });
-      if (modern || w === 'commuter') mb.box(L, 0.08, 0.5, shade(body, 0.85), { y: 0.68 });
-      else mb.cyl(0.28, 0.28, L * 0.98, 10, shade(body, 0.6), { y: 0.64, rz: Math.PI / 2, center: true, sx: 0.4 });
-      if (w === 'premium') { windowsRow(mb, L, 0.46, 0.16, 4, 0.24); mb.box(L * 0.9, 0.02, 0.54, BRASS, { y: 0.62 }); }
+      const H = ROOF - FLOOR - 0.04;
+      mb.box(L - 0.02, H, W, body, { y: FLOOR });
+      mb.box(L - 0.02, 0.04, W + 0.006, trim, { y: FLOOR + 0.1 });
+      if (modern || w === 'commuter') mb.box(L - 0.06, 0.06, W - 0.06, shade(body, 0.8), { y: FLOOR + H });
+      else { mb.cyl(0.3, 0.3, L - 0.04, 12, shade(body, 0.62), { y: FLOOR + H - 0.03, rz: Math.PI / 2, center: true, sx: 0.28, sz: 0.87 }); }
+      if (w === 'premium') { sideWindows(mb, -L / 2 + 0.15, L / 2 - 0.15, FLOOR + 0.26, 0.15, 4, 0.24); mb.box(L * 0.9, 0.02, W + 0.008, BRASS, { y: FLOOR + H - 0.07 }); }
       else if (w === 'commuter') {
-        windowsRow(mb, L, 0.46, 0.13, 6, 0.13);
-        for (const x of [-L / 4, L / 4]) for (const z of [0.268, -0.268]) mb.box(0.16, 0.34, 0.02, shade(body, 0.7), { x, y: 0.24, z });
-      } else windowsRow(mb, L, 0.46, 0.13, Math.round(L * 3.6), 0.16);
+        sideWindows(mb, -L / 2 + 0.12, L / 2 - 0.12, FLOOR + 0.26, 0.13, 6, 0.13);
+        for (const x of [-L / 4, L / 4]) for (const z of [GZ + 0.003, -GZ - 0.003]) mb.box(0.16, 0.36, 0.02, shade(body, 0.72), { x, y: FLOOR + 0.02, z });
+        mb.box(L - 0.02, 0.06, W + 0.004, shade(trim, 0.9), { y: FLOOR + H - 0.12 });
+      } else sideWindows(mb, -L / 2 + 0.12, L / 2 - 0.12, FLOOR + 0.26, 0.13, Math.round(L * 3.6), 0.15);
       if (w === 'cab_car') {
-        mb.box(0.06, 0.42, 0.5, shade(body, 0.9), { x: L / 2 - 0.03, y: 0.24 });
-        mb.box(0.02, 0.14, 0.4, GLASS, { x: L / 2 + 0.005, y: 0.5, glow: true });
-        mb.box(0.04, 0.05, 0.1, LIGHT, { x: L / 2 + 0.01, y: 0.3, z: 0.14, glow: true });
-        mb.box(0.04, 0.05, 0.1, LIGHT, { x: L / 2 + 0.01, y: 0.3, z: -0.14, glow: true });
-      }
+        mb.box(0.03, H - 0.06, W + 0.01, shade(body, 0.88), { x: L / 2 - 0.02, y: FLOOR + 0.03 });
+        mb.box(0.02, 0.14, W - 0.12, GLASS, { x: L / 2, y: FLOOR + H - 0.2, glow: true });
+        headlights(mb, L / 2 - 0.005, FLOOR + 0.1, 0.14, 1);
+      } else gangway(mb, L, H);
       break;
     }
     case 'hs_coach': {
+      // same cross-section, window band and livery flash as the HST power car
       frame(mb, L, eraKind);
-      mb.box(L, 0.48, 0.52, liveryBody, { y: 0.2 });
-      mb.box(L, 0.06, 0.54, trimCol, { y: 0.28 });
-      mb.box(L * 0.92, 0.1, 0.02, GLASS, { y: 0.46, z: 0.265, glow: true });
-      mb.box(L * 0.92, 0.1, 0.02, GLASS, { y: 0.46, z: -0.265, glow: true });
-      mb.box(L, 0.06, 0.46, shade(liveryBody, 0.9), { y: 0.68 });
+      const H = 0.5;
+      mb.box(L, H, W, liveryBody, { y: FLOOR });
+      mb.box(L, 0.05, W + 0.006, trimCol, { y: FLOOR + 0.12 });
+      mb.box(L - 0.12, 0.1, 0.02, GLASS, { y: FLOOR + H - 0.2, z: GZ, glow: true });
+      mb.box(L - 0.12, 0.1, 0.02, GLASS, { y: FLOOR + H - 0.2, z: -GZ, glow: true });
+      mb.box(L, 0.08, W + 0.01, shade(liveryBody, 0.75), { y: FLOOR - 0.02 });
+      mb.box(L - 0.1, 0.04, W - 0.1, shade(liveryBody, 0.85), { y: FLOOR + H });
+      gangway(mb, L, H);
       break;
     }
     case 'observation': {
       frame(mb, L, eraKind);
-      mb.box(L * 0.98, 0.46, 0.52, liveryBody, { y: 0.22 });
-      mb.box(L * 0.98, 0.05, 0.54, trimCol, { y: 0.3 });
-      mb.box(L * 0.98, 0.06, 0.5, shade(liveryBody, 0.85), { y: 0.68 });
-      windowsRow(mb, L * 0.6, 0.46, 0.13, 3, 0.16);
-      // glass dome
-      mb.box(L * 0.45, 0.2, 0.46, GLASS, { x: L * 0.18, y: 0.72, glow: true });
-      mb.box(L * 0.47, 0.03, 0.48, shade(liveryBody, 0.7), { x: L * 0.18, y: 0.92 });
+      const H = ROOF - FLOOR - 0.04;
+      mb.box(L - 0.02, H, W, liveryBody, { y: FLOOR });
+      mb.box(L - 0.02, 0.04, W + 0.006, trimCol, { y: FLOOR + 0.1 });
+      mb.box(L - 0.06, 0.05, W - 0.04, shade(liveryBody, 0.8), { y: FLOOR + H });
+      sideWindows(mb, -L / 2 + 0.1, 0, FLOOR + 0.26, 0.13, 3, 0.15);
+      mb.taper(L * 0.5, W - 0.06, 0.22, W - 0.1, 0.16, GLASS, { x: L * 0.2, y: FLOOR + H, glow: true });
+      mb.box(L * 0.5, 0.02, W - 0.04, shade(liveryBody, 0.65), { x: L * 0.2, y: FLOOR + H + 0.22 });
+      gangway(mb, L, H);
       break;
     }
     case 'mail_van': {
       frame(mb, L, eraKind);
-      const c = 0xb04545;
-      mb.box(L * 0.96, 0.48, 0.52, c, { y: 0.22 });
-      mb.box(L * 0.96, 0.05, 0.54, 0xe8d9a8, { y: 0.44 });
-      mb.box(L, 0.05, 0.56, shade(c, 0.6), { y: 0.7 });
-      mb.box(0.28, 0.34, 0.02, shade(c, 0.75), { y: 0.24, z: 0.27 });
-      mb.box(0.28, 0.34, 0.02, shade(c, 0.75), { y: 0.24, z: -0.27 });
-      mb.box(0.1, 0.06, 0.02, 0xe8d9a8, { x: -L / 4, y: 0.56, z: 0.275 });
+      const c = variantTint(PAL.mailRed, V & 1), H = ROOF - FLOOR - 0.04;
+      mb.box(L - 0.04, H, W, c, { y: FLOOR });
+      mb.box(L - 0.04, 0.04, W + 0.006, PAL.cream, { y: FLOOR + 0.24 });
+      mb.box(L, 0.05, W + 0.04, shade(c, 0.6), { y: FLOOR + H });
+      for (const z of [GZ + 0.005, -GZ - 0.005]) { mb.box(0.28, 0.34, 0.02, shade(c, 0.75), { y: FLOOR + 0.02, z }); mb.box(0.12, 0.07, 0.02, PAL.cream, { x: -L / 4, y: FLOOR + 0.34, z }); }
+      mb.box(0.1, 0.04, 0.08, 0xe8c040, { x: L / 4, y: FLOOR + H + 0.04 });   // post horn plate
       break;
     }
     case 'boxcar': {
       frame(mb, L, eraKind);
-      const c = modern ? 0x7a3a2f : 0x8a5a3a;
-      mb.box(L * 0.97, 0.56, 0.52, c, { y: 0.22 });
-      mb.box(L, 0.05, 0.56, shade(c, 0.65), { y: 0.78 });
-      mb.box(L * 0.9, 0.03, 0.1, DARK, { y: 0.83 });   // roof walk
-      for (const z of [0.27, -0.27]) {
-        mb.box(0.4, 0.46, 0.02, shade(c, 0.8), { y: 0.26, z });
-        mb.box(0.44, 0.03, 0.03, DARK, { y: 0.74, z });
+      const c = variantTint(modern ? 0x7a3a2f : PAL.freightBrown, V), H = ROOF - FLOOR;
+      mb.box(L - 0.03, H, W, c, { y: FLOOR });
+      mb.box(L, 0.05, W + 0.04, shade(c, 0.65), { y: FLOOR + H });
+      mb.box(L * 0.9, 0.03, 0.1, DARK, { y: FLOOR + H + 0.05 });   // roof walk
+      for (const z of [GZ + 0.005, -GZ - 0.005]) {
+        mb.box(0.4, H - 0.1, 0.02, shade(c, 0.8), { y: FLOOR + 0.04, z });
+        mb.box(0.44, 0.03, 0.03, DARK, { y: FLOOR + H - 0.03, z });
+        for (let k = 1; k < 4; k++) if (Math.abs(-L / 2 + k * L / 4) > 0.24) mb.box(0.02, H - 0.04, 0.025, shade(c, 0.7), { x: -L / 2 + k * L / 4, y: FLOOR + 0.02, z });
       }
-      for (const x of [-L / 2 + 0.12, L / 2 - 0.12]) mb.box(0.02, 0.5, 0.54, shade(c, 0.9), { x, y: 0.24 });
+      if (loaded) for (const z of [GZ + 0.012, -GZ - 0.012]) mb.box(0.1, 0.06, 0.01, cc, { x: L / 2 - 0.16, y: FLOOR + H - 0.14, z }); // cargo label
       break;
     }
     case 'reefer': {
       frame(mb, L, eraKind);
-      const c = 0xe8ecef;
-      mb.box(L * 0.97, 0.56, 0.52, c, { y: 0.22 });
-      mb.box(L, 0.05, 0.56, 0xc8d0d6, { y: 0.78 });
-      mb.box(L * 0.97, 0.06, 0.535, 0x3f7ab8, { y: 0.5 });
-      mb.box(0.18, 0.3, 0.46, 0x9aa4ac, { x: L / 2 - 0.12, y: 0.82 }); // reefer unit
-      for (const z of [0.27, -0.27]) mb.box(0.34, 0.42, 0.02, 0xd8dde2, { y: 0.26, z });
+      const c = PAL.reeferWhite, H = ROOF - FLOOR;
+      mb.box(L - 0.03, H, W, c, { y: FLOOR });
+      mb.box(L, 0.05, W + 0.04, 0xc8d0d6, { y: FLOOR + H });
+      mb.box(L - 0.03, 0.06, W + 0.006, 0x3f7ab8, { y: FLOOR + 0.28 });
+      mb.box(0.18, 0.3, W - 0.06, 0x9aa4ac, { x: L / 2 - 0.12, y: FLOOR + H });     // cooling unit
+      grille(mb, L / 2 - 0.12, FLOOR + H + 0.06, 0.14, 0.18, W / 2 - 0.02, 0x9aa4ac);
+      for (const z of [GZ + 0.005, -GZ - 0.005]) mb.box(0.34, H - 0.14, 0.02, 0xd8dde2, { y: FLOOR + 0.04, z });
       break;
     }
     case 'timber': {
       frame(mb, L, eraKind);
-      mb.box(L * 0.95, 0.05, 0.5, 0x6b4a33, { y: 0.24 });
-      for (const x of [-L / 2 + 0.06, L / 2 - 0.06]) mb.box(0.05, 0.42, 0.5, DARK, { x, y: 0.26 }); // bulkheads
-      for (const s of [-1, 1]) for (const x of [-L * 0.3, 0, L * 0.3]) mb.box(0.04, 0.36, 0.04, DARK, { x, y: 0.26, z: s * 0.24 });
+      mb.box(L - 0.05, 0.05, W - 0.02, variantTint(0x6b4a33, V), { y: FLOOR + 0.02 });
+      for (const x of [-L / 2 + 0.06, L / 2 - 0.06]) mb.box(0.05, 0.44, W - 0.02, DARK, { x, y: FLOOR + 0.04 }); // bulkheads
+      for (const s of [-1, 1]) for (const x of [-L * 0.3, 0, L * 0.3]) mb.box(0.035, 0.38, 0.035, DARK, { x, y: FLOOR + 0.04, z: s * 0.24 });
       if (loaded) {
-        if (cargoId === 'LUMBER') for (let k = 0; k < fill; k++) mb.box(L * 0.82, 0.1, 0.42, shade(cc, 1 - k * 0.07), { y: 0.3 + k * 0.1 });
-        else for (let r = 0; r < Math.min(2, fill); r++) for (let k = 0; k < 3 - r; k++) mb.hcyl(0.08, L * 0.86, 7, shade(cc, 1 - k * 0.08), { y: 0.37 + r * 0.14, z: -0.16 + k * 0.16 + r * 0.08 });
+        if (cargoId === 'LUMBER') for (let k = 0; k < fill; k++) { mb.box(L * 0.82, 0.1, 0.42, shade(cc, 1 - k * 0.07), { y: FLOOR + 0.08 + k * 0.1 }); mb.box(0.02, 0.1, 0.43, 0xe8e0d0, { x: L * 0.2, y: FLOOR + 0.08 + k * 0.1 }); }
+        else for (let r = 0; r < Math.min(2, fill); r++) for (let k = 0; k < 3 - r; k++) {
+          const y = FLOOR + 0.15 + r * 0.14, z = -0.16 + k * 0.16 + r * 0.08;
+          mb.hcyl(0.075, L * 0.86, 7, shade(cc, 1 - k * 0.08), { y, z });
+          mb.hcyl(0.055, 0.01, 7, 0xd8b888, { x: L * 0.43, y, z });   // cut end
+        }
+        if (fill >= 3 && cargoId !== 'LUMBER') mb.hcyl(0.075, L * 0.86, 7, shade(cc, 0.9), { y: FLOOR + 0.43, z: 0 });
       }
       break;
     }
@@ -314,57 +491,63 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimC
     case 'coal_hopper':
     case 'ore_hopper': {
       frame(mb, L, eraKind);
-      const c = w === 'coal_hopper' ? 0x2e3034 : w === 'ore_hopper' ? 0x7a4a36 : (modern ? 0x5a6470 : 0x6a5040);
-      const h = w === 'ore_hopper' ? 0.28 : w === 'coal_hopper' ? 0.44 : 0.38;
-      // sloped discharge bays underneath
-      for (const x of [-L / 4, L / 4]) mb.box(L * 0.3, 0.12, 0.34, shade(c, 0.8), { x, y: 0.12, rz: 0 });
-      mb.box(L * 0.94, h, 0.52, c, { y: 0.22 });
-      mb.box(L * 0.94, 0.04, 0.55, shade(c, 0.7), { y: 0.22 + h });
-      for (let k = 1; k < 4; k++) for (const z of [0.265, -0.265]) mb.box(0.03, h, 0.02, shade(c, 0.7), { x: -L / 2 + k * (L / 4), y: 0.22, z });
-      if (loaded) heap(mb, L * 0.86, 0.46, 0.22 + h, cc, fill);
+      const base = w === 'coal_hopper' ? 0x2e3034 : w === 'ore_hopper' ? PAL.rust : (modern ? 0x5a6470 : 0x6a5040);
+      const c = variantTint(base, V);
+      const h = w === 'ore_hopper' ? 0.3 : w === 'coal_hopper' ? 0.46 : 0.4;
+      for (const x of [-L / 4, L / 4]) mb.box(L * 0.22, 0.12, W - 0.2, shade(c, 0.8), { x, y: FLOOR - 0.12 });  // discharge bays
+      mb.box(L - 0.06, h, W, c, { y: FLOOR });
+      mb.box(L - 0.06, 0.04, W + 0.03, shade(c, 0.7), { y: FLOOR + h });
+      for (let k = 1; k < 4; k++) for (const z of [GZ, -GZ]) mb.box(0.03, h, 0.02, shade(c, 0.7), { x: -L / 2 + k * (L / 4), y: FLOOR, z });
+      if (loaded) heap(mb, L - 0.14, W - 0.06, FLOOR + h, cc, fill);
       break;
     }
     case 'tank': {
       frame(mb, L, eraKind);
-      const c = cargoId === 'FUEL' ? 0xd8dde2 : modern ? 0xb8bec4 : 0x2b2b2e;
-      mb.hcyl(0.25, L * 0.92, 12, c, { y: 0.48 });
-      for (const f of [-0.5, 0.5]) mb.hcyl(0.26, 0.03, 12, shade(c, 0.7), { x: f * L * 0.9, y: 0.48 });
-      mb.hcyl(0.255, 0.1, 12, cargoId ? cc : 0x777777, { y: 0.48 });
-      mb.cyl(0.08, 0.08, 0.1, 8, DARK, { y: 0.72 });
-      mb.box(L * 0.8, 0.02, 0.08, DARK, { y: 0.75, z: 0.12 });
+      const fuel = cargoId === 'FUEL';
+      const c = fuel ? PAL.tankSilver : modern ? 0xb8bec4 : variantTint(PAL.tankBlack, V & 1);
+      mb.box(L - 0.1, 0.04, W - 0.1, DARK, { y: FLOOR });
+      mb.hcyl(0.24, L * 0.9, 14, c, { y: FLOOR + 0.28 });
+      for (const f of [-0.5, 0.5]) { mb.hcyl(0.245, 0.03, 14, shade(c, 0.7), { x: f * L * 0.88, y: FLOOR + 0.28 }); mb.sphere(0.24, 1, c, { x: f * L * 0.9, y: FLOOR + 0.28, sx: 0.25 }); }
+      mb.hcyl(0.247, 0.12, 14, cargoId ? cc : 0x777777, { y: FLOOR + 0.28 });                  // cargo band
+      if (fuel) mb.box(0.16, 0.08, 0.01, 0xe8a030, { x: -L / 4, y: FLOOR + 0.3, z: 0.245 });   // hazard plate
+      mb.cyl(0.08, 0.08, 0.08, 8, DARK, { y: FLOOR + 0.5 });
+      mb.box(L * 0.8, 0.02, 0.1, DARK, { y: FLOOR + 0.53, z: 0.1 });
+      handrail(mb, -L * 0.35, L * 0.35, FLOOR + 0.5, 0.18);
       break;
     }
     case 'container': {
       frame(mb, L, eraKind, 0x3a3d42);
-      mb.box(L * 0.96, 0.04, 0.5, 0x4a4f55, { y: 0.24 });
+      mb.box(L - 0.04, 0.04, W - 0.02, 0x4a4f55, { y: FLOOR });
+      for (const x of [-L / 2 + 0.1, L / 2 - 0.1]) for (const z of [0.22, -0.22]) mb.box(0.04, 0.04, 0.04, 0xd8a030, { x, y: FLOOR + 0.04, z }); // twist locks
       if (loaded) {
-        const cols = [0x2f6fa8, 0xc0502f, 0x3a8a5a, 0xd8a030, 0x7a7f86];
+        const cols = [0x2f6fa8, 0xc0502f, 0x3a8a5a, 0xd8a030, 0x7a7f86, 0x8a3a6a];
         const n = fill >= 2 ? 2 : 1;
         const cl = (L * 0.92) / 2 - 0.02;
         for (let k = 0; k < n; k++) {
           const x = n === 1 ? 0 : (k === 0 ? -cl / 2 - 0.01 : cl / 2 + 0.01);
-          const col = cols[(k + (cargoId || '').length) % cols.length];
-          mb.box(n === 1 ? cl : cl, 0.44, 0.48, col, { x, y: 0.28 });
-          for (let r = 0; r < 4; r++) mb.box(0.02, 0.42, 0.49, shade(col, 0.8), { x: x - cl / 2 + 0.06 + r * (cl - 0.12) / 3, y: 0.29 });
+          const col = cols[(k + V + (cargoId || '').length) % cols.length];
+          mb.box(cl, 0.44, 0.48, col, { x, y: FLOOR + 0.04 });
+          for (let r = 0; r < 4; r++) mb.box(0.015, 0.42, 0.49, shade(col, 0.8), { x: x - cl / 2 + 0.06 + r * (cl - 0.12) / 3, y: FLOOR + 0.05 });
+          mb.box(0.02, 0.38, 0.44, shade(col, 0.7), { x: x + cl / 2 - 0.005, y: FLOOR + 0.07 });   // doors
         }
-        if (fill >= 3) mb.box(cl, 0.4, 0.48, cols[4], { x: 0, y: 0.72 });
+        if (fill >= 3) { const col = cols[(4 + V) % cols.length]; mb.box(cl, 0.4, 0.48, col, { x: 0, y: FLOOR + 0.5 }); }
       }
       break;
     }
     case 'machinery_flat': {
-      mb.box(L, 0.08, 0.52, DARK, { y: 0.2 });
-      bogie(mb, -L / 2 + 0.28); bogie(mb, L / 2 - 0.28);
-      buffers(mb, L, 0.24);
-      mb.box(L * 0.5, 0.06, 0.52, 0x4a4035, { y: 0.1 });   // depressed well
-      for (const s of [-1, 1]) mb.box(0.06, 0.12, 0.52, DARK, { x: s * L * 0.25, y: 0.1 });
+      mb.box(L, 0.08, W, DARK, { y: FLOOR - 0.02 });
+      bogie(mb, -L / 2 + 0.28, 3); bogie(mb, L / 2 - 0.28, 3);
+      buffers(mb, L);
+      mb.box(L * 0.5, 0.06, W, 0x4a4035, { y: 0.1 });   // depressed well
+      for (const s of [-1, 1]) mb.box(0.06, 0.12, W, DARK, { x: s * L * 0.25, y: 0.1 });
       if (loaded) {
         const c = cargoId === 'STEEL' ? cc : 0xd8a030;
-        if (cargoId === 'STEEL') for (let k = 0; k < fill + 1; k++) mb.hcyl(0.1, L * 0.45, 10, shade(c, 1 - k * 0.06), { y: 0.26 + k * 0.08, z: (k % 2 ? 0.1 : -0.1) });
+        if (cargoId === 'STEEL') for (let k = 0; k < fill + 1; k++) { mb.hcyl(0.1, 0.16, 12, shade(c, 1 - k * 0.06), { x: -0.3 + k * 0.2, y: 0.26, rz: 0 }); mb.hcyl(0.04, 0.17, 8, DARK, { x: -0.3 + k * 0.2, y: 0.26 }); } // coils
         else {
           mb.box(L * 0.42, 0.34, 0.44, c, { y: 0.16 });
           mb.box(0.24, 0.22, 0.3, shade(c, 0.85), { x: -0.1, y: 0.5 });
           mb.cyl(0.12, 0.12, 0.44, 8, 0x5a5f66, { x: 0.18, y: 0.4, rx: Math.PI / 2, center: true });
-          for (const x of [-L * 0.2, L * 0.2]) mb.box(0.02, 0.3, 0.02, 0xb8a060, { x, y: 0.2, z: 0.24 });
+          for (const x of [-L * 0.2, L * 0.2]) mb.box(0.02, 0.3, 0.02, 0xb8a060, { x, y: 0.2, z: 0.24 });   // chains
         }
       }
       break;
@@ -373,26 +556,28 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimC
     case 'caboose': {
       frame(mb, L, eraKind);
       const c = w === 'caboose' ? 0xb0402f : 0x5a4a3f;
-      mb.box(L * 0.7, 0.48, 0.5, c, { y: 0.22 });
-      mb.box(L * 0.74, 0.05, 0.56, shade(c, 0.7), { y: 0.7 });
-      windowsRow(mb, L * 0.7, 0.44, 0.12, 2, 0.12);
-      for (const s of [-1, 1]) mb.box(0.02, 0.26, 0.5, DARK, { x: s * L * 0.46, y: 0.24 }); // veranda rails
-      if (w === 'caboose') { mb.box(0.3, 0.18, 0.4, c, { y: 0.74 }); mb.box(0.32, 0.03, 0.44, shade(c, 0.7), { y: 0.92 }); mb.box(0.24, 0.08, 0.02, GLASS, { y: 0.82, z: 0.205, glow: true }); }
-      else mb.cyl(0.03, 0.03, 0.12, 6, DARK, { x: -0.1, y: 0.74 });
-      mb.box(0.04, 0.05, 0.06, RED_L, { x: -L / 2, y: 0.5, z: 0.2, glow: true });
+      const H = ROOF - FLOOR - 0.04;
+      mb.box(L * 0.7, H, W - 0.02, c, { y: FLOOR });
+      mb.box(L * 0.76, 0.05, W + 0.04, shade(c, 0.7), { y: FLOOR + H });
+      sideWindows(mb, -L * 0.3, L * 0.3, FLOOR + 0.24, 0.12, 2, 0.12);
+      for (const s of [-1, 1]) { mb.box(0.02, 0.24, W - 0.02, DARK, { x: s * L * 0.46, y: FLOOR + 0.02 }); mb.box(L * 0.14, 0.02, W - 0.02, 0x4a3a2a, { x: s * L * 0.42, y: FLOOR + 0.01 }); } // verandas
+      if (w === 'caboose') { mb.box(0.3, 0.18, 0.4, c, { y: FLOOR + H + 0.04 }); mb.box(0.32, 0.03, 0.44, shade(c, 0.7), { y: FLOOR + H + 0.22 }); mb.box(0.24, 0.08, 0.02, GLASS, { y: FLOOR + H + 0.12, z: 0.205, glow: true }); }
+      else mb.cyl(0.03, 0.03, 0.12, 6, DARK, { x: -0.1, y: FLOOR + H + 0.04 });
+      headlights(mb, -L / 2, FLOOR + 0.3, 0.2, -1, true);
       break;
     }
     case 'flatbed':
     default: {
       frame(mb, L, eraKind);
-      mb.box(L * 0.96, 0.06, 0.52, 0x5a4a3a, { y: 0.24 });
-      for (const s of [-1, 1]) for (const x of [-L * 0.35, L * 0.35]) mb.box(0.03, 0.12, 0.03, DARK, { x, y: 0.28, z: s * 0.25 });
+      mb.box(L - 0.04, 0.06, W, variantTint(0x5a4a3a, V), { y: FLOOR });
+      for (const s of [-1, 1]) for (const x of [-L * 0.35, 0, L * 0.35]) mb.box(0.03, 0.12, 0.03, DARK, { x, y: FLOOR + 0.06, z: s * 0.25 });
       if (loaded) {
-        if (cargoId === 'LUMBER') for (let k = 0; k < fill; k++) mb.box(L * 0.85, 0.08, 0.44, shade(cc, 1 - k * 0.07), { y: 0.3 + k * 0.08 });
-        else if (cargoId === 'STEEL') for (let k = 0; k < 3; k++) { mb.box(L * 0.85, 0.07, 0.12, cc, { y: 0.3, z: -0.16 + k * 0.16 }); if (fill > 1) mb.box(L * 0.8, 0.07, 0.12, shade(cc, 0.9), { y: 0.37, z: -0.08 + (k % 2) * 0.16 }); }
-        else if (cargoId === 'MACHINERY') { mb.box(0.6, 0.28, 0.4, cc, { y: 0.3 }); mb.cyl(0.12, 0.12, 0.3, 8, shade(cc, 0.8), { x: 0.3, y: 0.44, rz: Math.PI / 2, center: true }); mb.box(0.3, 0.2, 0.3, 0xd8a030, { x: -0.4, y: 0.3 }); }
-        else if (cargoId === 'WOOD') for (let k = 0; k < 3; k++) mb.hcyl(0.08, L * 0.86, 7, shade(cc, 1 - k * 0.08), { y: 0.37, z: -0.16 + k * 0.16 });
-        else mb.box(L * 0.8, 0.2, 0.44, cc, { y: 0.3 });
+        const y = FLOOR + 0.06;
+        if (cargoId === 'LUMBER') for (let k = 0; k < fill; k++) mb.box(L * 0.85, 0.08, 0.44, shade(cc, 1 - k * 0.07), { y: y + k * 0.08 });
+        else if (cargoId === 'STEEL') for (let k = 0; k < 3; k++) { mb.box(L * 0.85, 0.06, 0.12, cc, { y, z: -0.16 + k * 0.16 }); if (fill > 1) mb.box(L * 0.8, 0.06, 0.12, shade(cc, 0.9), { y: y + 0.06, z: -0.08 + (k % 2) * 0.16 }); } // plates / beams
+        else if (cargoId === 'MACHINERY') { mb.box(0.6, 0.28, 0.4, cc, { y }); mb.cyl(0.12, 0.12, 0.3, 8, shade(cc, 0.8), { x: 0.3, y: y + 0.14, rz: Math.PI / 2, center: true }); mb.box(0.3, 0.2, 0.3, 0xd8a030, { x: -0.4, y }); }
+        else if (cargoId === 'WOOD') for (let k = 0; k < 3; k++) mb.hcyl(0.075, L * 0.86, 7, shade(cc, 1 - k * 0.08), { y: y + 0.075, z: -0.16 + k * 0.16 });
+        else { mb.box(L * 0.8, 0.2, 0.44, cc, { y }); mb.box(L * 0.82, 0.02, 0.46, shade(cc, 0.7), { y: y + 0.2 }); } // tarpaulin load
       }
       break;
     }

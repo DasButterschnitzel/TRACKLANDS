@@ -120,7 +120,7 @@ export class TrainSystem {
     let veh = Array.isArray(d.veh) ? cloneConsist(d.veh) : parseConsist(d.consist);
     if (!veh.length || !veh.some((v) => v.k === 'L')) veh = inferLegacy(LOCOS.some((m) => m.id === d.model) ? d.model : 'pioneer', [], this.game.progression.research);
     const t = {
-      id: d.id, veh, model: veh.find((v) => v.k === 'L').id, name: d.name || 'Train', livery: d.livery || 'classic_green',
+      id: d.id, veh, model: veh.find((v) => v.k === 'L').id, name: d.name || 'Train', livery: d.livery || 'classic_green', liveryScope: d.liveryScope === 'loco' ? 'loco' : 'train',
       upg: Object.assign({ engine: 0, capacity: 0, accel: 0, loading: 0, efficiency: 0 }, d.upg || {}),
       mode: d.mode === 'manual' ? 'manual' : 'auto',
       route: Array.isArray(d.route) ? d.route.filter((r) => r && (typeof r.st === 'number' || typeof r.wp === 'number')).map(normStop) : [],
@@ -1680,15 +1680,18 @@ export class TrainSystem {
       const w = wagons[wi++];
       return `W${v.id}.${w && w.c ? w.c : ''}.${w && w.n > 0 ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0}`;
     });
-    return `${t.livery}|${detail}|${parts.join(',')}`;
+    return `${t.livery}${t.liveryScope === 'loco' ? '~loco' : ''}|${detail}|${parts.join(',')}`;
   }
 
   buildVisual(t) {
     this.disposeVisual(t);
     const sig = this.consistSig(t);
-    const [livery, detail, partsStr] = sig.split('|');
+    const [liv, detail, partsStr] = sig.split('|');
+    const [livery, scope] = liv.split('~');
     const lead = t._st.model;
-    const cols = liveryColors(lead, livery);
+    // coaches carry the train livery, or the model's house colours when the
+    // livery is applied to the locomotive only
+    const cols = liveryColors(lead, scope === 'loco' ? 'classic_green' : livery);
     const group = new THREE.Group();
     const cars = [];
     const parts = partsStr.split(',');
@@ -1699,7 +1702,7 @@ export class TrainSystem {
       if (v.k === 'L') geo = locoGeometry(v.id, livery, +detail);
       else {
         const [, cargo, fill] = parts[i].slice(1).split('.');
-        geo = wagonGeometry(v.id, cargo || null, +fill, lead.kind, cols.body, cols.trim);
+        geo = wagonGeometry(v.id, cargo || null, +fill, lead.kind, cols.body, cols.trim, (t.id * 7 + i * 3) & 3);
       }
       const mesh = new THREE.Mesh(geo, MATS);
       mesh.castShadow = true;
@@ -1823,7 +1826,7 @@ export class TrainSystem {
     return this.trains.map((t) => {
       const hs = t.steps.length ? t.steps[this.stepAt(t, t.s)] : null;
       return {
-        id: t.id, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, upg: t.upg, mode: t.mode,
+        id: t.id, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, liveryScope: t.liveryScope === 'loco' ? 'loco' : undefined, upg: t.upg, mode: t.mode,
         route: t.route, routeIdx: t.routeIdx, filter: t.filter, cargo: t.cargo, earned: t.earned, trips: t.trips, target: t.target, depotId: t.homeDepot,
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
       };
