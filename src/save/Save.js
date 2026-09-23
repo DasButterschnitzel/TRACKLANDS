@@ -1,6 +1,6 @@
 // Persistent storage (IndexedDB with localStorage fallback), save versioning
 // and migration, backups, export and import with validation.
-import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL } from '../config.js';
+import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL, TRAIN_UPGRADES } from '../config.js';
 
 const DB = 'tracklands', STORE = 'saves', LS_KEY = 'tracklands.save', LS_BACKUP = 'tracklands.backup';
 
@@ -124,6 +124,8 @@ export function sanitize(d) {
     if (t.route !== undefined && !Array.isArray(t.route)) t.route = [];
     t.routeIdx = Math.round(num(t.routeIdx, 0, 0));
     if (!isObj(t.upg)) t.upg = {};
+    for (const k of Object.keys(t.upg)) if (!TRAIN_UPGRADES.includes(k)) delete t.upg[k];
+    for (const k of TRAIN_UPGRADES) if (t.upg[k] !== undefined) t.upg[k] = Math.round(num(t.upg[k], 0, 0, 5));
     if (t.head !== undefined && !isObj(t.head)) t.head = null;
   }
   const E = d.economy;
