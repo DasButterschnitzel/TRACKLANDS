@@ -14,11 +14,12 @@ import {
   canLead, vehLen, inferLegacy, consistCost, vehicleCost, validateConsist, autoBuild, GAP,
 } from './Consist.js';
 import { MATS } from '../core/ModelBuilder.js';
+import { SCALE } from '../style.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
 
-const LANE = 0.34;
+const LANE = SCALE.lane;
 const DECEL = 3.2;
 const STOP_EXT = 0.6;      // stop this far past the platform-end tile center
 const _v = new THREE.Vector3();

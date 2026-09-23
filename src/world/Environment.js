@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { N, TILE, clamp, lerp, smoothstep, RNG } from '../util.js';
 import { DAY_LENGTH, REGIONS } from '../config.js';
 import { MAT, ModelBuilder } from '../core/ModelBuilder.js';
+import { LIGHT } from '../style.js';
 
 const SKY = [
   // t, top, bottom, sun color, sun intensity, hemi intensity
@@ -29,12 +30,12 @@ export class Environment {
     this.nextWeather = 200;
     this.effects = { speed: 1, accel: 1 };
 
-    this.hemi = new THREE.HemisphereLight(0xdfefff, 0x8a7a5a, 1.2);
+    this.hemi = new THREE.HemisphereLight(LIGHT.hemiSky, LIGHT.hemiGround, LIGHT.hemi);
     scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xffffff, 2);
+    this.sun = new THREE.DirectionalLight(LIGHT.sunColor, LIGHT.sun);
     this.sun.castShadow = true;
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = 0.03;
+    this.sun.shadow.bias = LIGHT.shadowBias;
+    this.sun.shadow.normalBias = LIGHT.shadowNormalBias;
     scene.add(this.sun, this.sun.target);
     this.setShadowQuality(game.settings.shadows);
 
@@ -43,7 +44,7 @@ export class Environment {
     this.skyTex = new THREE.CanvasTexture(this.skyCanvas);
     this.skyTex.colorSpace = THREE.SRGBColorSpace;
     scene.background = this.skyTex;
-    scene.fog = new THREE.Fog(0xe8f0f4, 400, 900);
+    scene.fog = new THREE.Fog(LIGHT.fog, 400, 900);
 
     this.buildPrecip();
     this.buildCloudShadows();
@@ -53,7 +54,7 @@ export class Environment {
   }
 
   setShadowQuality(q) {
-    const size = q === 'high' ? 2048 : q === 'medium' ? 1024 : 512;
+    const size = LIGHT.shadowMap[q] || LIGHT.shadowMap.low;
     this.sun.castShadow = q !== 'off';
     if (this.sun.shadow.mapSize.x !== size) {
       this.sun.shadow.mapSize.set(size, size);

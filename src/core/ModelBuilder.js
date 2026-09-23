@@ -2,6 +2,7 @@
 // vertex-colored geometry with two groups: 0 = regular surfaces, 1 = glowing
 // surfaces (windows, lamps) whose emissive intensity follows the day/night cycle.
 import * as THREE from 'three';
+import { MATERIAL } from '../style.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -101,8 +102,8 @@ export class ModelBuilder {
 
 // Shared materials. `glow` emissive intensity is driven by the environment.
 export const MAT = {
-  vc: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-  glow: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffc870, emissiveIntensity: 0 }),
+  vc: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: MATERIAL.flatShading }),
+  glow: new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: MATERIAL.flatShading, emissive: MATERIAL.glowColor, emissiveIntensity: 0 }),
 };
 export const MATS = [MAT.vc, MAT.glow];
 

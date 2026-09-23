@@ -20,6 +20,13 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
+  /* design system (mirrored in src/style.js) */
+  --r-s: 8px; --r-m: 12px; --r-l: 18px;
+  --t-fast: .12s; --t-base: .2s; --t-slow: .4s;
+  --touch-min: 44px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition-duration: .001s !important; scroll-behavior: auto !important; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #1f2a3a; }
