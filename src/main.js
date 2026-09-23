@@ -47,6 +47,8 @@ class App {
       this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.settings.graphics !== 'low', powerPreference: 'high-performance' });
     } catch (e) { this.fatal(t('err_webgl')); return; }
     if (!this.renderer.capabilities.isWebGL2) { this.fatal(t('err_webgl')); return; }
+    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.flushSave(); this.ui && this.ui.toast(t('err_generic'), 'error'); });
+    canvas.addEventListener('webglcontextrestored', () => location.reload());
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.applyPixelRatio();

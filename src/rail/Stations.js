@@ -207,7 +207,6 @@ export class StationSystem {
       const before = t.route.length;
       t.route = t.route.filter((r) => r.st !== stn.id);
       if (t.route.length !== before) affected++;
-      t.cargo = t.cargo.filter((l) => l.from !== stn.id || true);
       if (t.target === stn.id && t.state !== 'run') { t.state = 'idle'; t.stateT = 3; }
       if (t.claim && t.claim.st === stn.id) t.claim = null;
     }
