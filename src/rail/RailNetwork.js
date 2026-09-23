@@ -460,9 +460,9 @@ export class RailNetwork {
     const sp = this.special.get(i);
     const a = stepObj.inH == null ? 8 : opp(stepObj.inH);
     const b = stepObj.outH == null ? 8 : stepObj.outH;
-    if (this.isJunction(i)) return [-(1 + i * 81 + a * 9 + b)];
+    // any tile with 3+ legs (plain junction or a platform tile with a switch) uses path keys
+    if (this.degree(i) >= 3) return [-(1 + i * 81 + a * 9 + b)];
     if (this.single[i] && !(sp && sp.type === 'station')) return [i * 2];
-    if (sp && sp.type === 'station' && a !== 8 && b !== 8 && this.degree(i) >= 3) return [i * 2 + ((stepObj.inH & 7) < 4 ? 0 : 1)];
     let sense;
     if (a !== 8 && b !== 8) sense = a < b ? 0 : 1;
     else if (a !== 8) sense = 0; else sense = 1;
@@ -501,7 +501,7 @@ export class RailNetwork {
       const list = m.get(id) || [];
       if (!list.some((p) => p[0] === a && p[1] === b)) list.push([a, b]);
       m.set(id, list);
-      if (a !== 8 && b !== 8) this.setSwitch(tile, a, b);
+      if (a !== 8 && b !== 8 && this.isJunction(tile)) this.setSwitch(tile, a, b);
     }
   }
   release(keys, id) {
@@ -528,6 +528,13 @@ export class RailNetwork {
       const r = this.resv[k]; if (r !== 0 && r !== id) return r;
     }
     return 0;
+  }
+  holds(k, id) {
+    if (k >= 0) return this.resv[k] === id;
+    const { tile, a, b } = RailNetwork.decodeJ(k);
+    const m = this.jres.get(tile);
+    const l = m && m.get(id);
+    return !!(l && l.some((p) => p[0] === a && p[1] === b));
   }
   keyHolder(k) {
     if (k >= 0) return this.resv[k];

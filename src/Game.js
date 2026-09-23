@@ -25,6 +25,7 @@ import { CameraController } from './core/CameraController.js';
 import { Input } from './core/Input.js';
 import { Tutorial } from './ui/Tutorial.js';
 import { RailTests } from './debug/RailTests.js';
+import { RailFuzz } from './debug/RailFuzz.js';
 
 const STEP = 1 / 30;
 
@@ -43,6 +44,7 @@ export class Game {
     this.cleared = new Set();
     this.autosaveT = 30;
     this.testMode = !!opts.test;
+    if (opts.test && opts.paused) this.speed = 0;   // deterministic test runs drive tick() themselves
     const save = opts.save || null;
     const seed = save ? save.seed : opts.seed;
     this.difficultyId = save ? (DIFFICULTY[save.difficulty] ? save.difficulty : 'standard') : opts.difficulty || 'standard';
@@ -215,6 +217,8 @@ export class Game {
     }
   }
   focusOn(sel, zoom) { const p = this.entityPos(sel); if (p) this.camera.focus(p.x, p.z, zoom); }
+
+  runRailFuzz(seed, minutes, trace) { return new RailFuzz(this, seed).run(minutes, 1 / 30, trace); }
 
   runRailTests(only) { const r = new RailTests(this).runAll(only); console.table(r); return r; }
 

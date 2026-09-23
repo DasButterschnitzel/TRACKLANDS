@@ -10,6 +10,7 @@ const ASSETS = [
   './manifest.json',
   './src/Game.js',
   './src/debug/RailTests.js',
+  './src/debug/RailFuzz.js',
   './src/ui/RailUI.js',
   './src/ui/Overlays.js',
   './src/rail/RailFurniture.js',

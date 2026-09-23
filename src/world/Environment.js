@@ -122,9 +122,11 @@ export class Environment {
     if (S.weather) {
       this.nextWeather -= gameDt;
       if (this.nextWeather <= 0) {
-        const r = Math.random();
+        // seeded: weather changes train speeds, keep runs reproducible
+        if (!this._wrng) this._wrng = new RNG(String((g.world && g.world.seed) ?? 1) + ':weather');
+        const r = this._wrng.next();
         this.weatherTarget = r < 0.45 ? 'clear' : r < 0.75 ? 'cloudy' : 'rain';
-        this.nextWeather = 180 + Math.random() * 240;
+        this.nextWeather = 180 + this._wrng.next() * 240;
         if (this.weatherTarget !== this.weather) g.events.emit('weather', this.weatherTarget);
         this.weather = this.weatherTarget;
       }

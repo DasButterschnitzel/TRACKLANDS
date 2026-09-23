@@ -99,7 +99,12 @@ export class StationSystem {
     const net = this.game.net;
     const tk = stn.tracks[k];
     if (!tk) return true;
-    for (const tile of tk.tiles) { const a = net.resv[tile * 2], b = net.resv[tile * 2 + 1]; if ((a && a !== id) || (b && b !== id)) return true; }
+    for (const tile of tk.tiles) {
+      const a = net.resv[tile * 2], b = net.resv[tile * 2 + 1];
+      if ((a && a !== id) || (b && b !== id)) return true;
+      const m = net.jres.get(tile);
+      if (m) for (const tid of m.keys()) if (tid !== id) return true;
+    }
     const c = stn.claims && stn.claims.get(k);
     if (c) for (const tid of c) if (tid !== id) return true;
     return false;
@@ -248,6 +253,7 @@ export class StationSystem {
       const sp = net.special.get(j);
       if (sp && sp.type === 'depot') continue;
       if (net.degree(j) >= 3) continue;
+      if (g.trains.tileReserved(j)) continue;   // never re-shape track under a train
       let score = 0;
       for (let e = 0; e < 8; e++) if (net.hasDir(j, e) && e === d) score += 2;
       if (net.degree(j) === 1) score += 1;
@@ -426,7 +432,9 @@ export class StationSystem {
     const plan = this.planAddTrack(stn, side);
     if (plan.error) return plan;
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    // (merge tiles only gain a connection; trains on them re-derive their reservations)
+    // merge tiles gain a switch: never under a train
+    for (const L of plan.ladders) if (L.path.length && g.trains.tileReserved(L.path[L.path.length - 1])) return { error: 'err_train_on_track' };
+    if (g.trains.foulsTrain([...plan.tiles, ...plan.ladders.flatMap((L) => L.path)])) return { error: 'err_train_on_track' };
     g.economy.spend(plan.cost, 'construction');
     const a = this.axisOf(stn);
     for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);
@@ -474,10 +482,11 @@ export class StationSystem {
       // existing plain straight track can become platform
       const back = (dOut + 4) & 7;
       if (!net.hasDir(B, back) || net.degree(B) > 2 || (net.degree(B) === 2 && !net.hasDir(B, dOut))) return { error: 'err_extend_blocked', bad: B };
-      if (g.trains.tileReserved(B)) return { error: 'err_train_on_track', bad: B };
+      if (g.trains.tileReserved(B) || g.trains.foulsTrain([B])) return { error: 'err_train_on_track', bad: B };
       return { tile: B, convert: true, cost: Math.round(COSTS.platformExtend * g.economy.costs.mul()) };
     }
     if (g.decor.at(B)) return { error: 'err_occupied', bad: B };
+    if (g.trains.foulsTrain([B])) return { error: 'err_train_on_track', bad: B };
     // new tile at a dead end: only if the end is not connected outward
     if (net.hasDir(E, dOut)) return { error: 'err_extend_blocked', bad: B };
     return { tile: B, convert: false, cost: Math.round((COSTS.platformExtend + COSTS.stationTrackTile) * g.economy.costs.mul()) };
@@ -617,7 +626,7 @@ export class StationSystem {
       if (!S.util || S.util.length !== s.tracks.length) S.util = s.tracks.map(() => 0);
       s.tracks.forEach((tk, i) => {
         let occ = 0;
-        for (const t of tk.tiles) if (net.resv[t * 2] || net.resv[t * 2 + 1]) { occ = 1; break; }
+        for (const t of tk.tiles) if (net.tileHolder(t)) { occ = 1; break; }
         S.util[i] = S.util[i] * k + occ * (1 - k);
       });
     }

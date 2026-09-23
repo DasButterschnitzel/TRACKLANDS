@@ -55,6 +55,20 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 
 Open `index.html?railtest` to run the automated railway scenarios on a throwaway world, which is never saved: single track with and without passing loops, short halts (deadlock resolver), multi-track stations and dispatching, a diamond crossing, and signals at 1× and coarse 4× steps. Each scenario checks that no two trains share a lane key, that train bodies never overlap geometrically, and that every train keeps making trips. The same suite runs from the console: `__tracklands.game.runRailTests()`.
 
+For broader coverage there is a seeded simulation fuzzer (`src/debug/RailFuzz.js`). It builds a random network (single and double track, multi-track stations, depots and signals), buys random consists with random schedules, and runs 12 game minutes while making a live edit every 15 s: signals, single/double track, platform extensions, added station tracks, bulldozing, consist changes, buying and selling trains, waypoints, and station upgrades. On every check it asserts four things:
+- no shared reservation keys, and no geometric body overlap;
+- every key under a train body is held by that train, and the trail geometry lies on its tiles;
+- no NaN, and no errors in the train tick;
+- no train stuck for more than 150 s, trips are completed, and the save round-trips.
+
+Runs are deterministic per seed. Start one from the console on a test world:
+
+```js
+__tracklands.startGame({ seed: 5065, difficulty: 'builder', test: true, paused: true })
+// once running:
+__tracklands.game.runRailFuzz(5, 12)          // seed, game minutes -> result object
+```
+
 ## Project layout
 
 ```

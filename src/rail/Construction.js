@@ -246,6 +246,18 @@ export class Construction {
     const g = this.game, net = g.net, plan = this.plan;
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
     if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
+    // existing track that gains a new leg becomes a switch: not while a train is on it
+    const changed = [];
+    for (let k = 0; k < plan.tiles.length; k++) {
+      const t = plan.tiles[k];
+      if (!net.conn[t]) { changed.push(t); continue; }
+      const dOut = plan.dirs[k], dIn = k > 0 ? (plan.dirs[k - 1] + 4) & 7 : null;
+      const adds = (dOut != null && !net.hasDir(t, dOut)) || (dIn != null && !net.hasDir(t, dIn));
+      if (adds && g.trains.tileReserved(t)) { g.ui.error('err_train_on_track'); return; }
+      if (adds) changed.push(t);
+    }
+    // new track next to a diagonal a train is on would change its fouling keys
+    if (g.trains.foulsTrain(changed)) { g.ui.error('err_train_on_track'); return; }
     const prev = plan.tiles.map((t) => ({ t, conn: net.conn[t], tier: net.tier[t], single: net.single[t] }));
     for (let k = 0; k < plan.dirs.length; k++) net.connect(plan.tiles[k], plan.dirs[k]);
     for (const p of prev) {
@@ -260,7 +272,7 @@ export class Construction {
       if (net.special.has(end)) continue;
       for (const d of [0, 2, 4, 6, 1, 3, 5, 7]) {
         const j = step(end, d);
-        if (j < 0 || !net.special.has(j) || net.conn[j]) continue;
+        if (j < 0 || !net.special.has(j) || net.conn[j] || g.trains.tileReserved(end)) continue;
         prev.push({ t: j, conn: 0, tier: net.tier[j], single: 0 });
         net.connect(end, d);
         net.tier[j] = net.tier[end];
