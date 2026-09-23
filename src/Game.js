@@ -333,7 +333,8 @@ export class Game {
       if (v > 0.2) { A.play('chuff', { vol: v * 0.5 }); P.emit(locoModel(t.model).kind.startsWith('steam') ? 'steam' : 'dust', loco.position.x, loco.position.y + 0.6, loco.position.z, 5); }
     });
     E.on('stationEdited', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
-    E.on('stationBuilt', () => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
+    E.on('stationBuilt', (s) => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); if (s) this.towns.onStationGrew(s); });
+    E.on('stationUpgraded', (s) => this.towns.onStationGrew(s));
     E.on('stationsRelinked', () => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
   }
 

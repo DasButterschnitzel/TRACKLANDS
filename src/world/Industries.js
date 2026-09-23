@@ -2,7 +2,7 @@
 // procedural animated visuals.
 import * as THREE from 'three';
 import { N, TILE, idx, cheb } from '../util.js';
-import { INDUSTRIES, INDUSTRY_LEVEL_THRESH } from '../config.js';
+import { INDUSTRIES, INDUSTRY_LEVEL_THRESH, TOWN_ACCEPTS } from '../config.js';
 import { ModelBuilder, meshFrom, shade, MATS } from '../core/ModelBuilder.js';
 import { t as tr } from '../i18n.js';
 
@@ -57,6 +57,35 @@ export class IndustrySystem {
   }
 
   linkedStations(ind) { return this.game.stations.list.filter((s) => s.links && s.links.industries.includes(ind.id)); }
+  // Where each output could go: consumers (towns / industries) by distance,
+  // with the connection state and an estimated income for a 10-unit load.
+  //   served: both ends have a station on the same rail network
+  //   station: the destination has a station, not yet connected
+  //   none: no station at the destination yet
+  opportunities(ind, max = 3) {
+    const g = this.game, net = g.net;
+    const comp = net.components();
+    const mine = this.linkedStations(ind);
+    const myComps = new Set(mine.map((s) => comp[s.tile]).filter((c) => c >= 0));
+    const cx = ind.x + 1, cz = ind.z + 1;
+    const out = [];
+    for (const c of this.outputs(ind)) {
+      const dests = [];
+      for (const t of g.towns.list) if (TOWN_ACCEPTS.includes(c)) dests.push({ kind: 'town', id: t.id, name: t.name, x: t.x, z: t.z, region: t.region });
+      for (const o of this.list) if (o !== ind && this.inputs(o).includes(c)) dests.push({ kind: 'industry', id: o.id, name: this.displayName(o), x: o.x + 1, z: o.z + 1, region: o.region });
+      for (const d of dests) {
+        d.dist = Math.max(Math.abs(d.x - cx), Math.abs(d.z - cz));
+        const sts = g.stations.list.filter((s) => s.links && (d.kind === 'town' ? (s.links.towns || []).includes(d.id) : (s.links.industries || []).includes(d.id)));
+        d.state = sts.some((s) => myComps.has(comp[s.tile])) ? 'served' : sts.length ? 'station' : 'none';
+        d.value = Math.round(g.economy.revenue(c, 10, d.dist, null, false));
+        d.locked = !g.progression.regionUnlocked(d.region);
+      }
+      dests.sort((a, b) => (a.locked - b.locked) || ((a.state === 'served' ? 0 : 1) - (b.state === 'served' ? 0 : 1)) || (b.value / (8 + b.dist) - a.value / (8 + a.dist)));
+      out.push({ c, dests: dests.slice(0, max) });
+    }
+    return out;
+  }
+  transportShare(ind) { return ind.produced > 0 ? Math.min(1, ind.transported / ind.produced) : 0; }
 
   rate(ind) {
     const g = this.game, cfg = INDUSTRIES[ind.type], fx = g.progression.fx, ev = g.economy.eventFx;

@@ -6,7 +6,7 @@ import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOME
 import { ModelBuilder, MATS, shade } from '../core/ModelBuilder.js';
 import { heightAt } from './WorldGen.js';
 
-const ARCH = ['house', 'house2', 'shop', 'apartment', 'office', 'tower', 'skyscraper', 'civic'];
+const ARCH = ['cottage', 'house', 'house2', 'townhouse', 'shop', 'apartment', 'block', 'office', 'tower', 'skyscraper', 'civic', 'warehouse', 'plaza'];
 const WALL = 0xf4efe6, GL = 0x34465a, TRIM = 0xd8d2c8;
 
 class InstancePool {
@@ -52,6 +52,57 @@ function buildArch(name) {
   const w = new ModelBuilder(), r = new ModelBuilder();
   const win = (mb, x, y, z, ry = 0, sx = 0.13, sy = 0.14) => mb.box(sx, sy, 0.02, GL, { x, y, z, ry, glow: true });
   switch (name) {
+    case 'cottage':
+      // hamlet: tiny cottage with a porch and chimney
+      w.box(0.62, 0.4, 0.55, WALL);
+      w.box(0.16, 0.26, 0.02, 0x6a4a2a, { x: -0.1, z: 0.28 });
+      win(w, 0.16, 0.22, 0.28);
+      w.box(0.36, 0.03, 0.2, 0x8a6a4a, { x: -0.1, y: 0.3, z: 0.38 });
+      for (const x of [-0.26, 0.06]) w.box(0.03, 0.3, 0.03, 0x8a6a4a, { x, z: 0.46 });
+      w.box(0.09, 0.26, 0.09, 0x8a5a4a, { x: 0.18, y: 0.6, z: -0.1 });
+      r.roof(0.72, 0.34, 0.66, 0xffffff, { y: 0.4 });
+      break;
+    case 'townhouse':
+      // town: pair of narrow two-storey row houses
+      for (const [x, h] of [[-0.24, 0.84], [0.24, 0.92]]) {
+        w.box(0.46, h, 0.8, WALL, { x });
+        w.box(0.14, 0.3, 0.02, 0x5a3a2a, { x: x - 0.08, z: 0.41 });
+        win(w, x + 0.1, 0.22, 0.41, 0, 0.12); win(w, x - 0.06, 0.58, 0.41, 0, 0.12); win(w, x + 0.12, 0.58, 0.41, 0, 0.12);
+        r.roof(0.5, 0.3, 0.86, 0xffffff, { x, y: h });
+      }
+      w.box(0.94, 0.04, 0.04, TRIM, { y: 0.44, z: 0.42 });
+      break;
+    case 'block':
+      // city: mid-rise perimeter block, shops at street level, balconies
+      w.box(1.2, 1.3, 1.1, WALL);
+      w.box(1.0, 0.24, 0.02, GL, { y: 0.04, z: 0.56, glow: true });
+      w.box(1.22, 0.05, 0.3, 0x3f7a6a, { y: 0.32, z: 0.66, rx: 0.3 });
+      for (let f = 1; f < 4; f++) for (const x of [-0.38, 0, 0.38]) {
+        win(w, x, 0.12 + f * 0.3, 0.56); win(w, x, 0.12 + f * 0.3, -0.56);
+        w.box(0.24, 0.03, 0.1, TRIM, { x, y: f * 0.3 + 0.02, z: 0.6 });
+      }
+      for (let f = 1; f < 4; f++) for (const z of [-0.3, 0.3]) { win(w, 0.61, 0.12 + f * 0.3, z, Math.PI / 2); win(w, -0.61, 0.12 + f * 0.3, z, Math.PI / 2); }
+      w.box(1.26, 0.07, 1.16, TRIM, { y: 1.3 });
+      r.box(1.1, 0.05, 1.0, 0xffffff, { y: 1.34 });
+      r.box(0.4, 0.2, 0.3, 0xffffff, { y: 1.38, x: -0.3 });
+      break;
+    case 'warehouse':
+      // rail-side depot district: brick shed with loading doors
+      w.box(1.3, 0.66, 0.9, 0xb07a5a);
+      for (const x of [-0.4, 0, 0.4]) w.box(0.26, 0.42, 0.02, 0x4a3a2a, { x, z: 0.46 });
+      w.box(1.3, 0.14, 0.26, 0x9a948a, { z: 0.58 });
+      win(w, -0.5, 0.52, -0.46, 0, 0.16, 0.1); win(w, 0.5, 0.52, -0.46, 0, 0.16, 0.1);
+      r.roof(1.4, 0.24, 1.0, 0xffffff, { y: 0.66 });
+      break;
+    case 'plaza':
+      // town square: paving, fountain, benches; trees in the roof pool (green tint)
+      w.box(1.5, 0.04, 1.5, 0xcfc6b4);
+      w.cyl(0.32, 0.34, 0.14, 12, 0xb8b0a0, { y: 0.04 });
+      w.cyl(0.26, 0.26, 0.02, 12, 0x5aa6d8, { y: 0.17, glow: true });
+      w.cyl(0.05, 0.06, 0.3, 6, 0xb8b0a0, { y: 0.18 });
+      for (const [x, z] of [[-0.5, 0.2], [0.5, -0.2]]) w.box(0.3, 0.06, 0.1, 0x7a5a3a, { x, y: 0.12, z });
+      for (const [x, z] of [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.55], [0.55, 0.55]]) { w.cyl(0.03, 0.04, 0.34, 5, 0x6b4a33, { x, z }); r.sphere(0.24, 0, 0xffffff, { x, y: 0.5, z, sy: 0.9 }); }
+      break;
     case 'house':
       w.box(0.8, 0.5, 0.7, WALL);
       w.box(0.16, 0.3, 0.02, 0x7a5a3a, { x: -0.15, z: 0.36 });
@@ -116,7 +167,7 @@ function buildArch(name) {
   return { walls: w.build(), roof: r.build() };
 }
 
-const BUILDING_H = { house: 0.9, house2: 1.2, shop: 0.7, apartment: 1.6, office: 2.6, tower: 4.2, skyscraper: 7.2, civic: 1.8 };
+const BUILDING_H = { cottage: 0.8, house: 0.9, house2: 1.2, townhouse: 1.2, shop: 0.7, apartment: 1.6, block: 1.6, office: 2.6, tower: 4.2, skyscraper: 7.2, civic: 1.8, warehouse: 0.9, plaza: 0.6 };
 
 export class TownSystem {
   constructor(game) {
@@ -128,7 +179,7 @@ export class TownSystem {
     this.roofPools = {};
     for (const a of ARCH) {
       const g = buildArch(a);
-      const cap = a === 'house' || a === 'house2' ? 900 : 500;
+      const cap = a === 'house' || a === 'house2' || a === 'cottage' || a === 'townhouse' ? 900 : a === 'plaza' ? 80 : 500;
       this.pools[a] = new InstancePool(g.walls, MATS, cap);
       this.roofPools[a] = new InstancePool(g.roof, MATS, cap, true, 'rslot');
       this.group.add(this.pools[a].mesh, this.roofPools[a].mesh);
@@ -238,6 +289,10 @@ export class TownSystem {
     for (const s of sts) { if (n <= 0) break; const k = Math.min(per, n); this.game.stations.receive(s, c, k); n -= k; }
   }
   onStationsChanged() { for (const t of this.list) t._sts = null; }
+  // a new or bigger station reshapes the town around it (rail influence)
+  onStationGrew(stn) {
+    for (const t of this.list) if (Math.max(Math.abs(tx(stn.tile) - t.x), Math.abs(tz(stn.tile) - t.z)) <= 7) this.layout(t, true);
+  }
 
   // ---------- layout ----------
   isRoad(t, x, z) { const dx = x - t.x, dz = z - t.z; return (dx % 3 === 0 || dz % 3 === 0); }
@@ -270,16 +325,39 @@ export class TownSystem {
     return true;
   }
 
+  // Architectural generations: density grows with the town stage and falls
+  // off with distance from the centre; the railway pulls density towards busy
+  // passenger stations and brings warehouses next to goods stations.
   archFor(t, c) {
     const s = t.stage;
-    const dens = s - c.d * 0.75 + c.h * 0.8;
-    if (dens < 0.6) return c.h > 0.5 ? 'house2' : 'house';
-    if (dens < 1.5) return c.h > 0.4 ? 'house2' : 'shop';
-    if (dens < 2.4) return c.h > 0.55 ? 'apartment' : 'shop';
-    if (dens < 3.3) return 'apartment';
-    if (dens < 4.3) return c.h > 0.5 ? 'office' : 'apartment';
-    if (dens < 5.2) return c.h > 0.4 ? 'tower' : 'office';
+    const rail = this.railInfluence(t, c);
+    if (rail.goods && s >= 2 && c.h > 0.3 && c.h < 0.75) return 'warehouse';
+    const dens = s - c.d * 0.75 + c.h * 0.8 + rail.boost;
+    if (dens < 0.2) return c.h > 0.5 ? 'house' : 'cottage';
+    if (dens < 0.8) return c.h > 0.6 ? 'house2' : c.h > 0.3 ? 'house' : 'cottage';
+    if (dens < 1.5) return c.h > 0.55 ? 'house2' : c.h > 0.3 ? 'townhouse' : 'shop';
+    if (dens < 2.4) return c.h > 0.6 ? 'apartment' : c.h > 0.3 ? 'townhouse' : 'shop';
+    if (dens < 3.3) return c.h > 0.5 ? 'apartment' : 'block';
+    if (dens < 4.3) return c.h > 0.55 ? 'office' : 'block';
+    if (dens < 5.2) return c.h > 0.4 ? 'tower' : c.h > 0.2 ? 'office' : 'block';
     return c.h > 0.35 ? 'skyscraper' : 'tower';
+  }
+  // passenger stations serving this town raise density around them (more with
+  // level and traffic); goods stations within 2 tiles attract warehouses
+  railInfluence(t, c) {
+    const S = this.game.stations;
+    let boost = 0, goods = false;
+    if (!S || !S.list) return { boost, goods };
+    for (const st of S.list) {
+      const d = Math.max(Math.abs(tx(st.tile) - c.x), Math.abs(tz(st.tile) - c.z));
+      if (d > 4) continue;
+      const kind = st.kind || (S.stationKind ? S.stationKind(st).kind : '');
+      if (kind === 'freight' || kind === 'yard' || kind === 'intermodal') { if (d <= 2) goods = true; continue; }
+      if (!st.links || !(st.links.towns || []).includes(t.id)) continue;
+      const busy = Math.min(1, (st.stats && st.stats.arrivals ? st.stats.arrivals : 0) / 60);
+      boost = Math.max(boost, (0.5 + 0.18 * st.level + 0.4 * busy) * (1 - d / 5));
+    }
+    return { boost, goods };
   }
 
   layout(t, animate) {
@@ -289,7 +367,7 @@ export class TownSystem {
     const target = TOWN_BUILDINGS[t.stage];
     const cands = this.candidateTiles(t);
     const want = new Map();
-    let civicPlaced = false;
+    let civicPlaced = false, plazaPlaced = false;
     // road tiles within radius belong to the town (for picking), never blocked
     for (const c of cands) {
       if (c.d > R) continue;
@@ -303,6 +381,7 @@ export class TownSystem {
       if (!this.tileFree(t, i)) continue;
       let arch = this.archFor(t, c);
       if (!civicPlaced && t.stage >= 1 && c.d === 1) { arch = 'civic'; civicPlaced = true; }
+      else if (!plazaPlaced && t.stage >= 3 && c.d === 2 && c.h < 0.5) { arch = 'plaza'; plazaPlaced = true; }
       want.set(i, arch);
     }
     // remove buildings that no longer match
@@ -353,10 +432,12 @@ export class TownSystem {
     const tints = [0xffffff, 0xfbeede, 0xeef2f6, 0xf6e6d6, 0xe8efe4, 0xf7f0dc];
     b.pos = [wx, h - 0.05, wz];
     b.rot = rot;
-    b.scale = arch === 'house' || arch === 'house2' ? rng.range(1.2, 1.45) : rng.range(1.25, 1.45);
+    b.scale = arch === 'house' || arch === 'house2' || arch === 'cottage' ? rng.range(1.2, 1.45) : arch === 'plaza' ? 1.25 : rng.range(1.25, 1.45);
     b.wall = tints[rng.int(0, tints.length - 1)];
-    b.roofC = arch === 'house' || arch === 'house2' || arch === 'civic' ? rng.pick(biome.roof) : shade(0x8a8f96, rng.range(0.8, 1.1));
+    b.roofC = arch === 'plaza' ? shade(0x4f8a4a, rng.range(0.9, 1.1)) : arch === 'house' || arch === 'house2' || arch === 'civic' || arch === 'cottage' || arch === 'townhouse' ? rng.pick(biome.roof) : shade(0x8a8f96, rng.range(0.8, 1.1));
     if (arch === 'office' || arch === 'tower' || arch === 'skyscraper') b.wall = rng.pick([0xdfe6ea, 0xcfd8de, 0xe8e2d8, 0xd6dce4]);
+    if (arch === 'block') b.wall = rng.pick([0xe8d8c0, 0xd8c0a8, 0xe6e0d4, 0xc8b8a8, 0xdcc8b0]);
+    if (arch === 'warehouse' || arch === 'plaza') b.wall = 0xffffff;
     b.t = delay >= 0 ? -delay : 1;
     this.writeBuilding(b, delay >= 0 ? 0 : 1);
     pool.set(b.slot, this._m, b.wall); rpool.set(b.rslot, this._m, b.roofC);

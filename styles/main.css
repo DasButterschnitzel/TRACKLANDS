@@ -506,3 +506,13 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 #toolbar .tools.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); }
 #toolbar .tools.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px); mask-image: linear-gradient(90deg, transparent, #000 34px); }
 #toolbar .tools.more-l.more-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); }
+
+/* industry opportunity cards */
+.opps { display: grid; gap: 4px; }
+.opp { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; padding: 5px 8px; border-radius: var(--r-s); background: rgba(31,42,58,.05); font-size: .92em; }
+.opp .tag { justify-self: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.opp .opp-meta { grid-column: 1 / -1; color: var(--ink2); }
+.opp .opp-state { font-size: .82em; padding: 1px 7px; border-radius: 99px; background: rgba(31,42,58,.08); white-space: nowrap; }
+.opp.served .opp-state { background: rgba(76,175,106,.18); color: #2f7a45; }
+.opp.station .opp-state { background: rgba(224,163,58,.2); color: #8a5a10; }
+.opp.locked { opacity: .55; }

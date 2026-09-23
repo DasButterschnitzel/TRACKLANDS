@@ -16,6 +16,8 @@ const SCREENS = [
   ['settings', () => { const u = window.__tracklands.ui; u.closePanel(); u.openPanel('settings'); }],
   ['station', () => { const u = window.__tracklands.ui, g = window.__tracklands.game; u.closePanel(); g.select({ type: 'station', id: 7 }); g.focusOn({ type: 'station', id: 7 }, 14); }],
   ['train', () => { const g = window.__tracklands.game; g.select({ type: 'train', id: 4 }); g.focusOn({ type: 'train', id: 4 }, 12); }],
+  ['industry', () => { const g = window.__tracklands.game; const i = g.industries.list.find((x) => g.industries.linkedStations(x).length) || g.industries.list[0]; g.select({ type: 'industry', id: i.id }); g.focusOn({ type: 'industry', id: i.id }, 14); }],
+  ['town', () => { const g = window.__tracklands.game; const t = g.towns.list.reduce((a, b) => (b.stage > a.stage ? b : a)); g.select({ type: 'town', id: t.id }); g.focusOn({ type: 'town', id: t.id }, 16); }],
   ['overlay', () => { const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
   ['night-rain', () => { const g = window.__tracklands.game; g.overlays.set(null); g.env.timeOfDay = 0.95; g.env.weather = g.env.weatherTarget = 'rain'; }],
 ];

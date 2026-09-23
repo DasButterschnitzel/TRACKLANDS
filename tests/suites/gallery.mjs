@@ -13,7 +13,10 @@ const sheets = {
 };
 
 export const name = 'gallery';
-export async function run({ browser, base }) {
+export async function run({ browser, base, args = {} }) {
+  // --only=locos,stations,towns renders a subset of the sheets
+  const only = args.only ? String(args.only).split(',') : null;
+  const want = (k) => !only || only.includes(k);
   const dir = path.join(ensureOut(), 'gallery');
   fs.mkdirSync(dir, { recursive: true });
   const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 1600, height: 1000 } });
@@ -21,6 +24,7 @@ export async function run({ browser, base }) {
   const lines = [];
   let ok = true;
   for (const [sheet, cfg] of Object.entries(sheets)) {
+    if (!want(sheet)) continue;
     for (const view of ['side', 'three-quarter', 'front']) {
       const res = await page.evaluate(async ([sheet, cfg, view]) => {
         const app = window.__tracklands, g = app.game;
@@ -98,7 +102,7 @@ export async function run({ browser, base }) {
     }
   }
   // stations: every type at several sizes, plus terminals
-  for (const view of ['three-quarter', 'top']) {
+  for (const view of want('stations') ? ['three-quarter', 'top'] : []) {
     const res = await page.evaluate(async (view) => {
       const app = window.__tracklands, g = app.game;
       const THREE = await import('three');
@@ -148,6 +152,28 @@ export async function run({ browser, base }) {
     if (res.bad) ok = false;
     if (view === 'top') lines.push(`${res.bad ? 'FAIL' : 'ok  '} stations: ${res.n} types/sizes`);
   }
+  // towns: one town per growth stage, rendered in the live world
+  await page.evaluate(() => { document.querySelector('#hud').style.visibility = 'hidden'; document.querySelector('#labels').style.visibility = 'hidden'; });
+  for (let stage = 0; stage <= (want('towns') ? 6 : -1); stage++) {
+    await page.evaluate((st) => {
+      const g = window.__tracklands.game;
+      const t = g.towns.list[st % g.towns.list.length];
+      t.stage = st; t.pop = [80, 300, 900, 2500, 7000, 18000, 45000][st];
+      g.towns.layout(t, false);
+      for (const b of t.buildings) { b.t = 1; g.towns.writeBuilding(b, 1); }
+      for (const p of Object.values(g.towns.pools)) p.dirty();
+      for (const p of Object.values(g.towns.roofPools)) p.dirty();
+      g.world.view.clouds.visible = false;
+      const cam = g.camera; cam.focusGoal = null;
+      cam.target.x = (t.x + 0.5) * 2; cam.target.z = (t.z + 0.5) * 2;
+      cam.zoomGoal = cam.viewSize = 12 + st * 2.4;
+      g.env.timeOfDay = 0.4;
+      g.speed = 0;
+    }, stage);
+    await page.waitForTimeout(1600);
+    await page.screenshot({ path: path.join(dir, `town-stage${stage}.png`) });
+  }
+  if (want('towns')) lines.push('ok   towns: stages 0-6');
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   lines.push(`sheets: ${path.relative(process.cwd(), dir)}`);
   await ctx.close();
