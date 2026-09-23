@@ -172,6 +172,16 @@ export class UI {
         <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
       </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>`;
     if (menuOpen) this.renderOverlayMenu();
+    // narrow screens: the tool strip scrolls; keep the active tool in view and
+    // show which side has more tools
+    const strip = $('#toolbar .tools');
+    if (strip) {
+      const edges = () => { strip.classList.toggle('more-l', strip.scrollLeft > 2); strip.classList.toggle('more-r', strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 2); };
+      const on = strip.querySelector('.tool.on');
+      if (on && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = Math.max(0, Math.min(on.offsetLeft - strip.clientWidth / 2 + on.offsetWidth / 2, strip.scrollWidth - strip.clientWidth));
+      strip.addEventListener('scroll', edges, { passive: true });
+      edges();
+    }
     // contextual sub bar
     let sub = '';
     if (C.tool === 'track') {

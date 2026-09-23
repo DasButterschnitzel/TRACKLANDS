@@ -491,3 +491,11 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
   #subbar .sub-hint { display: none; }
   #subbar { align-items: stretch; }
 }
+
+/* scrollable tool strip on narrow screens: fade the edge that has more tools */
+#toolbar .tools { scroll-snap-type: x proximity; scrollbar-width: none; }
+#toolbar .tools::-webkit-scrollbar { display: none; }
+#toolbar .tools .tool { scroll-snap-align: start; flex: none; }
+#toolbar .tools.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); }
+#toolbar .tools.more-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px); mask-image: linear-gradient(90deg, transparent, #000 34px); }
+#toolbar .tools.more-l.more-r { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, transparent, #000 34px, #000 calc(100% - 34px), transparent); }

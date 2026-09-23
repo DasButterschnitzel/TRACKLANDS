@@ -1,0 +1,94 @@
+// UI screenshot regression across the responsive matrix, with automatic
+// layout checks: no horizontal page overflow, HUD bars inside the viewport,
+// panels/inspectors inside the viewport, touch target size on touch devices,
+// and no missing translations. Screenshots go to tests/output/ui/.
+import { openPage, loadSave, productionSave, ensureOut, devices } from '../lib.mjs';
+import path from 'path';
+import fs from 'fs';
+
+const SCREENS = [
+  ['main', () => {}],
+  ['trains', () => window.__tracklands.ui.openPanel('trains')],
+  ['builder', () => window.__tracklands.ui.openBuilder({ trainId: 3 })],
+  ['research', () => { const u = window.__tracklands.ui; u.closePanel(); u.openPanel('research'); }],
+  ['contracts', () => { const u = window.__tracklands.ui; u.closePanel(); u.openPanel('contracts'); }],
+  ['map', () => { const u = window.__tracklands.ui; u.closePanel(); u.openPanel('map'); }],
+  ['settings', () => { const u = window.__tracklands.ui; u.closePanel(); u.openPanel('settings'); }],
+  ['station', () => { const u = window.__tracklands.ui, g = window.__tracklands.game; u.closePanel(); g.select({ type: 'station', id: 7 }); g.focusOn({ type: 'station', id: 7 }, 14); }],
+  ['train', () => { const g = window.__tracklands.game; g.select({ type: 'train', id: 4 }); g.focusOn({ type: 'train', id: 4 }, 12); }],
+  ['overlay', () => { const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
+  ['night-rain', () => { const g = window.__tracklands.game; g.overlays.set(null); g.env.timeOfDay = 0.95; g.env.weather = g.env.weatherTarget = 'rain'; }],
+];
+
+async function matrix() {
+  const d = await devices();
+  return [
+    ['1920x1080', { viewport: { width: 1920, height: 1080 } }],
+    ['2560x1440', { viewport: { width: 2560, height: 1440 } }],
+    ['3440x1440', { viewport: { width: 3440, height: 1440 } }],
+    ['1366x768', { viewport: { width: 1366, height: 768 } }],
+    ['1280x800', { viewport: { width: 1280, height: 800 } }],
+    ['tablet-landscape', { ...d['iPad (gen 7) landscape'] }],
+    ['tablet-portrait', { ...d['iPad (gen 7)'] }],
+    ['phone-landscape', { ...d['Pixel 7 landscape'] }],
+    ['phone-portrait', { ...d['Pixel 7'], locale: 'de-DE' }],
+    ['small-phone', { ...d['iPhone SE'] }],
+  ];
+}
+
+const layoutCheck = () => {
+  const W = innerWidth, H = innerHeight, probs = [];
+  if (document.documentElement.scrollWidth > W + 1) probs.push(`page overflows horizontally (${document.documentElement.scrollWidth} > ${W})`);
+  const inView = (sel, label) => {
+    const e = document.querySelector(sel);
+    if (!e || e.hidden || getComputedStyle(e).display === 'none') return;
+    const b = e.getBoundingClientRect();
+    if (b.width === 0 || b.height === 0) return;
+    if (b.left < -1 || b.top < -1 || b.right > W + 1 || b.bottom > H + 1) probs.push(`${label} outside viewport (${Math.round(b.left)},${Math.round(b.top)} ${Math.round(b.width)}x${Math.round(b.height)})`);
+  };
+  inView('#topbar', 'top bar'); inView('#toolbar', 'toolbar'); inView('#panel.open', 'panel'); inView('#inspector:not([hidden])', 'inspector');
+  // children of the toolbar must be reachable (inside viewport or in a scroll container)
+  const tb = document.querySelector('#toolbar');
+  if (tb) for (const btn of tb.querySelectorAll('button')) {
+    const b = btn.getBoundingClientRect();
+    if (b.width === 0) continue;
+    let sc = btn.parentElement;
+    while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowX)) sc = sc.parentElement;
+    const scrollable = sc && sc !== document.body && sc.scrollWidth > sc.clientWidth + 1;
+    const r = scrollable ? sc.getBoundingClientRect() : { left: 0, right: W };
+    const hidden = b.right > r.right + 1 || b.left < r.left - 1;
+    if (hidden && !scrollable) probs.push('toolbar button clipped: ' + (btn.id || btn.dataset.act || ''));
+    else if (hidden && !sc.classList.contains(b.left < r.left ? 'more-l' : 'more-r')) probs.push('scrollable toolbar without edge hint: ' + (btn.id || ''));
+    if (matchMedia('(pointer: coarse)').matches && (b.width < 36 || b.height < 36)) probs.push(`small touch target ${Math.round(b.width)}x${Math.round(b.height)}: ` + (btn.id || btn.dataset.act || ''));
+  }
+  return [...new Set(probs)].slice(0, 6);
+};
+
+export const name = 'ui';
+export async function run({ browser, base, quick }) {
+  const dir = path.join(ensureOut(), 'ui');
+  fs.mkdirSync(dir, { recursive: true });
+  const save = productionSave();
+  const lines = [];
+  let ok = true;
+  const list = await matrix();
+  for (const [label, ctxOpts] of quick ? list.filter(([l]) => ['1280x800', 'phone-portrait'].includes(l)) : list) {
+    const { ctx, page, errors } = await openPage(browser, base, ctxOpts);
+    await loadSave(page, save, { paused: false });
+    await page.evaluate(() => { const g = window.__tracklands.game; g.speed = 0; for (let i = 0; i < 30 * 30; i++) g.tick(1 / 30); g.speed = 1; });
+    const probs = new Set();
+    for (const [screen, fn] of SCREENS) {
+      await page.evaluate(fn);
+      await page.waitForTimeout(700);
+      await page.screenshot({ path: path.join(dir, `${label}-${screen}.png`) });
+      for (const p of await page.evaluate(layoutCheck)) probs.add(`${screen}: ${p}`);
+    }
+    const miss = await page.evaluate(async () => { const m = await import('./src/i18n.js'); return [...m.missing]; });
+    const bad = probs.size || miss.length || errors.length;
+    if (bad) ok = false;
+    lines.push(`${bad ? 'FAIL' : 'ok  '} ${label}${probs.size ? ' — ' + [...probs].slice(0, 8).join('; ') : ''}${miss.length ? ' — missing i18n: ' + miss.slice(0, 8).join(',') : ''}${errors.length ? ' — errors: ' + errors.slice(0, 2).join(' | ') : ''}`);
+    await ctx.close();
+  }
+  lines.push(`screenshots: ${path.relative(process.cwd(), dir)}`);
+  return { ok, lines };
+}

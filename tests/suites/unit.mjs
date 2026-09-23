@@ -1,0 +1,42 @@
+// Node-only checks of the save pipeline (no browser): migration idempotency on
+// the production fixture, sanitizer no-op on valid data, repair of damage.
+import { productionSave } from '../lib.mjs';
+
+export const name = 'unit';
+export async function run() {
+  const S = await import('../../src/save/Save.js');
+  const lines = [];
+  let ok = true;
+  const check = (cond, msg) => { lines.push((cond ? 'ok   ' : 'FAIL ') + msg); if (!cond) ok = false; };
+
+  const raw = productionSave();
+  check(raw.saveVersion === 2, 'fixture is a v2 save (TRKL1 export)');
+  const a = S.migrate(JSON.parse(JSON.stringify(raw)));
+  check(!!a && S.validate(a) === null, 'production save migrates and validates');
+  const once = JSON.stringify(a);
+  check(JSON.stringify(S.migrate(JSON.parse(once))) === once, 'migrate() is idempotent');
+  const plain = JSON.parse(JSON.stringify(raw)); S.migrateV2toV3(plain); plain.saveVersion = a.saveVersion;
+  check(JSON.stringify(plain) === once, 'sanitizer leaves the valid production save unchanged');
+  check(a.trains.map((t) => t.name).join(',') === raw.trains.map((t) => t.name).join(','), 'train names preserved: ' + a.trains.map((t) => t.name).join(', '));
+  check(a.economy.coins === raw.economy.coins, 'coins preserved (' + raw.economy.coins + ')');
+  check(a.progression.level === raw.progression.level && a.progression.research.length === raw.progression.research.length, 'level and research preserved');
+
+  // damage repair
+  const d = JSON.parse(once);
+  d.stations.stations.push(null); d.stations.stations[0].stock.PASSENGERS = true;
+  d.trains[0].name = { x: 1 }; d.trains[0].upg.engine = 'fast'; d.trains[0].cargo.push({ c: 'WOOD', n: 'lots' });
+  d.towns.push(null); d.towns[0].stage = 1e9; d.economy.coins = 'x'; d.industries[0].out = { WOOD: {} };
+  const r = S.migrate(d);
+  check(!!r && S.validate(r) === null, 'damaged save repairs and validates');
+  check(r.stations.stations.every(Boolean) && Number.isFinite(r.stations.stations[0].stock.PASSENGERS ?? 0), 'broken station entries dropped / stock coerced');
+  check(typeof r.trains[0].name === 'string' && r.trains[0].upg.engine === 0 && r.trains[0].cargo.every((l) => Number.isFinite(l.n)), 'train name, upgrades and cargo repaired');
+  check(r.towns.every(Boolean) && r.towns[0].stage <= 6 && r.economy.coins === 0, 'towns clamped, coins repaired');
+  check(JSON.stringify(S.migrate(JSON.parse(JSON.stringify(r)))) === JSON.stringify(r), 'repair is idempotent');
+
+  // genuinely invalid imports are rejected
+  check(S.migrate(null) === null && S.migrate({ saveVersion: 0 }) === null, 'non-saves are rejected by migrate()');
+  const noNet = JSON.parse(once); delete noNet.net;
+  check(S.validate(noNet) === 'err_save_invalid', 'save without rail network is rejected by validate()');
+  check(S.importText('TRKL1:%%%') === null && S.importText('{broken') === null, 'malformed import text returns null');
+  return { ok, lines };
+}

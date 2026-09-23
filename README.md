@@ -53,6 +53,33 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 
 ## Tests
 
+The full regression suite runs headless in Chromium (Playwright) against a built-in static server:
+
+```sh
+npm install && npx playwright install chromium   # once
+npm test                                         # full release gate
+npm run test:quick                               # reduced sizes
+node tests/run.mjs rail seeds prodsave           # selected suites
+node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
+```
+
+| Suite | What it protects |
+|---|---|
+| `unit` | Save pipeline without a browser: migration idempotency, sanitizer repairs, rejection of non-saves |
+| `rail` | The 7 in-game railway scenarios (`index.html?railtest`) |
+| `seeds` | Permanent fuzzer regression seeds (`tests/regression-seeds.json`), including the critical seeds 2, 20, 23 and 46 |
+| `fuzz` | A range of random fuzzer seeds |
+| `prodsave` | The real production save (`tests/fixtures/production-save.trkl1.txt`): every train, station, industry, town, research node and statistic survives; 20 simulated minutes without conflicts; income stays in band; lossless round trip |
+| `persist` | Save/reload with live edits; offline progress is capped, never negative, and claimable once |
+| `import` | UI import of the TRKL1 export (v2 → v3 with a `pre_v3` backup), malformed input, cancel, export → import |
+| `tutorial` | The full tutorial with real mouse input |
+| `savefuzz` | 300 mutated saves either load and keep running cleanly or are rejected with the load-failed dialog |
+| `monkey` | Deterministic random UI input on desktop, phone (touch, German) and tablet |
+| `ui` | Screenshots of the main screens from 1366×768 to 3440×1440, plus tablet and phone; layout checks for overflow, clipping, touch targets and missing strings |
+| `perf` | Tick cost with 8, 24 and 50 trains; a 60-minute session checked for leaks |
+
+Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).
+
 Open `index.html?railtest` to run the automated railway scenarios on a throwaway world, which is never saved: single track with and without passing loops, short halts (deadlock resolver), multi-track stations and dispatching, a diamond crossing, and signals at 1× and coarse 4× steps. Each scenario checks that no two trains share a lane key, that train bodies never overlap geometrically, and that every train keeps making trips. The same suite runs from the console: `__tracklands.game.runRailTests()`.
 
 For broader coverage there is a seeded simulation fuzzer (`src/debug/RailFuzz.js`). It builds a random network (single and double track, multi-track stations, depots and signals), buys random consists with random schedules, and runs 12 game minutes while making a live edit every 15 s: signals, single/double track, platform extensions, added station tracks, bulldozing, consist changes, buying and selling trains, waypoints, and station upgrades. On every check it asserts four things:
