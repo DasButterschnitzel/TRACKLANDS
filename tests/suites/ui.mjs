@@ -34,7 +34,10 @@ const SCREENS = [
     const id = g._uiPaxStn || (px[0] && px[0].id) || 7;
     g.select({ type: 'station', id }); g.focusOn({ type: 'station', id }, 14);
   }],
-  ['overlay', () => { const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
+  ['lines', () => { const u = window.__tracklands.ui, g = window.__tracklands.game; g.select(null); u.closePanel(); u.trainsTab = 'lines'; u.openPanel('trains'); }],
+  ['fleet', () => { const u = window.__tracklands.ui; u.trainsTab = 'fleet'; u.refreshPanel(); }],
+  ['netmap', () => { const u = window.__tracklands.ui; u.trainsTab = 'trains'; u.closePanel(); u.mapMode = 'lines'; u.openPanel('map'); }],
+  ['overlay', () => { window.__tracklands.ui.closePanel(); const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
   ['night-rain', () => { const g = window.__tracklands.game; g.overlays.set(null); g.env.timeOfDay = 0.95; g.env.weather = g.env.weatherTarget = 'rain'; }],
 ];
 

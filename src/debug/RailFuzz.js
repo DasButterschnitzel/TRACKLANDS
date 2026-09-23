@@ -136,6 +136,8 @@ export class RailFuzz extends RailTests {
       const stops = rng.shuffle(this.sites.slice()).slice(0, rng.int(2, 4));
       t.route = stops.map((s) => ({ st: s.id, act: rng.pick(['auto', 'auto', 'load', 'unload', 'transfer', 'none']), dwell: rng.pick([0, 0, 5]), full: rng.chance(0.15), skip: false, plat: rng.chance(0.2) ? rng.int(0, s.tracks.length - 1) : null, cargo: null }));
       if (rng.chance(0.2) && g.net.waypoints.size) t.route.splice(1, 0, { wp: [...g.net.waypoints.keys()][0], act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null });
+      // timetables on some lines (derived from the id: keeps the random stream of regression seeds)
+      if (t.id % 3 === 0) t.spacing = [-1, 60, 120][Math.floor(t.id / 3) % 3];
     }
     this.note(`buy ${t.name} ${t.veh.map((v) => v.id).join('+')} ${t.mode}`);
     return t;

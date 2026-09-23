@@ -270,6 +270,42 @@ export class RailTests {
     };
   }
 
+  // Timetable: a train with a 3-minute departure interval waits at its first
+  // stop (status 'st_timetable') and leaves it at least 180 s apart, although
+  // one round trip takes less.
+  timetable() {
+    const a = this.findArea(18, 3);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 1, x0 = a.x0 + 1;
+    this.line(x0, z, x0 + 15, z);
+    this.finish();
+    const g = this.g, S_ = g.stations;
+    const A = this.station(x0 + 2, z), B = this.station(x0 + 13, z);
+    for (let k = 0; k < 2; k++) { S_.extendPlatform(A, 0, 1); S_.extendPlatform(B, 0, 0); }
+    const D = this.depot(x0 + 16, z);
+    g.net.connect(idx(x0 + 15, z), E);
+    this.finish();
+    const t = this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, B], { dwell: 0 });
+    t.spacing = 180;
+    const deps = [];
+    let held = 0;
+    const note = g.lines.noteDeparture.bind(g.lines);
+    g.lines.noteDeparture = (x) => { if (x === t && x.servedIdx === 0) deps.push(g.time); note(x); };
+    const status = g.trains.statusOf.bind(g.trains);
+    const trips0 = t.trips;
+    const r = this.run(720, 1 / 30, [t]);
+    g.lines.noteDeparture = note;
+    // status while holding (checked on a fresh hold)
+    if (t.state === 'load' && t.ttHold && status(t).key === 'st_timetable') held = 1;
+    const gaps = deps.slice(1).map((d, i) => d - deps[i]);
+    const minGap = gaps.length ? Math.min(...gaps) : 0;
+    this.cleanup([t]);
+    return {
+      ok: r.keyConflicts === 0 && r.overlaps === 0 && gaps.length >= 2 && minGap >= 179.9 && minGap < 200 && t.trips - trips0 >= 4,
+      detail: `departures ${deps.length} · gaps ${gaps.map((x) => x.toFixed(1)).join('/')} · trips ${t.trips - trips0} · holding status ${held ? 'seen' : 'n/a'} · keys ${r.keyConflicts} overlaps ${r.overlaps}`,
+    };
+  }
+
   runAll(only) {
     if (only) { this.verbose = true; }
     const g = this.g;
@@ -284,6 +320,7 @@ export class RailTests {
     if (only === 'multi') { this.check('multi', () => this.multiTrackStation()); return this.log; }
     if (only === 'coarse') { this.check('coarse', () => this.signalsAndSpeed(0.1)); return this.log; }
     if (only === 'pax') { this.check('pax', () => this.paxTransfer()); return this.log; }
+    if (only === 'timetable') { this.check('timetable', () => this.timetable()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));
@@ -292,6 +329,7 @@ export class RailTests {
     this.check('signals at 1× steps', () => this.signalsAndSpeed(1 / 30));
     this.check('signals at 4× coarse steps', () => this.signalsAndSpeed(0.1));
     this.check('passenger destinations & transfers', () => this.paxTransfer());
+    this.check('timetable departure interval', () => this.timetable());
     return this.log;
   }
 }

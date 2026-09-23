@@ -132,6 +132,8 @@ export function sanitize(d) {
     for (const k of Object.keys(t.upg)) if (!TRAIN_UPGRADES.includes(k)) delete t.upg[k];
     for (const k of TRAIN_UPGRADES) if (t.upg[k] !== undefined) t.upg[k] = Math.round(num(t.upg[k], 0, 0, 5));
     if (t.head !== undefined && !isObj(t.head)) t.head = null;
+    if (t.spacing !== undefined && !fin(t.spacing)) delete t.spacing;
+    if (t.group !== undefined && typeof t.group !== 'string') delete t.group;
   }
   const E = d.economy;
   if (isObj(E)) {

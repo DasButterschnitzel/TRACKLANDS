@@ -15,6 +15,7 @@ import {
 } from './Consist.js';
 import { MATS } from '../core/ModelBuilder.js';
 import { SCALE } from '../style.js';
+import { SPACING_CHOICES } from './Lines.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
@@ -141,6 +142,9 @@ export class TrainSystem {
       visual: null, fade: 1, reroutes: 0, homeDepot: d.depotId ?? null, unreachable: new Map(), recover: 0,
       created: d.created || Date.now(), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
       waitTotal: 0, pendingVeh: null, deadT: 0,
+      // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
+      spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '',
+      servedIdx: null, ttHold: false, incomeEma: 0,
     };
     t._st = computeStats(t.veh, t.upg, this.game.progression.fx);
     return t;
@@ -176,6 +180,13 @@ export class TrainSystem {
     if (t.state === 'run' || t.state === 'reversing') { t.pendingVeh = cloneConsist(vs); return null; }
     this.setVehicles(t, cloneConsist(vs));
     return null;
+  }
+  // fleet replacement: swap every locomotive of model `from` for model `to`
+  // (wagons stay; old locomotives are refunded like in the Train Builder)
+  replaceLoco(t, from, to) {
+    const base = t.pendingVeh || t.veh;
+    if (!base.some((v) => v.k === 'L' && v.id === from)) return 'err_nothing_to_replace';
+    return this.applyConsist(t, base.map((v) => (v.k === 'L' && v.id === from ? { ...v, id: to } : { ...v })));
   }
   setVehicles(t, vs) {
     const g = this.game;
@@ -737,7 +748,7 @@ export class TrainSystem {
       if (!opts.length) continue;
       const o = opts[0];
       let pen = 0;
-      if (S.platformBusy(stn, tg.track, t.id)) pen += 7;
+      if (S.platformBusy(stn, tg.track, t.id)) { pen += 7; if (this.platformHeldLong(stn, tg.track, t.id)) pen += 15; }
       if (pref != null && pref === tg.track) pen -= 4;
       pen += S.rolePenalty(stn, tg.track, t._st.priority);
       const fit = tg.len * TILE + STOP_EXT;
@@ -746,6 +757,19 @@ export class TrainSystem {
       if (!best || o.cost < best.cost) best = o;
     }
     return best;
+  }
+
+  // a train standing at that platform for a while yet (timetable hold, full
+  // load, long loading): better use another platform when there is one
+  platformHeldLong(stn, k, id) {
+    const tk = stn.tracks[k], net = this.net;
+    if (!tk) return false;
+    for (const tile of tk.tiles) for (const h of [net.resv[tile * 2], net.resv[tile * 2 + 1]]) {
+      if (!h || h === id) continue;
+      const o = this.byId(h);
+      if (o && o.state === 'load' && (o.ttHold || o.waitFull || o.loadTime - o.stateT > 8)) return true;
+    }
+    return false;
   }
 
   claimPlatform(t, stn, tgt) {
@@ -1011,7 +1035,8 @@ export class TrainSystem {
     t.cargo = keep;
     if (t.mode === 'manual' && t.route.length) {
       const cur = t.route[t.routeIdx % t.route.length];
-      if (cur && cur.st === stn.id) t.routeIdx = (t.routeIdx + 1) % t.route.length;
+      t.servedIdx = null;
+      if (cur && cur.st === stn.id) { t.servedIdx = t.routeIdx % t.route.length; t.routeIdx = (t.routeIdx + 1) % t.route.length; }
     }
     const planned = opt.act === 'unload' || opt.act === 'none' ? 0 : this.planLoad(t, stn, true, opt);
     const eff = Math.max(STATION.minPlatformEff, this.platformFraction(t, stn));
@@ -1090,6 +1115,12 @@ export class TrainSystem {
     for (const t of order) {
       try { this.tickTrain(t, dt); } catch (e) { this.errors = (this.errors || 0) + 1; this.lastError = String(e && e.stack || e); console.error('train tick error', e); this.recoverTrain(t); }
     }
+    // smoothed income per minute of each train (lines list, fleet overview)
+    this._incT = (this._incT ?? 10) - dt;
+    if (this._incT <= 0) {
+      this._incT = 10;
+      for (const t of this.trains) { const d = t.earned - (t._earnMark ?? t.earned); t._earnMark = t.earned; t.incomeEma = (t.incomeEma || 0) * 0.95 + d * 6 * 0.05; }
+    }
     this._deadT -= dt;
     if (this._deadT <= 0) { this._deadT = 1; this.detectDeadlocks(); this.checkInvariants(); }
     let op = 0;
@@ -1126,6 +1157,7 @@ export class TrainSystem {
         return;
       }
       case 'load': {
+        if (t.ttHold) t.ttHeld = (t.ttHeld || 0) + dt;
         if (t.stateT >= t.loadTime) {
           const stn = this.stationAtHead(t) || g.stations.byId(t.target);
           const opt = t.curStop || { act: 'auto' };
@@ -1138,6 +1170,11 @@ export class TrainSystem {
           const blocking = this.trains.some((o) => o !== t && o.blockedBy === t.id && o.wait > 20);
           if (t.waitFull && stn && !this.isFull(t) && t.stateT < t.fullUntil && !blocking) { t.loadTime = t.stateT + 1.5; return; }
           t.fullUntil = null;
+          // timetable: keep an even interval between departures of the line
+          const hold = g.lines.holdFor(t);
+          if (hold > 0 && !blocking) { t.ttHold = true; t.loadTime = t.stateT + Math.min(hold, 1); return; }
+          t.ttHold = false;
+          g.lines.noteDeparture(t);
           t.state = 'depart';
         }
         return;
@@ -1679,6 +1716,7 @@ export class TrainSystem {
       case 'load': {
         const pct = Math.round(this.fillRatio(t) * 100);
         const here = this.stationAtHead(t);
+        if (t.ttHold) return { key: 'st_timetable', p: { s: Math.max(1, Math.ceil(this.game.lines.holdFor(t))), station: here ? here.name : where } };
         return { key: t.waitFull && t.stateT > t.loadTime - 1.6 ? 'st_wait_full' : 'st_loading', p: { pct, station: here ? here.name : where }, eff: t.platEff };
       }
       case 'lost': return { key: 'prob_' + (t.problem || 'no_route'), warn: true };
@@ -1856,6 +1894,7 @@ export class TrainSystem {
         id: t.id, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, liveryScope: t.liveryScope === 'loco' ? 'loco' : undefined, upg: t.upg, mode: t.mode,
         route: t.route, routeIdx: t.routeIdx, filter: t.filter, cargo: t.cargo, earned: t.earned, trips: t.trips, target: t.target, depotId: t.homeDepot,
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
+        spacing: t.spacing || undefined, group: t.group || undefined,
       };
     });
   }

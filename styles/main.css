@@ -521,3 +521,38 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 .pill.good { background: rgba(76,175,106,.18); color: #2f7a45; }
 .kvrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 2px; border-bottom: 1px dashed rgba(31,42,58,.12); font-size: .92em; }
 .kvrow b { font-variant-numeric: tabular-nums; }
+
+/* trains panel tabs, lines, fleet, route overview */
+.seg.tabs { margin: 10px 0 4px; }
+.seg.tabs button { min-height: 36px; padding: 6px; }
+h4.grp { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 12px 0 4px; }
+h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; letter-spacing: 0; }
+.lc-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--lc, #888); margin-right: 6px; flex: none; vertical-align: 0; }
+.line-card { border-left: 4px solid var(--lc); background: rgba(31,42,58,.04); border-radius: var(--r-s); padding: 8px 10px; margin: 8px 0; }
+.ln-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; }
+.ln-head b { flex: 1 1 auto; min-width: 0; }
+.ln-head small { color: var(--ink2); flex-basis: 100%; }
+.ln-head.small b { font-size: .95em; }
+.ldiag { display: flex; flex-wrap: wrap; align-items: center; row-gap: 6px; margin: 8px 0; }
+.ldiag .lnode { display: inline-flex; align-items: center; gap: 2px; }
+.ldiag .lnode .tag { border: 2px solid var(--lc); background: #fff; }
+.ldiag .lseg { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 4px; background: var(--lc); border-radius: 2px; margin: 0 2px; }
+.ldiag .lseg.back { background: none; height: auto; color: var(--lc); font-weight: 700; }
+.tmark { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 2px solid var(--lc); color: var(--ink); padding: 0; margin: -9px 1px 0; }
+.tmark.me { background: var(--lc); color: #fff; }
+.set.compact { flex: 1 1 200px; margin: 0; }
+.fleet-row { padding: 8px 0; border-bottom: 1px solid rgba(31,42,58,.08); }
+.fr-head { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.fr-head small { color: var(--ink2); }
+.fleet-row select { flex: 1 1 180px; min-height: 36px; }
+/* schematic network map */
+.netmap { margin: 8px 0; }
+.netmap svg { display: block; background: #fbf8f2; border-radius: var(--r-m); border: 1px solid rgba(31,42,58,.08); }
+.netmap .nm-labels text { font: 600 9px/1 system-ui, sans-serif; fill: #1f2a3a; paint-order: stroke; stroke: #fbf8f2; stroke-width: 3px; }
+.netmap .nm-labels text.dim { fill: #8a929c; font-weight: 500; }
+.netmap .nm-stn { cursor: pointer; }
+.netmap .nm-stn:focus-visible circle:last-child { stroke: var(--teal, #2fb3a3); stroke-width: 3; }
+.nm-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: .86em; }
+.nm-line { display: inline-flex; align-items: center; gap: 5px; }
+.nm-line i { width: 16px; height: 5px; border-radius: 3px; }
+.nm-line small { color: var(--ink2); }

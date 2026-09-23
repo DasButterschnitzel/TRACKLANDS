@@ -9,6 +9,7 @@ import {
 } from '../config.js';
 import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
 import { icon, cargoIcon } from './icons.js';
+import { networkMapSVG } from './NetworkMap.js';
 import { locoModel } from '../trains/Trains.js';
 import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels.js';
 import { MATS } from '../core/ModelBuilder.js';
@@ -729,7 +730,10 @@ export class UI {
     const regions = REGIONS.map((r, i) => `<button class="mreg ${P.regionUnlocked(i) ? 'on' : ''}" data-act="focusRegion" data-arg="${i}">${icon(P.regionUnlocked(i) ? 'map' : 'lock')}<span>${this.tr('region_' + r.id)}</span><small>${P.regionUnlocked(i) ? `${P.regionObjectivesDone(i)}/${(OBJECTIVES[r.id] || []).length}` : this.tr('unlock_level', { n: r.level })}</small></button>`).join('');
     const towns = g.towns.list.filter((t) => P.regionUnlocked(t.region)).map((t) => `<button class="mitem" data-act="jump" data-arg="town:${t.id}">${icon('town')}<span>${esc(t.name)}</span><small>${this.tr('stage_' + g.towns.stageName(t))}</small></button>`).join('');
     const trains = g.trains.trains.map((t) => `<button class="mitem" data-act="jump" data-arg="train:${t.id}">${icon('train')}<span>${esc(t.name)}</span><small>${this.tr('tstate_' + t.state)}</small></button>`).join('');
-    return `<canvas id="minimap" width="256" height="256" aria-label="${this.tr('menu_map')}"></canvas>
+    const mode = this.mapMode || 'geo';
+    const seg = `<div class="seg tabs" role="tablist"><button role="tab" aria-selected="${mode === 'geo'}" class="${mode === 'geo' ? 'on' : ''}" data-act="mapMode" data-arg="geo">${this.tr('map_geo')}</button><button role="tab" aria-selected="${mode === 'lines'}" class="${mode === 'lines' ? 'on' : ''}" data-act="mapMode" data-arg="lines">${this.tr('map_schematic')}</button></div>`;
+    if (mode === 'lines') return seg + (networkMapSVG(g, g.lines.list().map((l) => ({ ...l, name: g.lines.name(l) })), { tr: (k) => this.tr(k) }) || `<p class="muted">${this.tr('netmap_empty')}</p>`) + `<h3>${this.tr('trains')}</h3><div class="mlist">${trains}</div>`;
+    return `${seg}<canvas id="minimap" width="256" height="256" aria-label="${this.tr('menu_map')}"></canvas>
       <div class="legend"><span><i class="lg town"></i>${this.tr('towns')}</span><span><i class="lg rail"></i>${this.tr('track')}</span><span><i class="lg train"></i>${this.tr('trains')}</span><span><i class="lg ind"></i>${this.tr('industries')}</span></div>
       <h3>${this.tr('regions')}</h3><div class="mlist">${regions}</div>
       <h3>${this.tr('towns')}</h3><div class="mlist">${towns}</div>
@@ -1020,6 +1024,7 @@ export class UI {
       defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
       defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
       jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      mapMode: (a) => { this.mapMode = a === 'lines' ? 'lines' : 'geo'; this.refreshPanel(); },
       focusSel: () => { if (this.inspectSel) g().focusOn(this.inspectSel); },
       follow: (a) => { this.followId = +a; g().focusOn({ type: 'train', id: +a }, 12); },
       buyTrain: (a) => {

@@ -14,6 +14,7 @@ import {
 import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels.js';
 import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
+import { SPACING_CHOICES } from '../trains/Lines.js';
 
 const esc = escapeHtml;
 const $ = (s, r = document) => r.querySelector(s);
@@ -207,21 +208,110 @@ export const RailUIMixin = {
   },
   pTrains() {
     const g = this.game;
-    const rows = g.trains.trains.map((t) => {
+    const tab = this.trainsTab || 'trains';
+    const tabs = `<div class="seg tabs" role="tablist">${['trains', 'lines', 'fleet'].map((k) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}" data-act="trainsTab" data-arg="${k}">${this.tr('tab_' + k)}</button>`).join('')}</div>`;
+    const head = `<div class="row wrap"><button class="btn primary" data-act="newTrain">${icon('plus')} ${this.tr('buy_train')}</button><button class="btn ghost" data-act="overlay" data-arg="routes">${icon('route')} ${this.tr('ov_routes')}</button></div>${tabs}`;
+    if (tab === 'lines') return head + this.pLines();
+    if (tab === 'fleet') return head + this.pFleet();
+    const row = (t) => {
       const s = this.statusText(t);
       const pct = Math.round(g.trains.fillRatio(t) * 100);
-      return `<div class="trow ${s.warn ? 'warn' : ''}"><button class="trow-main" data-act="jump" data-arg="train:${t.id}"><b>${esc(t.name)}</b><small>${esc(s.text)}</small></button>
+      const line = t.mode === 'manual' ? g.lines.of(t) : null;
+      return `<div class="trow ${s.warn ? 'warn' : ''}"><button class="trow-main" data-act="jump" data-arg="train:${t.id}"><b>${line ? `<i class="lc-dot" style="background:${line.color}"></i>` : ''}${esc(t.name)}</b><small>${esc(s.text)}</small></button>
         <span class="trow-meta"><small>${this.kmh(t.v)} km/h · ${pct}%</small>${this.ratingBadge(t._st.rating)}<small>${fmt(t.earned)}●</small></span>
         <span class="trow-btns"><button class="icon-btn small" data-act="follow" data-arg="${t.id}" data-tip="${this.tr('follow')}">${icon('focus')}</button><button class="icon-btn small" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}">${icon('builder')}</button></span></div>`;
+    };
+    // train groups: one block per group, ungrouped trains last
+    const groups = new Map();
+    for (const t of g.trains.trains) { const k = t.group || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    const rows = keys.map((k) => {
+      const ts = groups.get(k);
+      const inc = ts.reduce((a, t) => a + (t.incomeEma || 0), 0);
+      const hdr = keys.length > 1 || k ? `<h4 class="grp">${k ? esc(k) : this.tr('group_other')}<small>${ts.length} · ≈${fmt(Math.round(inc))}●/${this.tr('min')}</small></h4>` : '';
+      return hdr + ts.map(row).join('');
     }).join('');
     const adv = g.advisor();
     const advH = adv.length ? adv.slice(0, 8).map((a) => {
       const jump = a.station != null ? `station:${a.station}` : a.train != null ? `train:${a.train}` : null;
       return `<div class="adv">${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
     }).join('') : `<p class="muted small">${this.tr('adv_none')}</p>`;
-    return `<div class="row wrap"><button class="btn primary" data-act="newTrain">${icon('plus')} ${this.tr('buy_train')}</button><button class="btn ghost" data-act="overlay" data-arg="routes">${icon('route')} ${this.tr('ov_routes')}</button></div>
+    return `${head}
       <h3>${icon('advisor', 'mini')} ${this.tr('advisor')}</h3>${advH}
       <h3>${this.tr('trains')} (${g.trains.trains.length})</h3><div class="tlist">${rows || `<p class="muted">${this.tr('no_trains')}</p>`}</div>`;
+  },
+
+  // lines: timetabled trains that share their stops
+  pLines() {
+    const g = this.game;
+    const L = g.lines.list();
+    if (!L.length) return `<p class="muted">${this.tr('lines_empty')}</p>`;
+    return L.map((l) => {
+      const inc = g.lines.income(l);
+      const sp = l.trains[0].spacing || 0;
+      const same = l.trains.every((t) => (t.spacing || 0) === sp);
+      const iv = g.lines.headway(l);
+      return `<div class="line-card" style="--lc:${l.color}">
+        <div class="ln-head"><i class="lc-dot"></i><b>${esc(g.lines.name(l))}</b><small>${this.tr(l.trains.length === 1 ? 'line_trains_1' : 'line_trains', { n: l.trains.length })} · ≈${fmt(Math.round(inc))}●/${this.tr('min')}${iv ? ' · ' + this.tr('pax_every', { n: iv < 60 ? '<1' : Math.round(iv / 60) }) : ''}</small></div>
+        ${this.lineDiagram(l)}
+        <div class="row wrap"><label class="set compact"><span>${this.tr('tt_spacing')}</span><select data-change="lineSpacing" data-key="${esc(l.key)}">${this.spacingOptions(same ? sp : null)}</select></label>
+        <button class="btn small" data-act="lineAdd" data-arg="${l.trains[0].id}">${icon('plus')} ${this.tr('line_add_train')}</button></div></div>`;
+    }).join('') + `<p class="muted small">${this.tr('tt_help')}</p>`;
+  },
+  spacingOptions(cur) {
+    return `${cur == null ? '<option value="" selected>—</option>' : ''}${SPACING_CHOICES.map((v) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${v === 0 ? this.tr('tt_off') : v < 0 ? this.tr('tt_even') : this.tr('tt_every', { n: v / 60 })}</option>`).join('')}`;
+  },
+
+  // route overview: stops in order with the line's trains between/at them
+  lineDiagram(l, focus) {
+    const g = this.game, S = g.stations;
+    const at = l.stops.map(() => []), to = l.stops.map(() => []);
+    for (const t of l.trains) {
+      const i = l.stops.indexOf(t.target);
+      if (i < 0) continue;
+      (t.state === 'load' || t.state === 'depart' ? at : to)[i].push(t);
+    }
+    const mark = (t) => `<button class="tmark ${t === focus ? 'me' : ''}" data-act="jump" data-arg="train:${t.id}" data-tip="${esc(t.name)}" aria-label="${esc(t.name)}">${icon('train', 'mini')}</button>`;
+    const parts = l.stops.map((id, i) => `<span class="lseg">${to[i].map(mark).join('')}</span><span class="lnode"><button class="tag link" data-act="jump" data-arg="station:${id}">${esc((S.byId(id) || {}).name || '?')}</button>${at[i].map(mark).join('')}</span>`);
+    return `<div class="ldiag" style="--lc:${l.color}">${parts.join('')}<span class="lseg back" aria-hidden="true">↺</span></div>`;
+  },
+
+  // fleet: locomotive models in use and bulk replacement
+  pFleet() {
+    const g = this.game, P = g.progression;
+    const use = new Map();
+    for (const t of g.trains.trains) for (const v of t.pendingVeh || t.veh) if (v.k === 'L') { if (!use.has(v.id)) use.set(v.id, new Set()); use.get(v.id).add(t); }
+    if (!use.size) return `<p class="muted">${this.tr('no_trains')}</p>`;
+    this.fleetPick = this.fleetPick || {};
+    const unlocked = LOCOS.filter((m) => P.locoUnlocked(m));
+    const rows = [...use.entries()].sort((a, b) => b[1].size - a[1].size).map(([id, set]) => {
+      const m = locoModel(id);
+      const ts = [...set];
+      const cands = unlocked.filter((x) => x.id !== id).sort((a, b) => b.speed - a.speed);
+      const pick = cands.find((x) => x.id === this.fleetPick[id]) || null;
+      let cost = 0;
+      if (pick) for (const t of ts) cost += g.trains.consistChangeCost(t, (t.pendingVeh || t.veh).map((v) => (v.k === 'L' && v.id === id ? { ...v, id: pick.id } : v))).net;
+      const opts = `<option value="">${this.tr('fleet_replace')}…</option>${cands.map((x) => `<option value="${x.id}" ${pick && pick.id === x.id ? 'selected' : ''}>${esc(x.name)} · ${Math.round(x.speed)} km/h</option>`).join('')}`;
+      const inc = ts.reduce((a, t) => a + (t.incomeEma || 0), 0);
+      return `<div class="fleet-row"><div class="fr-head"><b>${esc(m.name)}</b><small>${ts.length}× · ${Math.round(m.speed)} km/h · ≈${fmt(Math.round(inc))}●/${this.tr('min')}</small></div>
+        <div class="row wrap"><select data-change="fleetPick" data-id="${id}" aria-label="${this.tr('fleet_replace')}">${opts}</select>
+        <button class="btn small ${pick ? 'primary' : ''}" data-act="fleetReplace" data-arg="${id}" ${pick && (cost <= 0 || g.economy.canAfford(cost)) ? '' : 'disabled'}>${this.tr('fleet_replace_btn')}${pick ? ` · ${cost >= 0 ? fmt(cost) + '●' : '+' + fmt(-cost) + '●'}` : ''}</button></div></div>`;
+    }).join('');
+    return `${rows}<p class="muted small">${this.tr('fleet_help')}</p>`;
+  },
+
+  // timetable & line block in the train inspector (manual routes)
+  lineBlock(t) {
+    const g = this.game;
+    const l = g.lines.of(t);
+    const iv = g.lines.interval(t);
+    return `${l ? `<div class="ln-head small"><i class="lc-dot" style="background:${l.color}"></i><b>${esc(g.lines.name(l))}</b><small>${this.tr(l.trains.length === 1 ? 'line_trains_1' : 'line_trains', { n: l.trains.length })}</small></div>${this.lineDiagram(l, t)}` : ''}
+      <label class="set"><span>${this.tr('tt_spacing')}</span><select data-change="trainSpacing" data-id="${t.id}">${this.spacingOptions(t.spacing || 0)}</select></label>
+      ${t.spacing ? `<p class="muted small">${iv ? this.tr('tt_active', { n: (iv / 60).toFixed(1) }) : this.tr('tt_learning')}</p>` : ''}`;
+  },
+  groupSelect(t) {
+    const names = [...new Set(this.game.trains.trains.map((x) => x.group).filter(Boolean))].sort();
+    return `<label class="set"><span>${this.tr('group')}</span><select data-change="trainGroup" data-id="${t.id}"><option value="">${this.tr('group_none')}</option>${names.map((n) => `<option value="${esc(n)}" ${t.group === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}<option value="__new">${this.tr('group_new')}</option></select></label>`;
   },
 
   // ---------- train inspector ----------
@@ -246,9 +336,10 @@ export const RailUIMixin = {
       <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
       <h4>${this.tr('cargo')} · ${loadN}/${st.capFull}</h4><div class="caps">${caps || `<span class="muted small">${this.tr('bld_no_cargo')}</span>`}</div>${cargo}
       <h4>${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
-      ${t.mode === 'manual' ? this.scheduleEditor(t) : `<p class="muted small">${this.tr('auto_desc')}</p>`}
+      ${t.mode === 'manual' ? this.lineBlock(t) + this.scheduleEditor(t) : `<p class="muted small">${this.tr('auto_desc')}</p>`}
       <h4>${this.tr('upgrades')}</h4>${upg}
       <label class="set"><span>${this.tr('livery')}</span><select data-change="livery" data-id="${t.id}">${liv}</select></label>
+      ${this.groupSelect(t)}
       <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
   },
 
@@ -473,6 +564,30 @@ export const RailUIMixin = {
       overlayMenu: () => this.toggleOverlayMenu(),
       trackMode: (a) => g().construction.setTrackMode(a),
       signalType: (a) => g().construction.setSignalType(a),
+      trainsTab: (a) => { this.trainsTab = a; re(); },
+      lineAdd: (a) => {
+        const G = g(), t = G.trains.byId(+a);
+        if (!t) return;
+        const dep = G.stations.depotById(t.homeDepot) || G.stations.depots.find((d) => G.net.conn[d.tile]);
+        const r = G.trains.buy(t.pendingVeh || t.veh, dep, null);
+        if (r.error) { this.error(r.error); return; }
+        Object.assign(r.train, { livery: t.livery, liveryScope: t.liveryScope, mode: t.mode, route: JSON.parse(JSON.stringify(t.route)), filter: t.filter ? [...t.filter] : null, spacing: t.spacing, group: t.group });
+        G.lines.version++; G.pax.invalidate();
+        this.toast(this.tr('toast_train_bought', { name: r.train.name }), 'good', 'train');
+        re();
+      },
+      fleetReplace: async (a) => {
+        const G = g(), to = (this.fleetPick || {})[a];
+        if (!to) return;
+        const ts = G.trains.trains.filter((t) => (t.pendingVeh || t.veh).some((v) => v.k === 'L' && v.id === a));
+        if (!(await this.confirm(this.tr('fleet_confirm', { n: ts.length, from: locoModel(a).name, to: locoModel(to).name }), this.tr('fleet_replace_btn')))) return;
+        let ok = 0, kept = 0, err = null;
+        for (const t of ts) { const e = G.trains.replaceLoco(t, a, to); if (e) { kept++; err = err || e; } else ok++; }
+        this.fleetPick[a] = null;
+        this.toast(this.tr('fleet_done', { n: ok, m: kept }) + (err ? ' · ' + this.tr(err) : ''), ok ? 'good' : 'warn', 'train');
+        if (ok) this.app.audio.play('construct');
+        re();
+      },
       jumpTile: (a) => { const tile = +a; g().camera.focus((tile % 64 + 0.5) * TILE, (Math.floor(tile / 64) + 0.5) * TILE, 18); },
     };
   },
@@ -489,6 +604,16 @@ export const RailUIMixin = {
       stopDwell: (el) => { const r = stop(el); if (r) r.dwell = +el.value; this.renderInspector(); },
       stopPlat: (el) => { const r = stop(el); if (r) r.plat = el.value === '' ? null : +el.value; this.renderInspector(); },
       stopSkip: (el) => { const r = stop(el); if (r) r.skip = el.checked; this.renderInspector(); },
+      trainSpacing: (el) => { const t = g().trains.byId(+el.dataset.id); if (t) { t.spacing = +el.value || 0; g().lines.version++; } this.renderInspector(); },
+      lineSpacing: (el) => { if (el.value === '') return; const l = g().lines.list().find((x) => x.key === el.dataset.key); if (l) for (const t of l.trains) t.spacing = +el.value || 0; g().lines.version++; this.refreshPanel(); },
+      fleetPick: (el) => { this.fleetPick = this.fleetPick || {}; this.fleetPick[el.dataset.id] = el.value || null; this.refreshPanel(); },
+      trainGroup: async (el) => {
+        const t = g().trains.byId(+el.dataset.id);
+        if (!t) return;
+        if (el.value === '__new') { const n = await this.prompt(this.tr('group_prompt'), ''); if (n && n.trim()) t.group = n.trim().slice(0, 24); }
+        else t.group = el.value;
+        this.renderInspector();
+      },
       stRole: (el) => { const s = g().stations.byId(+el.dataset.id); g().stations.setTrackRole(s, +el.dataset.k, el.value); },
     };
   },

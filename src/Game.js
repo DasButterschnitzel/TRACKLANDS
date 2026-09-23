@@ -10,6 +10,7 @@ import { RailNetwork } from './rail/RailNetwork.js';
 import { RailRenderer } from './rail/RailRenderer.js';
 import { StationSystem } from './rail/Stations.js';
 import { PaxFlow } from './rail/PaxFlow.js';
+import { Lines } from './trains/Lines.js';
 import { Construction } from './rail/Construction.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
@@ -71,6 +72,7 @@ export class Game {
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
     this.pax = new PaxFlow(this);
+    this.lines = new Lines(this);
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);
