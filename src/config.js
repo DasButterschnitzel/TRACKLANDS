@@ -106,7 +106,7 @@ export const STATION = {
   radius: [3, 3, 4, 4, 5, 5],
   passengers: [4, 8, 14, 20, 28, 36],  // visual crowd
   maxLevel: 5,                          // internal index (displayed as level 6)
-  maxTracks: 2, maxTracksExp: 4, maxTracksGrand: 8,
+  maxTracks: 2, maxTracksExp: 4, maxTracksGrand: 12,
   maxLength: 3, maxLengthExt: 6,
   minPlatformEff: 0.72,                 // loading speed floor for trains longer than the platform
 };

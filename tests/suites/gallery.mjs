@@ -97,6 +97,57 @@ export async function run({ browser, base }) {
       if (view === 'side') lines.push(`${res.bad ? 'FAIL' : 'ok  '} ${sheet}: ${res.n} items${res.bad ? `, ${res.bad} with NaN vertices` : ''}`);
     }
   }
+  // stations: every type at several sizes, plus terminals
+  for (const view of ['three-quarter', 'top']) {
+    const res = await page.evaluate(async (view) => {
+      const app = window.__tracklands, g = app.game;
+      const THREE = await import('three');
+      const SM = await import('./src/rail/StationModels.js');
+      const { ModelBuilder, MATS } = await import('./src/core/ModelBuilder.js');
+      const C = await import('./src/config.js');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9fbf7a);
+      scene.add(new THREE.HemisphereLight(0xdfefff, 0x8a7a5a, 1.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(6, 10, 7); scene.add(sun);
+      const cases = [
+        ['halt', 0, 1, 2], ['village', 1, 1, 3], ['town', 2, 2, 3], ['city', 3, 4, 4], ['central', 4, 6, 5], ['grand', 5, 8, 6],
+        ['hs', 3, 4, 6], ['freight', 1, 2, 4], ['yard', 3, 4, 5], ['intermodal', 3, 3, 5], ['town', 2, 3, 3, 1], ['central', 4, 6, 5, 1],
+      ];
+      let bad = 0, ox = 0, oz = 0, rowH = 0;
+      cases.forEach(([kind, level, n, len, terminal], i) => {
+        const tracks = [];
+        for (let k = 0; k < n; k++) tracks.push({ x0: -len, x1: len, z: -k * 2, y: 0, role: kind === 'freight' || kind === 'yard' || kind === 'intermodal' ? 'freight' : (n > 3 && k === 1 ? 'through' : 'any'), deadEnd: [false, !!terminal] });
+        const mb = new ModelBuilder();
+        const style = C.STATION_STYLES[i % C.STATION_STYLES.length];
+        SM.stationComplexModel(mb, level, style, tracks, kind === 'freight' ? ['timber_yard'] : kind === 'intermodal' ? ['container_crane'] : [], false, { kind, terminal: terminal || 0 });
+        const geo = mb.build();
+        for (const v of geo.attributes.position.array) if (!Number.isFinite(v)) { bad++; break; }
+        const m = new THREE.Mesh(geo, MATS);
+        ox = (i % 4) * 18; oz = Math.floor(i / 4) * 22;
+        m.position.set(ox + len, 0, oz);
+        scene.add(m);
+        // rails for every track
+        for (const tk of tracks) for (const lane of [0.34, -0.34]) for (const r of [0.22, -0.22]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(len * 2 + 1, 0.03, 0.04), new THREE.MeshLambertMaterial({ color: 0x8f959c })); rl.position.set(ox + len, 0.02, oz + tk.z + lane + r); scene.add(rl); }
+      });
+      const box = new THREE.Box3().setFromObject(scene);
+      const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      const W = Math.max(size.x, size.z * 1.5) * 1.1, H = W / 1.5;
+      const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 0.1, 400);
+      const cx = ctr.x, cz = ctr.z;
+      if (view === 'top') { cam.position.set(cx, 80, cz + 0.01); cam.lookAt(cx, 0, cz); }
+      else { cam.position.set(cx + 40, 45, cz + 60); cam.lookAt(cx, 0, cz); cam.top *= 0.8; cam.bottom *= 0.8; cam.updateProjectionMatrix(); }
+      g.speed = 0;
+      const W0 = app.renderer.domElement.width, H0 = app.renderer.domElement.height;
+      app.renderer.setSize(1800, 1200, false);
+      app.renderer.render(scene, cam);
+      const url = app.renderer.domElement.toDataURL('image/png');
+      app.renderer.setSize(W0, H0, false);
+      return { url, bad, n: cases.length };
+    }, view);
+    fs.writeFileSync(path.join(dir, `stations-${view}.png`), Buffer.from(res.url.split(',')[1], 'base64'));
+    if (res.bad) ok = false;
+    if (view === 'top') lines.push(`${res.bad ? 'FAIL' : 'ok  '} stations: ${res.n} types/sizes`);
+  }
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   lines.push(`sheets: ${path.relative(process.cwd(), dir)}`);
   await ctx.close();

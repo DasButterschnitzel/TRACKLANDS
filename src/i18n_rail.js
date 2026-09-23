@@ -42,6 +42,7 @@ export const EN_RAIL = {
   bld_add: 'Add vehicles', bld_auto: 'AUTO BUILD', bld_auto_desc: 'Pick the cargo this train should carry. AUTO BUILD picks fitting wagons and a good length for the locomotive.',
   bld_auto_btn: 'Auto build', bld_auto_fit: 'Fit shortest platform', bld_details: 'Details', bld_templates: 'Saved consists', bld_no_templates: 'No saved consists yet.',
   bld_save_tpl: 'Save consist', bld_tpl_name: 'Name this consist', bld_empty: 'Add a locomotive to start.',
+  skind_halt: 'Rural halt', skind_village: 'Village station', skind_town: 'Town station', skind_city: 'City station', skind_central: 'Central station', skind_grand: 'Grand terminal', skind_hs: 'High-speed station', skind_freight: 'Freight station', skind_yard: 'Freight yard', skind_intermodal: 'Intermodal terminal',
   livery_scope: 'Livery applies to', livery_scope_train: 'Whole train', livery_scope_loco: 'Locomotive only',
   toast_consist_applied: '{name} has been rebuilt.', toast_consist_pending: '{name} will be rebuilt at the next stop.',
   err_need_loco: 'A train needs at least one locomotive.', err_too_many_vehicles: 'Maximum 14 vehicles per train.', err_too_many_locos: 'Too many locomotives (research Heavy Haul for 3).',
@@ -114,7 +115,7 @@ export const EN_RAIL = {
   res_station_expansion: 'Station Expansion', res_station_expansion_desc: 'Up to 4 tracks per station.',
   res_freight_terminals: 'Freight Terminals', res_freight_terminals_desc: 'Build loading facilities.',
   res_station_dispatch: 'Station Dispatch', res_station_dispatch_desc: '+10% loading speed everywhere.',
-  res_grand_terminals: 'Grand Terminals', res_grand_terminals_desc: 'Up to 8 tracks and Central Stations (level 6).',
+  res_grand_terminals: 'Grand Terminals', res_grand_terminals_desc: 'Up to 12 tracks and Grand Terminals (level 6).',
   prob_no_stations: 'No other stations on this network',
   stat_wagons: 'Typical wagons',
 };
@@ -159,6 +160,7 @@ export const DE_RAIL = {
   bld_add: 'Fahrzeuge hinzufügen', bld_auto: 'AUTO-BAU', bld_auto_desc: 'Wähle die Fracht für diesen Zug. AUTO-BAU wählt passende Wagen und eine gute Länge für die Lok.',
   bld_auto_btn: 'Automatisch bauen', bld_auto_fit: 'An kürzesten Bahnsteig anpassen', bld_details: 'Details', bld_templates: 'Gespeicherte Züge', bld_no_templates: 'Noch keine gespeicherten Züge.',
   bld_save_tpl: 'Zug speichern', bld_tpl_name: 'Name für diese Zusammenstellung', bld_empty: 'Füge eine Lok hinzu.',
+  skind_halt: 'Haltepunkt', skind_village: 'Dorfbahnhof', skind_town: 'Stadtbahnhof', skind_city: 'Großstadtbahnhof', skind_central: 'Hauptbahnhof', skind_grand: 'Grand Terminal', skind_hs: 'Schnellfahrbahnhof', skind_freight: 'Güterbahnhof', skind_yard: 'Güterbahnhof (Rangier)', skind_intermodal: 'Containerterminal',
   livery_scope: 'Lackierung gilt für', livery_scope_train: 'Ganzer Zug', livery_scope_loco: 'Nur Lok',
   toast_consist_applied: '{name} wurde umgebaut.', toast_consist_pending: '{name} wird am nächsten Halt umgebaut.',
   err_need_loco: 'Ein Zug braucht mindestens eine Lok.', err_too_many_vehicles: 'Höchstens 14 Fahrzeuge pro Zug.', err_too_many_locos: 'Zu viele Loks (Schwerlast erforschen für 3).',
@@ -225,7 +227,7 @@ export const DE_RAIL = {
   res_station_expansion: 'Bahnhofserweiterung', res_station_expansion_desc: 'Bis zu 4 Gleise pro Bahnhof.',
   res_freight_terminals: 'Güterterminals', res_freight_terminals_desc: 'Verladeanlagen bauen.',
   res_station_dispatch: 'Fahrdienstleitung', res_station_dispatch_desc: '+10 % Ladegeschwindigkeit überall.',
-  res_grand_terminals: 'Großbahnhöfe', res_grand_terminals_desc: 'Bis zu 8 Gleise und Hauptbahnhöfe (Stufe 6).',
+  res_grand_terminals: 'Großbahnhöfe', res_grand_terminals_desc: 'Bis zu 12 Gleise und Grand Terminals (Stufe 6).',
   prob_no_stations: 'Keine anderen Bahnhöfe in diesem Netz',
   stat_wagons: 'Übliche Wagenzahl',
 };

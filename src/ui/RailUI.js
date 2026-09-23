@@ -315,7 +315,7 @@ export const RailUIMixin = {
     const adv = S.advise(s).map((a) => `<div class="card warn small">${icon('advisor', 'mini')} ${esc(this.tr(a.key, a.p || {}))}</div>`).join('');
     const supplies = [...(s.supplies || [])];
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
-    return `<div class="pill-row"><span class="pill">${this.tr('slvl_' + s.level)} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
+    return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
       ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}${adv}
       <h4>${this.tr('serves')}</h4><div class="links">${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('') || `<span class="muted">${this.tr('nothing_linked')}</span>`}</div>
       <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>

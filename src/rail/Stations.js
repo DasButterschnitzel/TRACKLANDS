@@ -10,6 +10,7 @@ import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILI
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
+import { stationComplexModel, depotModel, stationModel } from './StationModels.js';
 
 const DIR_NAMES = ['east', 'south', 'south', 'west', 'west', 'north', 'north', 'east'];
 const dirOf = (dx, dz) => { for (let d = 0; d < 8; d++) if (DX[d] === dx && DZ[d] === dz) return d; return -1; };
@@ -682,7 +683,9 @@ export class StationSystem {
       return { pts, x0: Math.min(...xs) - TILE / 2, x1: Math.max(...xs) + TILE / 2, z: pts.length ? pts[0].z : 0, y: pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0, role: tk.role, deadEnd };
     });
     const mb = new ModelBuilder();
-    stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1);
+    const info = this.stationKind(stn, tracks);
+    stn.kind = info.kind;
+    stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1, info);
     const mesh = meshFrom(mb.build());
     mesh.position.set(F.ox, F.oy + 0.02, F.oz);
     mesh.rotation.y = F.yaw;
@@ -693,6 +696,27 @@ export class StationSystem {
     stn.mesh = mesh;
     this.group.add(mesh);
     stn.pulse = 1;
+  }
+
+  // Station type from what it is used for: goods stations by track roles /
+  // catchment, high-speed stations by line class, otherwise the passenger
+  // ladder by level. terminal: +1 / -1 when most tracks end at one side.
+  stationKind(stn, layout = stn.layout) {
+    const net = this.game.net;
+    const n = stn.tracks.length;
+    const freightTracks = stn.tracks.filter((t) => t.role === 'freight').length;
+    const towns = stn.links ? (stn.links.towns || []).length : 0, inds = stn.links ? (stn.links.industries || []).length : 0;
+    const hs = stn.tracks.some((tk) => tk.tiles.some((t) => net.tier[t] === 3));
+    let terminal = 0;
+    if (layout && layout.length) {
+      const a = layout.filter((l) => l.deadEnd[0]).length, b = layout.filter((l) => l.deadEnd[1]).length;
+      if (b * 2 > layout.length && b > a) terminal = 1; else if (a * 2 > layout.length) terminal = -1;
+    }
+    let kind;
+    if ((freightTracks && freightTracks === n) || (!towns && inds)) kind = stn.facilities.includes('container_crane') ? 'intermodal' : n >= 3 ? 'yard' : 'freight';
+    else if (hs && stn.level >= 2) kind = 'hs';
+    else kind = stn.level === 0 ? (n > 1 ? 'village' : 'halt') : ['halt', 'village', 'town', 'city', 'central', 'grand'][stn.level];
+    return { kind, terminal };
   }
 
   buildDepotVisual(dep) {
@@ -850,150 +874,4 @@ export class StationSystem {
 
 function freshStats() { return { arrivals: 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: 0, recent: [], util: [] }; }
 
-// ---------- station models (local frame: tracks along X at z = offset, lanes at ±0.34) ----------
-const POST = 0x4a4f55, BENCH = 0x7a5a3a, LAMP = 0xfff0c0, PLAT = 0xc9c2b4, EDGE = 0xe8d27a, CLOCK = 0xf4f0e6;
-
-function lampPost(mb, x, z, y = 0) {
-  mb.cyl(0.02, 0.025, 0.6, 5, POST, { x, y: y + 0.25, z });
-  mb.sphere(0.05, 0, LAMP, { x, y: y + 0.88, z, glow: true });
-}
-
-// tracks: [{x0, x1, z, y, role, deadEnd:[start,end]}]
-export function stationComplexModel(mb, level, style, tracks, facilities, cramped) {
-  const wall = style.wall, roof = style.roof;
-  const zs = tracks.map((t) => t.z);
-  const zMax = Math.max(...zs), zMin = Math.min(...zs);
-  const x0 = Math.min(...tracks.map((t) => t.x0)), x1 = Math.max(...tracks.map((t) => t.x1));
-  const midX = (x0 + x1) / 2;
-  // platforms on both sides of every track (adjacent tracks share an island)
-  for (const tk of tracks) {
-    const plen = tk.x1 - tk.x0 - 0.1, cx = (tk.x0 + tk.x1) / 2;
-    const col = tk.role === 'freight' ? 0xa8a296 : tk.role === 'express' ? 0xd8d0c0 : PLAT;
-    for (const s of [1, -1]) {
-      if (tk.role === 'through') continue;
-      mb.box(plen, 0.24, 0.32, col, { x: cx, y: tk.y, z: tk.z + s * 0.84 });
-      mb.box(plen, 0.02, 0.04, tk.role === 'express' ? 0xd04040 : EDGE, { x: cx, y: tk.y + 0.24, z: tk.z + s * 0.69 });
-    }
-    // lamps and benches every tile
-    for (let x = tk.x0 + 0.5; x < tk.x1 - 0.2; x += TILE) {
-      if (tk.role !== 'through') { lampPost(mb, x, tk.z + 0.95, tk.y); if (level >= 1) mb.box(0.4, 0.06, 0.12, BENCH, { x: x + 0.6, y: tk.y + 0.34, z: tk.z - 0.95 }); }
-    }
-    // buffer stops at dead ends
-    tk.deadEnd.forEach((dead, i) => {
-      if (!dead) return;
-      const x = i ? tk.x1 - 0.12 : tk.x0 + 0.12;
-      for (const lane of [0.34, -0.34]) { mb.box(0.12, 0.2, 0.34, 0xc94f4f, { x, y: tk.y + 0.1, z: tk.z + lane }); mb.box(0.04, 0.06, 0.2, LAMP, { x: x + (i ? -0.07 : 0.07), y: tk.y + 0.3, z: tk.z + lane, glow: true }); }
-    });
-    // platform number sign
-    if (tk.role !== 'through') { mb.cyl(0.015, 0.015, 0.5, 4, POST, { x: tk.x0 + 0.3, y: tk.y + 0.24, z: tk.z + 0.8 }); mb.box(0.16, 0.16, 0.03, 0x2f5f8a, { x: tk.x0 + 0.3, y: tk.y + 0.78, z: tk.z + 0.8 }); }
-    // canopies
-    if (level >= 2 && tk.role !== 'through') for (const s of [1, -1]) {
-      for (let x = tk.x0 + 0.4; x <= tk.x1 - 0.3; x += 0.9) mb.cyl(0.025, 0.025, 0.6, 5, POST, { x, y: tk.y + 0.24, z: tk.z + s * 0.92 });
-      mb.box(plen, 0.05, 0.46, roof, { x: cx, y: tk.y + 0.84, z: tk.z + s * 0.86, rx: s * 0.12 });
-    }
-  }
-  const y0 = Math.max(...tracks.map((t) => t.y));
-  if (level === 0 && tracks.length === 1) {
-    const tk = tracks[0], cx = (tk.x0 + tk.x1) / 2;
-    for (const x of [-0.35, 0.35]) mb.cyl(0.025, 0.025, 0.5, 5, POST, { x: cx + x, y: tk.y + 0.24, z: tk.z + 0.92 });
-    mb.box(0.9, 0.05, 0.36, roof, { x: cx, y: tk.y + 0.74, z: tk.z + 0.86 });
-    mb.box(0.5, 0.06, 0.12, BENCH, { x: cx, y: tk.y + 0.36, z: tk.z + 0.92 });
-    mb.box(0.02, 0.18, 0.3, shade(wall, 0.9), { x: cx - 0.4, y: tk.y + 0.3, z: tk.z + 0.86 });
-    return;
-  }
-  // station building beside the outermost track on the +z side
-  const lv = Math.max(1, level);
-  const bw = [1.4, 1.4, 1.9, 2.6, 3.2, 3.8][lv];
-  const bh = [0.62, 0.62, 0.8, 1.0, 1.2, 1.4][lv];
-  const bz = zMax + 1.55;
-  mb.box(bw, bh, 0.8, wall, { x: midX, y: y0, z: bz });
-  mb.box(bw + 0.08, 0.06, 0.88, shade(wall, 0.8), { x: midX, y: y0 + bh, z: bz });
-  mb.roof(bw + 0.1, 0.36 + lv * 0.06, 0.92, roof, { x: midX, y: y0 + bh + 0.04, z: bz });
-  const wins = Math.max(2, Math.floor(bw / 0.35));
-  for (let k = 0; k < wins; k++) {
-    const x = midX - bw / 2 + 0.2 + k * ((bw - 0.4) / Math.max(1, wins - 1));
-    mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: y0 + bh * 0.45, z: bz - 0.41, glow: true });
-    if (lv >= 3) mb.box(0.14, 0.18, 0.02, 0x3a4a5a, { x, y: y0 + bh * 0.78, z: bz - 0.41, glow: true });
-  }
-  mb.box(0.24, 0.36, 0.03, shade(roof, 0.8), { x: midX, y: y0, z: bz - 0.41 });
-  if (lv >= 2) {
-    const th = 1.5 + lv * 0.3;
-    mb.box(0.42, th, 0.42, wall, { x: midX + bw / 2 - 0.1, y: y0, z: bz + 0.1 });
-    mb.cone(0.36, 0.5, 4, roof, { x: midX + bw / 2 - 0.1, y: y0 + th, z: bz + 0.1, ry: Math.PI / 4 });
-    mb.cyl(0.15, 0.15, 0.03, 12, CLOCK, { x: midX + bw / 2 - 0.1, y: y0 + th - 0.3, z: bz - 0.12, rx: Math.PI / 2, center: true, glow: true });
-  }
-  if (lv >= 3) {
-    mb.box(0.9, bh * 0.75, 0.7, shade(wall, 0.95), { x: midX - bw / 2 - 0.4, y: y0, z: bz });
-    mb.roof(1.0, 0.3, 0.8, roof, { x: midX - bw / 2 - 0.4, y: y0 + bh * 0.75, z: bz });
-    // train shed roof over all tracks
-    const w = zMax - zMin + 2.1, zc = (zMax + zMin) / 2;
-    for (const x of [x0 + 0.3, midX, x1 - 0.3]) for (const s of [1, -1]) mb.cyl(0.03, 0.03, 1.05, 6, POST, { x, y: y0 + 0.24, z: zc + s * (w / 2 - 0.1) });
-    mb.box(x1 - x0, 0.06, w, shade(roof, 1.15), { x: midX, y: y0 + 1.28, z: zc });
-  }
-  if (lv >= 4) {
-    const w = zMax - zMin + 2.1, zc = (zMax + zMin) / 2;
-    for (let x = x0 + 0.1; x <= x1 - 0.1; x += 0.45) mb.torus(w / 2, 0.04, Math.PI, 0x6a7580, { x, y: y0 + 1.3, z: zc, ry: Math.PI / 2 });
-    mb.box(x1 - x0, 0.04, 0.05, 0x6a7580, { x: midX, y: y0 + 1.3 + w / 2, z: zc });
-    for (const s of [1, -1]) {
-      const tx0 = midX + s * (bw / 2 + 0.3);
-      mb.box(0.5, 2.4, 0.5, wall, { x: tx0, y: y0, z: bz - 0.2 });
-      mb.cone(0.42, 0.7, 4, roof, { x: tx0, y: y0 + 2.4, z: bz - 0.2, ry: Math.PI / 4 });
-      mb.cyl(0.01, 0.01, 0.5, 4, POST, { x: tx0, y: y0 + 3.05, z: bz - 0.2 });
-      mb.box(0.24, 0.14, 0.01, 0xc94f4f, { x: tx0 + 0.12, y: y0 + 3.4, z: bz - 0.2 });
-    }
-  }
-  if (lv >= 5) {
-    // central station: glass atrium on the forecourt
-    mb.box(bw * 0.7, 0.9, 0.7, 0x9ec8e0, { x: midX, y: y0, z: bz + 0.75, glow: true });
-    mb.box(bw * 0.72, 0.05, 0.74, shade(roof, 0.9), { x: midX, y: y0 + 0.9, z: bz + 0.75 });
-  }
-  // footbridge across the tracks
-  if (tracks.length > 1 && !cramped) {
-    const bx = x1 - 0.7, zc = (zMax + zMin) / 2, w = zMax - zMin + 1.9;
-    const h = level >= 3 ? 1.55 : 1.45;
-    mb.box(0.5, 0.06, w, 0x7a7f86, { x: bx, y: y0 + h, z: zc });
-    for (const s of [1, -1]) mb.box(0.02, 0.24, w, 0x5a5f66, { x: bx + s * 0.24, y: y0 + h + 0.06, z: zc });
-    for (const tk of tracks) for (const s of [1, -1]) {
-      if (tk.role === 'through') continue;
-      const z = tk.z + s * 0.9;
-      mb.box(0.12, h, 0.12, 0x6a6f76, { x: bx, y: tk.y + 0.24, z });
-    }
-    if (level >= 2) mb.box(0.56, 0.05, w, roof, { x: bx, y: y0 + h + 0.46, z: zc });
-  }
-  // freight facilities on the -z side
-  facilities.forEach((f, i) => {
-    const fx = x0 + 0.8 + i * 1.6, fz = zMin - 1.45;
-    if (f === 'grain_silo') { for (const dx of [-0.3, 0.3]) { mb.cyl(0.28, 0.28, 1.4, 10, 0xd8d0b8, { x: fx + dx, y: y0, z: fz }); mb.cone(0.3, 0.25, 10, 0xb8b0a0, { x: fx + dx, y: y0 + 1.4, z: fz }); } }
-    else if (f === 'coal_loader') { mb.box(0.8, 0.9, 0.7, 0x4a4f55, { x: fx, y: y0 + 0.5, z: fz }); for (const s of [-1, 1]) mb.box(0.08, 0.5, 0.08, 0x3a3d42, { x: fx + s * 0.3, y: y0, z: fz }); mb.box(0.3, 0.06, 0.9, 0x2a2c30, { x: fx, y: y0 + 1.0, z: fz + 0.6, rx: -0.4 }); }
-    else if (f === 'tank_farm') { for (const dx of [-0.35, 0.35]) mb.cyl(0.32, 0.32, 0.7, 12, 0xd8dde2, { x: fx + dx, y: y0, z: fz }); mb.box(0.9, 0.04, 0.06, 0x8a5a3a, { x: fx, y: y0 + 0.5, z: fz + 0.3 }); }
-    else if (f === 'timber_yard') { for (let k = 0; k < 3; k++) mb.hcyl(0.1, 1.1, 7, 0x9a6b3f, { x: fx, y: y0 + 0.1 + k * 0.17, z: fz - 0.2 + (k % 2) * 0.18 }); mb.box(0.06, 1.2, 0.06, 0xd8a030, { x: fx + 0.6, y: y0, z: fz }); mb.box(0.8, 0.06, 0.06, 0xd8a030, { x: fx + 0.25, y: y0 + 1.15, z: fz }); }
-    else if (f === 'container_crane') {
-      for (const dx of [-0.5, 0.5]) for (const dz of [-0.35, 0.35]) mb.box(0.08, 1.5, 0.08, 0xd06030, { x: fx + dx, y: y0, z: fz + dz });
-      mb.box(1.1, 0.12, 0.8, 0xd06030, { x: fx, y: y0 + 1.5, z: fz });
-      mb.box(0.8, 0.42, 0.45, 0x2f6fa8, { x: fx, y: y0, z: fz });
-    }
-  });
-}
-
-export function depotModel(mb) {
-  const wall = 0x9a6a4a, roof = 0x4a4f58;
-  mb.box(1.5, 0.08, 1.2, 0x7a7068, { y: 0 });
-  mb.box(1.4, 0.95, 0.1, wall, { y: 0, z: 0.55 });
-  mb.box(1.4, 0.95, 0.1, wall, { y: 0, z: -0.55 });
-  mb.box(0.1, 0.95, 1.2, wall, { x: -0.7, y: 0 });
-  mb.box(0.1, 0.25, 1.2, wall, { x: 0.7, y: 0.7 });
-  mb.roof(1.6, 0.45, 1.34, roof, { y: 0.95 });
-  mb.box(0.08, 0.7, 0.14, shade(wall, 0.7), { x: 0.72, y: 0, z: 0.5 });
-  mb.box(0.08, 0.7, 0.14, shade(wall, 0.7), { x: 0.72, y: 0, z: -0.5 });
-  mb.box(0.3, 0.6, 0.02, 0x3a4a5a, { x: -0.2, y: 0.25, z: 0.61, glow: true });
-  mb.box(0.3, 0.6, 0.02, 0x3a4a5a, { x: -0.2, y: 0.25, z: -0.61, glow: true });
-  mb.cyl(0.06, 0.07, 0.4, 6, 0x5a5a5a, { x: -0.4, y: 1.2, z: 0.3 });
-  mb.box(0.4, 0.16, 0.03, 0xe0a33a, { x: 0.74, y: 1.02, rz: 0, ry: Math.PI / 2 });
-}
-
-// Legacy single-tile model (title scene / previews)
-export function stationModel(mb, level, style) {
-  stationComplexModel(mb, level, style, [{ x0: -1, x1: 1, z: 0, y: 0, role: 'any', deadEnd: [false, false] }], [], false);
-}
-
-export { DX, DZ, inMap, TILE };
+export { DX, DZ, inMap, TILE, stationComplexModel, depotModel, stationModel };
