@@ -22,11 +22,38 @@ It is installable as a PWA and works offline after the first load. Requires a We
 | Zoom | Mouse wheel, `+` / `-` | Pinch |
 | Rotate view | `Q` / `E` | — |
 | Build track | Track tool, drag from tile to tile, release to build | Same |
-| Tools | `1`–`7` | Bottom bar |
+| Tools | `1`–`9` (8 signals, 9 waypoint) | Bottom bar |
+| Trains list | `T` | Menu rail |
+| Overlays | `O` | Layers button |
 | Pause | `Space` | Speed buttons |
 | Undo (10 s) | `Ctrl+Z` | Undo button |
-| Heatmap | `H` | Heatmap button |
+| Traffic overlay | `H` | Layers button |
 | Debug overlay | `F3` or `` ` `` | — |
+
+## Railway operations (v2)
+
+- **Consists:** every train is an ordered list of vehicles (front → rear) with real lengths and masses. Use the **Train Builder** to add, remove, reorder or turn vehicles, change or double up locomotives, and save consists as templates. **AUTO BUILD** picks wagons for the cargo you choose.
+- **Wagons:** 19 classes with their own look and visible loads. Cargo↔wagon compatibility is data-driven (`WAGONS` in `src/config.js`). Stations and industries show which wagons carry their cargo.
+- **Power/weight:** trains are rated Excellent, Good, Heavy or Overloaded. The rating affects acceleration, gradients and top speed.
+- **Reversing:** push-pull trains and diesel/electric units reverse directly. Other engines run around the train, and steam engines turn on the turntable. Trains never flip in place.
+- **Signalling:** the railway signals itself.
+  - Trains reserve track ahead in blocks and release it behind their rear.
+  - Paths through junctions are reserved and locked, with animated switches.
+  - Single-track sections are locked by direction.
+  - Manual block, path and one-way signals fine-tune busy lines.
+- **Track:** double track by default. Single track is cheaper: add double-track sections as passing loops. Waypoints let manual routes take a chosen line.
+- **Stations:**
+  - Platform tracks with length, roles, occupancy and a dispatcher that picks free, fitting platforms.
+  - Add tracks (switch ladders are built automatically) and extend platforms. Long trains on short platforms still load, just more slowly.
+  - Station levels 1–6, freight facilities, statistics and a bottleneck advisor.
+- **Schedules:** manual routes support per-stop options: load/unload/transfer, wait for full load, dwell, platform and cargo selection, skip, and waypoints.
+- **Overlays:** traffic, signals, blocks, routes, congestion, cargo, electrification and stations.
+
+Saves from v1 are migrated automatically (the untouched original is kept in local storage as `pre_v3`).
+
+## Tests
+
+Open `index.html?railtest` to run the automated railway scenarios on a throwaway world, which is never saved: single track with and without passing loops, short halts (deadlock resolver), multi-track stations and dispatching, a diamond crossing, and signals at 1× and coarse 4× steps. Each scenario checks that no two trains share a lane key, that train bodies never overlap geometrically, and that every train keeps making trips. The same suite runs from the console: `__tracklands.game.runRailTests()`.
 
 ## Project layout
 
@@ -38,11 +65,12 @@ src/Game.js              orchestrator: simulation loop, events, offline progress
 src/config.js            all balancing data (costs, cargo, trains, research, regions…)
 src/i18n.js              English + German strings
 src/world/               world generation, terrain view, towns, industries, environment, decorations
-src/rail/                network graph + routing, rendering, stations/depots, construction tools
-src/trains/              train simulation (movement, reservations, AI) and procedural models
+src/rail/                network graph, routing, reservations and signals, rendering, switches/signals (RailFurniture.js), stations, construction tools
+src/trains/              consists (Consist.js), train simulation (movement, reservations, dispatch, AI) and procedural models
+src/debug/               automated rail test scenarios
 src/economy/             coins, revenue, contracts, events, daily challenges
 src/progression/         levels, research, regions, objectives, achievements, legacy, stats
-src/ui/                  HUD, panels, inspector, tutorial, icons
+src/ui/                  HUD, panels, inspector, tutorial, icons, Train Builder/station editor (RailUI.js), overlays
 src/audio/               synthesized sound effects, ambience and generative music
 src/vfx/                 pooled particles
 src/save/                IndexedDB/localStorage persistence, versioning, export/import

@@ -71,16 +71,23 @@ export class TrainSystem {
   defaultConsist(modelId, depot) {
     const g = this.game;
     const m = locoModel(modelId);
-    // cargo the network near the depot offers
-    const cargos = new Set();
+    // cargo waiting on the depot's network (with somewhere to deliver it), most plentiful first
+    const score = new Map();
     const comp = this.net.components();
     const k = depot ? comp[depot.tile] : -1;
-    for (const s of g.stations.list) if (k >= 0 && comp[s.tile] === k) for (const c of s.supplies || []) if (g.stations.hasDemand(s, c, comp)) cargos.add(c);
-    let list = [...cargos];
+    for (const s of g.stations.list) {
+      if (k < 0 || comp[s.tile] !== k) continue;
+      for (const c of s.supplies || []) {
+        if (!g.stations.hasDemand(s, c, comp)) continue;
+        const busy = this.trains.filter((t) => t._st.caps[c]).length;
+        score.set(c, (score.get(c) || 0) + 20 + (s.stock[c] || 0) * CARGO[c].value / 8 - busy * 15);
+      }
+    }
+    let list = [...score.keys()].sort((a, b) => score.get(b) - score.get(a));
     if (m.role === 'passenger') list = list.filter((c) => c === 'PASSENGERS' || c === 'MAIL');
     else if (m.role === 'freight') list = list.filter((c) => c !== 'PASSENGERS');
-    if (!list.length) list = m.role === 'freight' ? ['WOOD'] : ['PASSENGERS', 'MAIL'];
-    return autoBuild(modelId, list.slice(0, 3), { research: g.progression.research, fx: g.progression.fx });
+    if (!list.length) list = m.role === 'passenger' ? ['PASSENGERS', 'MAIL'] : m.role === 'freight' ? ['WOOD'] : ['WOOD', 'PASSENGERS'];
+    return autoBuild(modelId, list.slice(0, 2), { research: g.progression.research, fx: g.progression.fx });
   }
 
   buy(consistOrModel, depot, name) {
@@ -959,6 +966,7 @@ export class TrainSystem {
   tickTrain(t, dt) {
     const g = this.game;
     t.stateT += dt;
+    t.idleT = t.state === 'idle' || t.state === 'lost' ? (t.idleT || 0) + dt : 0;
     if (t.spawnFx > 0) t.spawnFx = Math.max(0, t.spawnFx - dt * 0.6);
     if (t.lane < 1) {
       t.lane = Math.min(1, t.lane + dt * (g.settings.reducedMotion ? 10 : 1.2));
@@ -1278,9 +1286,15 @@ export class TrainSystem {
       let cyc = null;
       if (cur && seen.has(cur)) cyc = path.slice(seen.get(cur));
       else if (cur && !waits.has(cur)) {
-        // waiting on a train that is stuck itself (lost / long idle on the track)
+        // waiting on a train that is parked without work: clear it off the line
         const other = this.byId(cur);
-        if (other && (other.state === 'lost' || (other.state === 'idle' && other.stateT > 20))) cyc = [...path];
+        if (other && (other.state === 'lost' || other.state === 'idle') && (other.idleT || 0) > 12) {
+          if (this.sendToDepot(other) || (this.recoverTrain(other), true)) {
+            this.incidents.push({ time: this.game.time, trains: [...path, other.id], victim: other.id, how: 'recover', tile: other.steps[0]?.tile ?? -1 });
+            this.game.events.emit('deadlockResolved', other, 'recover', [other]);
+          }
+          continue;
+        }
       }
       if (!cyc || !cyc.length) continue;
       const trains = cyc.map((id) => this.byId(id)).filter(Boolean);

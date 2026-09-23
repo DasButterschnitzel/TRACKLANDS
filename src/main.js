@@ -316,11 +316,14 @@ class App {
     w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
     w.querySelector('[data-mbtn=go]').onclick = async () => {
       const raw = importText(ta.value);
+      const oldVersion = raw && typeof raw === 'object' ? raw.saveVersion | 0 : 0;
+      const original = oldVersion > 0 && oldVersion < SAVE_VERSION ? JSON.parse(JSON.stringify(raw)) : null;
       const data = migrate(raw);
       const err = data ? validate(data) : 'err_save_invalid';
       if (err) { this.ui.error(err); return; }
       if (!(await this.ui.confirm(t('confirm_import'), t('import_save'), true))) return;
       w.remove();
+      if (original) await this.store.put('pre_v' + SAVE_VERSION, original);
       await this.store.put('main', data);
       await this.store.put('backup', data);
       try { localStorage.setItem('tracklands.save', JSON.stringify(data)); } catch (e2) { /* ignore */ }
