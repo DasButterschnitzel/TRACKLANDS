@@ -49,7 +49,7 @@ It is installable as a PWA and works offline after the first load. Requires a We
 - **Schedules:** manual routes support per-stop options: load/unload/transfer, wait for full load, dwell, platform and cargo selection, skip, and waypoints.
 - **Overlays:** traffic, signals, blocks, routes, congestion, cargo, electrification and stations.
 
-Saves from v1 are migrated automatically (the untouched original is kept in local storage as `pre_v3`).
+Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the untouched original is kept in local storage as `pre_v3`).
 
 ## Tests
 
