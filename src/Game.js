@@ -3,7 +3,7 @@
 // gameplay events, and handles saving plus offline progress.
 import * as THREE from 'three';
 import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp } from './util.js';
-import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES } from './config.js';
+import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE } from './config.js';
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
 import { RailNetwork } from './rail/RailNetwork.js';
@@ -151,7 +151,7 @@ export class Game {
       towns[id][c] = (towns[id][c] || 0) + (b.towns[id][c] / log.length) * min * eff;
     }
     if (coins <= 0 && deliveries <= 0) return null;
-    return { away, coins, deliveries, xp: Math.round(coins * 0.5), towns };
+    return { away, coins, deliveries, xp: Math.round(coins * REVENUE.xpPerCoin), towns };
   }
 
   claimOffline() {
