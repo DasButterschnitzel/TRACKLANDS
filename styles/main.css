@@ -473,7 +473,7 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 .plat .plen small { font-weight: 400; font-size: .68em; color: var(--ink2); }
 .plat .putil { flex: 1; min-width: 40px; }
 .plat select { max-width: 110px; padding: 4px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
-.wtags { display: flex; flex-wrap: wrap; gap: 3px; flex: 2; justify-content: flex-end; }
+.crow > span.wtags, .wtags { display: flex; flex-wrap: wrap; gap: 3px; flex: 1 1 auto; width: auto; min-width: 0; justify-content: flex-end; }
 .wtags .tag { font-size: .74em; padding: 1px 6px; }
 .tag.locked { opacity: .6; }
 #overlay-menu { position: absolute; bottom: calc(100% + 8px); right: 0; background: var(--glass); border-radius: 16px; padding: 8px; box-shadow: var(--shadow); width: min(460px, calc(100vw - 16px)); backdrop-filter: blur(6px); }
@@ -516,3 +516,8 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 .opp.served .opp-state { background: rgba(76,175,106,.18); color: #2f7a45; }
 .opp.station .opp-state { background: rgba(224,163,58,.2); color: #8a5a10; }
 .opp.locked { opacity: .55; }
+
+/* passengers (station inspector) */
+.pill.good { background: rgba(76,175,106,.18); color: #2f7a45; }
+.kvrow { display: flex; justify-content: space-between; gap: 8px; padding: 3px 2px; border-bottom: 1px dashed rgba(31,42,58,.12); font-size: .92em; }
+.kvrow b { font-variant-numeric: tabular-nums; }

@@ -54,7 +54,7 @@ export class RailTests {
     if (r.error) throw new Error('train ' + r.error);
     const t = r.train;
     t.mode = 'manual';
-    t.route = stops.map((s) => ({ st: s.id, act: 'none', dwell: opts.dwell ?? 1, full: false, skip: false, plat: null, cargo: null }));
+    t.route = stops.map((s) => ({ st: s.id, act: opts.act || 'none', dwell: opts.dwell ?? 1, full: false, skip: false, plat: null, cargo: null }));
     return t;
   }
   finish() { const g = this.g; g.net.bumpVersion(); g.railView.markAll(); g.trains.onNetworkChanged(false); }
@@ -221,6 +221,55 @@ export class RailTests {
     return { ok: r.keyConflicts === 0 && r.overlaps === 0 && r.nan === 0 && trips.every((n) => n >= 2), detail: `dt ${dt.toFixed(3)} trips ${trips.join('/')} overlaps ${r.overlaps} keys ${r.keyConflicts}` };
   }
 
+  // Passenger destinations + transfers: line 1 A–H, line 2 H–C. Passengers
+  // boarding at A pick H (direct) or C (change at H); the C-bound ones wait
+  // at H for line 2 and are delivered at C. Tagged passengers never exceed a
+  // station's waiting total.
+  paxTransfer() {
+    const a = this.findArea(24, 5);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 2, x0 = a.x0 + 1;
+    this.line(x0, z, x0 + 21, z);
+    this.finish();
+    const g = this.g, S_ = g.stations;
+    const A = this.station(x0 + 2, z), H = this.station(x0 + 11, z), C = this.station(x0 + 20, z);
+    S_.extendPlatform(A, 0, 1); S_.extendPlatform(C, 0, 0); S_.extendPlatform(H, 0, 1);
+    const rh = S_.addTrack(H, -1);
+    const D = this.depot(x0 + 22, z);
+    g.net.connect(idx(x0 + 21, z), E);
+    this.finish();
+    const mine = new Set([A.id, H.id, C.id]);
+    const acc = S_.accepts;
+    S_.accepts = function (stn, c) { return (c === 'PASSENGERS' && mine.has(stn.id)) || acc.call(this, stn, c); };
+    const deliver = g.economy.deliver;
+    const got = { H: 0, C: 0, CviaH: 0, bad: 0 };
+    g.economy.deliver = function (train, stn, lot) {
+      if (lot.c === 'PASSENGERS' && mine.has(lot.from)) {
+        if (stn === H) got.H += lot.n;
+        if (stn === C) { got.C += lot.n; if (lot.from === H.id) got.CviaH += lot.n; }
+        if (lot.to != null && lot.to !== stn.id) got.bad++;
+      }
+      return deliver.call(this, train, stn, lot);
+    };
+    const t1 = this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, H], { act: 'auto' });
+    const t2 = this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [H, C], { act: 'auto' });
+    const tr = [t1, t2];
+    A.stock.PASSENGERS = 150;
+    const tr0 = H.stats.transfers;
+    let invariant = 0;
+    const tick = g.pax.tick.bind(g.pax);
+    g.pax.tick = (dt) => { tick(dt); for (const s of [A, H, C]) if (g.pax.tagged(s) > Math.floor(s.stock.PASSENGERS || 0)) invariant++; };
+    const r = this.run(480, 1 / 30, tr);
+    g.pax.tick = tick; S_.accepts = acc; g.economy.deliver = deliver;
+    const transfers = H.stats.transfers - tr0;
+    const conn = g.pax.connections(A).map((x) => S_.byId(x.st).id === C.id ? 'C' + (x.via === H.id ? '~H' : '') : 'H').join(',');
+    this.cleanup(tr);
+    return {
+      ok: !rh.error && r.keyConflicts === 0 && r.overlaps === 0 && r.nan === 0 && got.H > 0 && transfers > 0 && got.CviaH > 0 && !got.bad && !invariant,
+      detail: `delivered H ${got.H} · changed at H ${transfers} · arrived C ${got.CviaH} · A connects ${conn} · invariant ${invariant} · keys ${r.keyConflicts} overlaps ${r.overlaps} ${this.states(tr)}`,
+    };
+  }
+
   runAll(only) {
     if (only) { this.verbose = true; }
     const g = this.g;
@@ -234,6 +283,7 @@ export class RailTests {
     if (only === 'bad') { this.check('bad', () => this.singleTrack(false, 1)); return this.log; }
     if (only === 'multi') { this.check('multi', () => this.multiTrackStation()); return this.log; }
     if (only === 'coarse') { this.check('coarse', () => this.signalsAndSpeed(0.1)); return this.log; }
+    if (only === 'pax') { this.check('pax', () => this.paxTransfer()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));
@@ -241,6 +291,7 @@ export class RailTests {
     this.check('diamond crossing', () => this.crossing());
     this.check('signals at 1× steps', () => this.signalsAndSpeed(1 / 30));
     this.check('signals at 4× coarse steps', () => this.signalsAndSpeed(0.1));
+    this.check('passenger destinations & transfers', () => this.paxTransfer());
     return this.log;
   }
 }

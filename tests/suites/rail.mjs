@@ -9,5 +9,5 @@ export async function run({ browser, base }) {
   await ctx.close();
   const lines = res.map((x) => `${x.ok ? 'ok  ' : 'FAIL'} ${x.name} — ${x.detail}`);
   if (errors.length) lines.push('errors: ' + errors.slice(0, 3).join(' | '));
-  return { ok: res.length >= 7 && res.every((x) => x.ok) && !errors.length, lines };
+  return { ok: res.length >= 8 && res.every((x) => x.ok) && !errors.length, lines };
 }

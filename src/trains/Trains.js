@@ -30,6 +30,13 @@ const _s1 = new THREE.Vector3(1, 1, 1);
 
 export { locoModel };
 
+// copy of a cargo lot, keeping a passenger destination / transfer tag when valid
+function lotFrom(l) {
+  const o = { c: l.c, n: l.n, from: l.from };
+  if (Number.isInteger(l.to)) { o.to = l.to; if (Number.isInteger(l.via) && l.via !== l.to) o.via = l.via; }
+  return o;
+}
+
 export class TrainSystem {
   constructor(game) {
     this.game = game;
@@ -126,7 +133,7 @@ export class TrainSystem {
       route: Array.isArray(d.route) ? d.route.filter((r) => r && (typeof r.st === 'number' || typeof r.wp === 'number')).map(normStop) : [],
       routeIdx: d.routeIdx | 0,
       filter: Array.isArray(d.filter) ? d.filter.filter((c) => CARGO[c]) : null,
-      cargo: Array.isArray(d.cargo) ? d.cargo.filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from })) : [],
+      cargo: Array.isArray(d.cargo) ? d.cargo.filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => lotFrom({ ...l, n: Math.floor(l.n) })) : [],
       earned: d.earned || 0, trips: d.trips || 0, profitLog: d.profitLog || [],
       state: 'idle', stateT: 0, wait: 0, target: d.target ?? null, tgtKind: 'station', depotId: d.depotId ?? null,
       xs: [], ys: [], zs: [], ss: [], steps: [], s: 0, v: 0, stopS: Infinity, resvEnd: -1,
@@ -714,6 +721,8 @@ export class TrainSystem {
   // ---------- targets & dispatcher ----------
   stationAccepts(stn, lot) {
     if (lot.from === stn.id) return false;
+    // passengers with a destination only leave at it or at their transfer station
+    if (lot.to != null) return stn.id === lot.to || stn.id === lot.via;
     return this.game.stations.accepts(stn, lot.c);
   }
 
@@ -799,7 +808,7 @@ export class TrainSystem {
     let best = null, bs = 0, bc = null, bn = 0;
     for (const d of cands) {
       for (const c in d.stock) {
-        const amt = d.stock[c] - (d.claimed[c] || 0);
+        const amt = d.stock[c] - (d.claimed[c] || 0) - (c === 'PASSENGERS' ? g.pax.tagged(d) : 0);
         if (amt < 3) continue;
         if (t.filter && !t.filter.includes(c)) continue;
         if (!canCarry(st, c)) continue;
@@ -836,6 +845,7 @@ export class TrainSystem {
   depart(t) {
     const g = this.game;
     const here = this.stationAtHead(t);
+    if (t.cargo.length) g.pax.validate(t);
     const choice = this.chooseTarget(t, here);
     if (!choice) {
       if (t.problem === 'no_demand' && t.mode === 'auto') {
@@ -962,7 +972,20 @@ export class TrainSystem {
     let moved = 0;
     const keep = [];
     const unload = opt.act !== 'load' && opt.act !== 'none';
+    g.pax.validate(t);
     for (const lot of t.cargo) {
+      if (lot.to != null) {
+        // passengers with a destination: get off there, or change trains here
+        if (unload && lot.to === stn.id) { g.economy.deliver(t, stn, lot); moved += lot.n; continue; }
+        if (unload && lot.via === stn.id) {
+          const took = g.pax.transferIn(t, stn, lot);
+          moved += took;
+          if (took < lot.n) keep.push({ c: lot.c, n: lot.n - took, from: lot.from });
+          continue;
+        }
+        keep.push(lot);
+        continue;
+      }
       if (unload && opt.act === 'transfer' && lot.from !== stn.id) {
         // feeder transfer: cargo waits at this station for another train
         const took = S.receive(stn, lot.c, lot.n);
@@ -1005,7 +1028,7 @@ export class TrainSystem {
   planLoad(t, stn, dry, opt) {
     const g = this.game, S = g.stations;
     const comp = this.net.components();
-    const lots = t.cargo.map((l) => ({ c: l.c, n: l.n, from: l.from }));
+    const lots = t.cargo.map((l) => lotFrom(l));
     const stops = t.mode === 'manual' ? t.route.map((r) => S.byId(r.st)).filter((s) => s && s !== stn) : null;
     const only = opt && Array.isArray(opt.cargo) && opt.cargo.length ? opt.cargo : null;
     const cargos = Object.keys(stn.stock).filter((c) => stn.stock[c] >= 1);
@@ -1027,11 +1050,15 @@ export class TrainSystem {
       if (room <= 0) continue;
       const claimedByOthers = (stn.claimed[c] || 0);
       const avail = Math.floor(stn.stock[c] - (t.claim && t.claim.st === stn.id ? 0 : Math.min(claimedByOthers, stn.stock[c] * 0.5)));
-      const n = Math.min(avail, room);
+      const n = Math.min(avail, room, c === 'PASSENGERS' ? g.pax.boardable(t, stn) : Infinity);
       if (n <= 0) continue;
       total += n;
-      const lot = lots.find((l) => l.c === c && l.from === stn.id);
-      if (lot) lot.n += n; else lots.push({ c, n, from: stn.id });
+      // passengers choose where they are going as they board (PaxFlow)
+      const add = c === 'PASSENGERS' && !dry ? g.pax.board(t, stn, n) : [{ c, n, from: stn.id }];
+      for (const a of add) {
+        const lot = lots.find((l) => l.c === a.c && l.from === a.from && l.to === a.to && l.via === a.via);
+        if (lot) lot.n += a.n; else lots.push(a);
+      }
       if (!dry) {
         stn.stock[c] -= n;
         g.stations.onPickup(stn, c, n);
@@ -1866,6 +1893,7 @@ export class TrainSystem {
         const t = this.makeTrain({ ...d, veh });
         this.nextId = Math.max(this.nextId, t.id + 1);
         t.cargo = t.cargo.filter((l) => g.stations.byId(l.from));
+        for (const l of t.cargo) if (l.to != null && !g.stations.byId(l.to)) { delete l.to; delete l.via; } else if (l.via != null && !g.stations.byId(l.via)) delete l.via;
         this.trains.push(t);
         const h = d.head;
         let placed = false;

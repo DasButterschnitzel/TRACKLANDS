@@ -228,7 +228,8 @@ export const RailUIMixin = {
   iTrain(t) {
     const g = this.game, st = t._st, m = st.model;
     const s = this.statusText(t);
-    const cargo = t.cargo.map((l) => this.cargoRow(l.c, l.n, 0, `<small class="muted">${esc(g.stations.byId(l.from)?.name || '')}</small>`)).join('') || `<p class="muted">${this.tr('empty')}</p>`;
+    const sname = (id) => esc(g.stations.byId(id)?.name || '');
+    const cargo = t.cargo.map((l) => this.cargoRow(l.c, l.n, 0, `<small class="muted">${sname(l.from)}${l.to != null ? ` → ${sname(l.to)}${l.via != null ? ` · ${this.tr('pax_via', { name: sname(l.via) })}` : ''}` : ''}</small>`)).join('') || `<p class="muted">${this.tr('empty')}</p>`;
     const loadN = g.trains.loadTotal(t);
     const upg = TRAIN_UPGRADES.map((k) => {
       const lvl = t.upg[k];
@@ -321,6 +322,7 @@ export const RailUIMixin = {
       <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>
       ${supplies.length ? `<h4>${this.tr('supplies')}</h4>${supplies.map((c) => this.cargoWagonsRow(c)).join('')}` : ''}
       <h4>${this.tr('waiting_cargo')}</h4>${stock.map((c) => this.cargoRow(c, s.stock[c], cap)).join('') || `<p class="muted">${this.tr('none_waiting')}</p>`}
+      ${this.paxBlock(s)}
       <h4>${this.tr('platforms')} · ${s.tracks.length}/${S.maxTracks()}</h4><div class="plats">${tracks}</div>
       <div class="row wrap">${addT}</div>
       <p class="muted small">${this.tr('st_edit_help')}</p>
@@ -331,6 +333,26 @@ export const RailUIMixin = {
       <div class="row wrap">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>
       <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>
       <p class="muted small">${this.tr('station_stats', { d: fmt(s.delivered), p: fmt(s.picked) })}</p>`;
+  },
+
+  // passengers: service frequency, travel demand, where people are heading and
+  // every place reachable from here (directly or with one change)
+  paxBlock(s) {
+    const g = this.game, P = g.pax, S = g.stations;
+    const conns = P.connections(s);
+    const waiting = Math.floor(s.stock.PASSENGERS || 0);
+    if (!S.accepts(s, 'PASSENGERS') && !conns.length && !waiting) return '';
+    const iv = P.interval(s), mul = s._paxMul || 1;
+    const name = (id) => esc(S.byId(id)?.name || '?');
+    const pills = [`<span class="pill">${iv ? this.tr('pax_every', { n: iv < 1 ? '<1' : Math.round(iv) }) : this.tr('pax_no_service')}</span>`];
+    if (Math.abs(mul - 1) > 0.005) pills.push(`<span class="pill ${mul > 1 ? 'good' : ''}" data-tip="${this.tr('pax_demand_tip')}">${mul > 1 ? '+' : '−'}${Math.round(Math.abs(mul - 1) * 100)}% ${this.tr('pax_demand')}</span>`);
+    const tagged = Object.entries(s.paxTo || {}).sort((a, b) => b[1] - a[1]);
+    const open = P.open(s);
+    const rows = waiting ? [...tagged.slice(0, 4).map(([id, n]) => `<div class="kvrow"><span>${this.tr('pax_to', { name: name(+id) })}</span><b>${fmt(n)}</b></div>`), open > 0 && tagged.length ? `<div class="kvrow"><span>${this.tr('pax_open')}</span><b>${fmt(open)}</b></div>` : ''].join('') : '';
+    const shown = conns.slice(0, 8);
+    const list = shown.map((c) => `<button class="tag link" data-act="jump" data-arg="station:${c.st}">${icon('station', 'mini')}${name(c.st)}${c.via != null ? `<small class="muted">&nbsp;${this.tr('pax_via', { name: name(c.via) })}</small>` : ''}</button>`).join('') + (conns.length > shown.length ? `<span class="muted small">${this.tr('pax_more', { n: conns.length - shown.length })}</span>` : '');
+    return `<h4>${this.tr('pax_heading')}</h4><div class="pill-row">${pills.join('')}</div>${rows}
+      <h4>${this.tr('pax_connections')} · ${conns.length}</h4><div class="links">${list || `<span class="muted small">${this.tr('pax_no_conn')}</span>`}</div>`;
   },
 
   // cargo discoverability: which wagons carry a cargo

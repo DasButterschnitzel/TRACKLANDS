@@ -95,6 +95,7 @@ export function sanitize(d) {
     for (const s of S.stations) {
       s.stock = numMap(s.stock);
       if (s.claimed !== undefined) s.claimed = numMap(s.claimed);
+      if (s.paxTo !== undefined) s.paxTo = numMap(s.paxTo);
       s.level = Math.round(num(s.level, 0, 0, STATION.maxLevel));
       s.delivered = num(s.delivered, 0, 0); s.picked = num(s.picked, 0, 0);
       if (typeof s.name !== 'string') s.name = 'Station ' + s.id;
@@ -121,6 +122,10 @@ export function sanitize(d) {
     if (typeof t.name !== 'string' || !t.name) t.name = 'Train ' + t.id;
     t.earned = num(t.earned, 0); t.trips = Math.round(num(t.trips, 0, 0));
     t.cargo = Array.isArray(t.cargo) ? t.cargo.filter((l) => isObj(l) && typeof l.c === 'string' && fin(l.n) && l.n > 0) : [];
+    for (const l of t.cargo) {
+      if (l.to !== undefined && !Number.isInteger(l.to)) { delete l.to; delete l.via; }
+      if (l.via !== undefined && !Number.isInteger(l.via)) delete l.via;
+    }
     if (t.route !== undefined && !Array.isArray(t.route)) t.route = [];
     t.routeIdx = Math.round(num(t.routeIdx, 0, 0));
     if (!isObj(t.upg)) t.upg = {};

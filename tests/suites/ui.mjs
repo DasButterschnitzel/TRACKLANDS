@@ -18,6 +18,22 @@ const SCREENS = [
   ['train', () => { const g = window.__tracklands.game; g.select({ type: 'train', id: 4 }); g.focusOn({ type: 'train', id: 4 }, 12); }],
   ['industry', () => { const g = window.__tracklands.game; const i = g.industries.list.find((x) => g.industries.linkedStations(x).length) || g.industries.list[0]; g.select({ type: 'industry', id: i.id }); g.focusOn({ type: 'industry', id: i.id }, 14); }],
   ['town', () => { const g = window.__tracklands.game; const t = g.towns.list.reduce((a, b) => (b.stage > a.stage ? b : a)); g.select({ type: 'town', id: t.id }); g.focusOn({ type: 'town', id: t.id }, 16); }],
+  // passenger lines: two timetabled trains sharing a stop, so the station
+  // shows service frequency, destinations and connections with a change
+  ['pax', () => {
+    const g = window.__tracklands.game, S = g.stations;
+    const px = S.list.filter((s) => S.accepts(s, 'PASSENGERS'));
+    if (px.length >= 3 && !g._uiPax) {
+      g._uiPax = true;
+      const mk = (t, a, b) => { t.mode = 'manual'; t.route = [a, b].map((s) => ({ st: s.id, act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null })); t.routeIdx = 0; };
+      const [a, b, c] = px;
+      mk(g.trains.trains[0], a, b); mk(g.trains.trains[2], b, c);
+      for (let i = 0; i < 30 * 240; i++) g.tick(1 / 30);
+      g._uiPaxStn = b.id;
+    }
+    const id = g._uiPaxStn || (px[0] && px[0].id) || 7;
+    g.select({ type: 'station', id }); g.focusOn({ type: 'station', id }, 14);
+  }],
   ['overlay', () => { const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
   ['night-rain', () => { const g = window.__tracklands.game; g.overlays.set(null); g.env.timeOfDay = 0.95; g.env.weather = g.env.weatherTarget = 'rain'; }],
 ];

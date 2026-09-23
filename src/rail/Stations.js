@@ -319,6 +319,9 @@ export class StationSystem {
       if (t.claim && t.claim.st === stn.id) t.claim = null;
     }
     for (const [id, c] of this.claims) if (c.stn === stn.id) this.claims.delete(id);
+    // passengers bound for this station elsewhere now take any train
+    for (const s of this.list) if (s.paxTo && s.paxTo[stn.id] != null) { delete s.paxTo[stn.id]; g.pax.clamp(s); }
+    g.pax.invalidate();
     net.bumpVersion();
     for (const t of tiles) g.railView.markDirty(t);
     const refund = Math.round(g.economy.costs.station() * COSTS.bulldozeRefund);
@@ -823,6 +826,7 @@ export class StationSystem {
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers },
+        ...(s.paxTo && Object.keys(s.paxTo).length ? { paxTo: s.paxTo } : {}),
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
     };
@@ -840,6 +844,12 @@ export class StationSystem {
       stn.name = String(s.name || 'Station');
       stn.delivered = s.delivered || 0; stn.picked = s.picked || 0;
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
+      // passengers waiting for a connection (PaxFlow); ids are checked once all stations exist
+      if (s.paxTo && typeof s.paxTo === 'object') {
+        const m = {};
+        for (const k in s.paxTo) { const v = Math.floor(+s.paxTo[k]); if (/^\d+$/.test(k) && isFinite(v) && v > 0) m[k] = v; }
+        if (Object.keys(m).length) stn.paxTo = m;
+      }
       // tracks: validate tiles (in map, free, has rail except legacy single tile)
       const tracks = [];
       const used = new Set([s.tile]);
@@ -857,6 +867,10 @@ export class StationSystem {
       if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
       this.list.push(stn);
       this.markTiles(stn);
+    }
+    for (const s of this.list) if (s.paxTo) {
+      for (const k of Object.keys(s.paxTo)) if (+k === s.id || !this.byId(+k)) delete s.paxTo[k];
+      this.game.pax.clamp(s);
     }
     for (const dd of d.depots || []) {
       if (typeof dd.tile !== 'number' || net.special.has(dd.tile)) continue;

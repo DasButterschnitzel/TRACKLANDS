@@ -9,6 +9,7 @@ import { WorldView } from './world/WorldView.js';
 import { RailNetwork } from './rail/RailNetwork.js';
 import { RailRenderer } from './rail/RailRenderer.js';
 import { StationSystem } from './rail/Stations.js';
+import { PaxFlow } from './rail/PaxFlow.js';
 import { Construction } from './rail/Construction.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
@@ -69,6 +70,7 @@ export class Game {
     this.towns.init(this.world);
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
+    this.pax = new PaxFlow(this);
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);
@@ -345,6 +347,7 @@ export class Game {
     this.industries.tick(dt);
     this.towns.tick(dt);
     this.stations.tick(dt);
+    this.pax.tick(dt);
     this.trains.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);

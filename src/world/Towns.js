@@ -276,7 +276,8 @@ export class TownSystem {
       const sts = t._sts || (t._sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id)));
       if (!sts.length) continue;
       const P = TOWN_PRODUCTION;
-      const pax = (P.paxBase + t.pop * P.paxPerPop) * (1 + fx.paxProd + (ev.paxProd || 0)) * (t.tourist ? 1.5 : 1);
+      // frequent, well-connected service attracts more travellers (PaxFlow)
+      const pax = (P.paxBase + t.pop * P.paxPerPop) * (1 + fx.paxProd + (ev.paxProd || 0)) * (t.tourist ? 1.5 : 1) * (g.pax ? g.pax.townMul(sts) : 1);
       const mail = (P.mailBase + t.pop * P.mailPerPop) * (1 + fx.mailProd);
       t.paxAcc += (pax / 60) * dt;
       t.mailAcc += (mail / 60) * dt;
