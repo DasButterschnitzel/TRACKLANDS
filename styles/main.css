@@ -297,12 +297,13 @@ body.panel-open #banner { opacity: 0; }
 @keyframes cel { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.7); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); } 20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -60%); } }
 
 /* ---------- tutorial & grant ---------- */
-#tutorial { position: fixed; right: calc(10px + var(--safe-r)); bottom: calc(96px + var(--safe-b)); width: min(340px, calc(100vw - 20px)); background: #fffaf0; border: 2px solid var(--gold); border-radius: 16px; padding: 12px 14px; z-index: 26; box-shadow: var(--shadow); animation: sheetIn .3s; }
+#tutorial { position: fixed; right: calc(10px + var(--safe-r)); top: calc(64px + var(--safe-t)); width: min(340px, calc(100vw - 20px)); background: #fffaf0; border: 2px solid var(--gold); border-radius: 16px; padding: 12px 14px; z-index: 26; box-shadow: var(--shadow); animation: sheetIn .3s; }
 .tut-step { font-size: .78em; text-transform: uppercase; letter-spacing: .06em; color: #a07a20; font-weight: 700; }
 .tut-title { font-weight: 800; font-size: 1.12em; margin: 2px 0 4px; }
 .tut-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 .tut-glow { box-shadow: 0 0 0 3px var(--gold), 0 0 18px 4px rgba(233,185,73,.8) !important; animation: glow 1.2s infinite alternate; }
 @keyframes glow { to { box-shadow: 0 0 0 3px var(--gold), 0 0 4px 1px rgba(233,185,73,.5) !important; } }
+body.panel-open #tutorial { right: calc(450px + var(--safe-r)); }
 #grant { position: fixed; left: calc(70px + var(--safe-l)); bottom: calc(96px + var(--safe-b)); z-index: 21; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 #grant small { background: var(--glass); color: #fff; padding: 3px 8px; border-radius: 8px; }
 
@@ -354,7 +355,7 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
   .tool span { display: none; }
   .tool { min-width: 52px; height: 52px; }
   #subbar { bottom: calc(80px + var(--safe-b)); }
-  #tutorial, #grant { bottom: calc(86px + var(--safe-b)); }
+  #grant { bottom: calc(86px + var(--safe-b)); }
 }
 @media (max-width: 760px) {
   body { font-size: calc(14.5px * var(--ui-scale)); }
@@ -384,8 +385,8 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
   .phead::before { content: ''; position: absolute; left: 50%; top: 5px; width: 40px; height: 4px; border-radius: 2px; background: rgba(31,42,58,.25); transform: translateX(-50%); }
   .phead { position: relative; }
   body.insp-open #toolbar, body.panel-open #toolbar, body.insp-open #subbar, body.panel-open #subbar { display: none; }
-  #tutorial { left: 8px; right: 8px; width: auto; bottom: calc(66px + var(--safe-b)); }
-  body.insp-open #tutorial, body.panel-open #tutorial { bottom: auto; top: calc(62px + var(--safe-t)); }
+  #tutorial { left: 8px; right: 8px !important; width: auto; top: auto; bottom: calc(66px + var(--safe-b)); }
+  body.insp-open #tutorial, body.panel-open #tutorial { bottom: auto; top: calc(56px + var(--safe-t)); }
   #grant { bottom: calc(66px + var(--safe-b)); }
   #toasts { top: calc(58px + var(--safe-t)); }
   #banner { top: auto; bottom: calc(130px + var(--safe-b)); }

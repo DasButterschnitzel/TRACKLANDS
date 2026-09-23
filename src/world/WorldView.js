@@ -147,7 +147,7 @@ export class WorldView {
     g.rotateX(-Math.PI / 2);
     g.translate(N * TILE / 2, -3.25, N * TILE / 2);
     this.table = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xcfc6b6 }));
-    this.table.receiveShadow = true;
+    this.table.receiveShadow = false;
     this.group.add(this.table);
   }
 
