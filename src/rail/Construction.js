@@ -269,6 +269,7 @@ export class Construction {
       }
     }
     g.world.view.clearTreesMany(plan.tiles);
+    g.world.view.clearCorridorMany(plan.tiles);
     net.bumpVersion();
     g.stats.inc('trackBuilt', plan.newTiles);
     g.stats.inc('bridgesBuilt', plan.bridges);

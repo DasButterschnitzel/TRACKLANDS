@@ -5,7 +5,7 @@ import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp }
 import {
   CARGO, CARGO_IDS, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
   TRACK_TIERS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
-  LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S,
+  LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
 import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
 import { icon, cargoIcon } from './icons.js';
@@ -247,8 +247,11 @@ export class UI {
   // ---------- toasts, banners, floating text ----------
   toast(text, kind = 'info', ic = null) {
     const box = $('#toasts');
+    // no stacks of identical messages
+    for (const el of box.children) if (el.dataset.text === text && !el.classList.contains('out')) return;
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
+    el.dataset.text = text;
     el.innerHTML = `${ic ? icon(ic) : kind === 'error' ? icon('warn') : icon('info')}<span>${esc(text)}</span>`;
     el.setAttribute('role', 'status');
     box.appendChild(el);
@@ -471,7 +474,7 @@ export class UI {
     const el = $('#panel');
     el.classList.remove('open');
     el.hidden = true;
-    document.body.classList.remove('panel-open');
+    document.body.classList.remove('panel-open', 'panel-wide');
     document.querySelectorAll('.rail-btn').forEach((b) => b.classList.remove('on'));
   }
   refreshPanel(first) {
@@ -481,6 +484,7 @@ export class UI {
     const body = $('.pbody', el);
     const scroll = body ? body.scrollTop : 0;
     el.classList.toggle('wide', !!def.wide);
+    document.body.classList.toggle('panel-wide', !!def.wide);
     el.innerHTML = `<div class="phead"><h2>${this.tr(def.title)}</h2><button class="icon-btn" data-act="closePanel" aria-label="${this.tr('close')}">${icon('close')}</button></div><div class="pbody">${def.render()}</div>`;
     const nb = $('.pbody', el);
     if (!first) nb.scrollTop = scroll;
@@ -662,7 +666,7 @@ export class UI {
   }
 
   statBars(m) {
-    const rows = [['stat_speed', m.speed / 480, `${m.speed} km/h`], ['stat_accel', m.accel / 3.4, m.accel.toFixed(1)], ['stat_power', m.power / 18000, fmt(m.power) + ' kW'], ['stat_freight', m.freight / 180, m.freight], ['stat_pax', m.pax / 220, m.pax], ['stat_reliability', m.reliability, Math.round(m.reliability * 100) + '%'], ['stat_load', m.load / 1.8, '×' + m.load.toFixed(1)], ['stat_op', m.op / 450, fmt(m.op) + '/min']];
+    const rows = [['stat_speed', m.speed / 480, `${m.speed} km/h`], ['stat_accel', m.accel / 3.4, m.accel.toFixed(1)], ['stat_power', m.power / 18000, fmt(m.power) + ' kW'],  ['stat_wagons', m.wagons / 8, m.wagons], ['bld_length', locoLen(m) / 2.4, (locoLen(m) / TILE).toFixed(1) + ' ' + this.tr('tiles')], ['stat_reliability', m.reliability, Math.round(m.reliability * 100) + '%'], ['stat_load', m.load / 1.8, '×' + m.load.toFixed(1)], ['stat_op', m.op / 450, fmt(m.op) + '/min']];
     return `<div class="sbars">${rows.map(([k, p, v]) => `<div class="sb"><span>${this.tr(k)}</span>${this.bar(p)}<small>${v}</small></div>`).join('')}</div>`;
   }
 

@@ -553,6 +553,8 @@ export class RailNetwork {
     if (!sw) { sw = { a: key[0], b: key[1], pa: key[0], pb: key[1], t: 1 }; this.switches.set(tile, sw); return; }
     if (sw.a === key[0] && sw.b === key[1]) return;
     sw.pa = sw.a; sw.pb = sw.b; sw.a = key[0]; sw.b = key[1]; sw.t = 0;
+    const g = this.game;
+    if (g.audio && g.camera) { const v = g.near({ x: tileCX(tile), z: tileCZ(tile) }); if (v > 0.4) g.audio.play('switch', { vol: v * 0.6 }); }
   }
   switchReady(tile, a, b) {
     const sw = this.switches.get(tile);

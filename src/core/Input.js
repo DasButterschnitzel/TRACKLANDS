@@ -66,7 +66,28 @@ export class Input {
     }
     return p;
   }
-  tileAt(x, y) { const p = this.groundAt(x, y); return { p, tile: worldToTile(p.x, p.z) }; }
+  tileAt(x, y) {
+    const p = this.groundAt(x, y);
+    let tile = worldToTile(p.x, p.z);
+    const tool = this.game.construction.tool;
+    if (tool === 'signal' || tool === 'waypoint') {
+      // rail tools: intersect the ray with the rail surface of nearby track tiles
+      const net = this.game.net, o = this.ray.ray.origin, d = this.ray.ray.direction;
+      const tx0 = Math.floor(p.x / 2), tz0 = Math.floor(p.z / 2);
+      let best = null;
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+        const x2 = tx0 + dx, z2 = tz0 + dz;
+        if (x2 < 0 || z2 < 0 || x2 >= 64 || z2 >= 64) continue;
+        const c = z2 * 64 + x2;
+        if (!net.conn[c]) continue;
+        const t = (net.railH(c) + 0.1 - o.y) / d.y;
+        const q = new THREE.Vector3(o.x + d.x * t, net.railH(c) + 0.1, o.z + d.z * t);
+        if (worldToTile(q.x, q.z) === c) { best = { p: q, tile: c }; break; }
+      }
+      if (best) return best;
+    }
+    return { p, tile };
+  }
 
   pickTrain(x, y) {
     const list = this.game.trains.pickables();

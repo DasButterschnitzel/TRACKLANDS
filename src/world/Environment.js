@@ -230,14 +230,22 @@ export class Environment {
     const n = Math.floor(nMax * Math.max(this.rain, this.snow));
     if (rv) {
       const arr = this.rainMesh.geometry.attributes.position.array;
+      // one coherent wind for all drops, spread over the visible area
+      const vs = this.game.camera.viewSize;
+      const span = Math.min(40, vs * 1.35 + 6);
+      const wx = 0.28 + Math.sin(this.game.clock * 0.05) * 0.08, wz = 0.12;
+      const view = this.game.world.view;
       for (let i = 0; i < this.dropSeed.length; i++) {
         const d = this.dropSeed[i];
         if (i >= n) { arr.fill(0, i * 6, i * 6 + 6); continue; }
-        d[1] -= dt * 30 * d[3];
-        if (d[1] < 0) d[1] += 30;
-        const x = tr.x + d[0], y = d[1], z = tr.z + d[2];
+        const fall = dt * 30 * d[3];
+        d[1] -= fall;
+        const x = tr.x + (d[0] / 40) * span + (30 - d[1]) * wx, z = tr.z + (d[2] / 40) * span + (30 - d[1]) * wz;
+        const ground = view ? view.heightAt(x, z) : 0;
+        if (d[1] < Math.max(0, ground)) d[1] += 30;
+        const y = d[1];
         arr[i * 6] = x; arr[i * 6 + 1] = y; arr[i * 6 + 2] = z;
-        arr[i * 6 + 3] = x + 0.08; arr[i * 6 + 4] = y + 0.7; arr[i * 6 + 5] = z + 0.05;
+        arr[i * 6 + 3] = x - wx * 0.8; arr[i * 6 + 4] = y + 0.8; arr[i * 6 + 5] = z - wz * 0.8;
       }
       this.rainMesh.geometry.attributes.position.needsUpdate = true;
       this.rainMesh.material.opacity = 0.5 * this.rain;

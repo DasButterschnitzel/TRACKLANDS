@@ -67,6 +67,24 @@ class App {
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
+  }
+
+  // ?railtest: automated railway scenarios on a throwaway world (never saved)
+  runRailTests() {
+    this.startGame({ seed: 424242, difficulty: 'builder', test: true });
+    const wait = setInterval(() => {
+      if (!this.game) return;
+      clearInterval(wait);
+      this.game.tutorial.skip();
+      setTimeout(() => {
+        const res = this.game.runRailTests();
+        const rows = res.map((r) => `<div class="adv">${r.ok ? '✅' : '❌'}<span><b>${escapeHtml(r.name)}</b><br><small>${escapeHtml(r.detail)}</small></span></div>`).join('');
+        const w = this.ui.modal(`<h2>Rail tests: ${res.filter((r) => r.ok).length}/${res.length}</h2>${rows}<div class="row end"><button class="btn primary" data-mbtn="ok">${t('ok')}</button></div>`, { onCancel: () => {} });
+        w.querySelector('[data-mbtn=ok]').onclick = () => w.remove();
+        window.__railTestResults = res;
+      }, 500);
+    }, 100);
   }
 
   fatal(msg) {
@@ -226,7 +244,7 @@ class App {
   async toTitle() {
     if (!this.game) return;
     await this.game.save();
-    this.save = this.game.serialize();
+    this.save = this.game.testMode ? await this.loadNewestSave() : this.game.serialize();
     this.ui.detach();
     this.game.dispose();
     this.game = null;
@@ -234,7 +252,7 @@ class App {
   }
 
   flushSave() {
-    if (!this.game) return;
+    if (!this.game || this.game.testMode) return;
     try {
       const d = this.game.serialize();
       localStorage.setItem('tracklands.save', JSON.stringify(d));

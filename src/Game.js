@@ -42,6 +42,7 @@ export class Game {
     this.selection = null;
     this.cleared = new Set();
     this.autosaveT = 30;
+    this.testMode = !!opts.test;
     const save = opts.save || null;
     const seed = save ? save.seed : opts.seed;
     this.difficultyId = save ? (DIFFICULTY[save.difficulty] ? save.difficulty : 'standard') : opts.difficulty || 'standard';
@@ -111,7 +112,7 @@ export class Game {
     this.stations.relinkAll();
     if (Array.isArray(s.cleared)) this.world.view.clearTreesMany(s.cleared.filter((t) => t >= 0 && t < N * N));
     for (const st of this.stations.list) this.world.view.clearTrees(st.tile);
-    for (let i = 0; i < N * N; i++) if (this.net.conn[i]) this.world.view.clearTrees(i);
+    for (let i = 0; i < N * N; i++) if (this.net.conn[i]) { this.world.view.clearTrees(i); this.world.view.clearCorridor(i); }
     this.decor.deserialize(s.decor);
     this.economy.deserialize(s.economy);
     this.env.deserialize(s.env);
@@ -133,6 +134,7 @@ export class Game {
   }
 
   async save(backup = false) {
+    if (this.testMode) return false;
     try {
       const data = this.serialize();
       await this.store.put('main', data);

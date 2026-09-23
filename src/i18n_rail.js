@@ -54,7 +54,7 @@ export const EN_RAIL = {
   adv_single_track: 'Trains wait on a single-track section — add a passing loop (double track) there.',
   adv_deadlock: '{n} trains blocked each other here — add a passing loop or a second track.',
   adv_overloaded: '{name} is overloaded — add a locomotive or remove wagons.',
-  toast_deadlock_reroute: '{name} took another route to clear a blockage.', toast_deadlock_reverse: '{name} backed out to clear a blockage.', toast_deadlock_recover: '{name} was re-formed at a nearby station.',
+  toast_deadlock_reroute: '{name} took another route to clear a blockage.', toast_deadlock_reverse: '{name} backed out to clear a blockage.', toast_deadlock_recover: '{name} returned to its depot to clear a blockage.',
   // schedule
   stop_via: 'pass through', act_auto: 'Load & unload', act_load: 'Load only', act_unload: 'Unload only', act_transfer: 'Transfer (drop for other trains)', act_none: 'No loading',
   stop_full: 'Wait for full load', stop_action: 'At this stop', stop_dwell: 'Extra dwell', stop_platform: 'Platform', stop_skip: 'Skip this stop', stop_cargo: 'Load:',
@@ -115,6 +115,7 @@ export const EN_RAIL = {
   res_station_dispatch: 'Station Dispatch', res_station_dispatch_desc: '+10% loading speed everywhere.',
   res_grand_terminals: 'Grand Terminals', res_grand_terminals_desc: 'Up to 8 tracks and Central Stations (level 6).',
   prob_no_stations: 'No other stations on this network',
+  stat_wagons: 'Typical wagons',
 };
 
 export const DE_RAIL = {
@@ -168,7 +169,7 @@ export const DE_RAIL = {
   adv_single_track: 'Züge warten auf einem eingleisigen Abschnitt — baue dort eine Ausweiche (zweigleisig).',
   adv_deadlock: '{n} Züge haben sich hier blockiert — baue eine Ausweiche oder ein zweites Gleis.',
   adv_overloaded: '{name} ist überlastet — Lok hinzufügen oder Wagen entfernen.',
-  toast_deadlock_reroute: '{name} nimmt eine andere Strecke, um eine Blockade zu lösen.', toast_deadlock_reverse: '{name} setzt zurück, um eine Blockade zu lösen.', toast_deadlock_recover: '{name} wurde an einem Bahnhof neu aufgestellt.',
+  toast_deadlock_reroute: '{name} nimmt eine andere Strecke, um eine Blockade zu lösen.', toast_deadlock_reverse: '{name} setzt zurück, um eine Blockade zu lösen.', toast_deadlock_recover: '{name} ist ins Depot zurückgekehrt, um eine Blockade zu lösen.',
   stop_via: 'Durchfahrt', act_auto: 'Laden & entladen', act_load: 'Nur laden', act_unload: 'Nur entladen', act_transfer: 'Umladen (für andere Züge)', act_none: 'Nicht laden',
   stop_full: 'Auf volle Ladung warten', stop_action: 'An diesem Halt', stop_dwell: 'Zusätzliche Haltezeit', stop_platform: 'Gleis', stop_skip: 'Halt überspringen', stop_cargo: 'Laden:',
   auto: 'Auto', none: 'Keine', waypoint: 'Wegpunkt',
@@ -224,4 +225,5 @@ export const DE_RAIL = {
   res_station_dispatch: 'Fahrdienstleitung', res_station_dispatch_desc: '+10 % Ladegeschwindigkeit überall.',
   res_grand_terminals: 'Großbahnhöfe', res_grand_terminals_desc: 'Bis zu 8 Gleise und Hauptbahnhöfe (Stufe 6).',
   prob_no_stations: 'Keine anderen Bahnhöfe in diesem Netz',
+  stat_wagons: 'Übliche Wagenzahl',
 };

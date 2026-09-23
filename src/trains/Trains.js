@@ -879,7 +879,7 @@ export class TrainSystem {
     const planned = opt.act === 'unload' || opt.act === 'none' ? 0 : this.planLoad(t, stn, true, opt);
     const eff = Math.max(STATION.minPlatformEff, this.platformFraction(t, stn));
     t.platEff = eff;
-    const rate = S.loadRate(stn) * t._st.load * eff;
+    const rate = S.loadRate(stn, [...Object.keys(stn.stock), ...t.cargo.map((l) => l.c)]) * t._st.load * eff;
     t.loadTime = 1.2 + (moved + planned) / Math.max(1, rate) + (opt.dwell || 0);
     t.waitFull = !!opt.full && opt.act !== 'unload' && opt.act !== 'none';
     t.trips++;

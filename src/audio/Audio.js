@@ -130,12 +130,25 @@ export class AudioEngine {
             o.start(t); lfo.start(t); o.stop(t + 0.8); lfo.stop(t + 0.8);
           }
           this.noiseHit(0.7, { freq: 2600, q: 2, gain: 0.02 * v });
+        } else if (opts.kind === 'diesel') {
+          // two-tone air horn
+          this.tone(311, 0.55, { type: 'sawtooth', gain: 0.018 * v, attack: 0.03, rev: 0.3 });
+          this.tone(370, 0.55, { type: 'sawtooth', gain: 0.015 * v, attack: 0.03, rev: 0.3 });
+          this.tone(311, 0.3, { type: 'sawtooth', gain: 0.014 * v, attack: 0.02, when: 0.65, rev: 0.3 });
+        } else if (opts.kind === 'electric') {
+          // bright three-note chime
+          [523, 659, 784].forEach((f, k) => this.tone(f, 0.35, { type: 'square', gain: 0.012 * v, attack: 0.02, when: k * 0.05, rev: 0.35 }));
         } else {
-          this.tone(311, 0.5, { type: 'sawtooth', gain: 0.018 * v, attack: 0.03, rev: 0.3 });
-          this.tone(392, 0.5, { type: 'sawtooth', gain: 0.015 * v, attack: 0.03, rev: 0.3 });
+          // high speed / maglev: smooth rising tone
+          this.tone(660, 0.6, { type: 'triangle', gain: 0.03 * v, attack: 0.05, glide: 880, rev: 0.4 });
+          this.tone(990, 0.5, { type: 'sine', gain: 0.015 * v, attack: 0.05, when: 0.05, rev: 0.4 });
         }
         break;
       }
+      case 'switch':
+        this.noiseHit(0.06, { freq: 3000, q: 6, gain: 0.05 * v });
+        this.tone(220, 0.06, { type: 'square', gain: 0.02 * v, when: 0.03 });
+        break;
       case 'chuff':
         for (let k = 0; k < 4; k++) this.noiseHit(0.1, { freq: 900, q: 0.8, gain: 0.05 * v, when: k * 0.18 });
         break;

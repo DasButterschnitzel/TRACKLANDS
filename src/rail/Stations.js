@@ -134,7 +134,7 @@ export class StationSystem {
     const r = net.tileBlockedReason(tile);
     if (r) return r;
     if (net.kind(tile) !== K_NORMAL) return 'err_bad_terrain';
-    if (net.special.has(tile)) return 'err_occupied';
+    if (net.special.has(tile) || net.waypoints.has(tile)) return 'err_occupied';
     if (kind === 'depot' && net.degree(tile) > 1) return 'err_depot_on_line';
     if (net.degree(tile) >= 3 && kind === 'station') return 'err_station_junction';
     if (net.conn[tile] && g.trains.tileReserved(tile)) return 'err_train_on_track';
@@ -221,6 +221,7 @@ export class StationSystem {
     const cost = g.economy.costs.station();
     g.economy.spend(cost, 'construction');
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
+    for (let d = 0; d < 8; d++) net.signals.delete(tile * 8 + d);
     const auto = this.autoConnect(tile, 2);
     this.list.push(stn);
     this.relink(stn);
@@ -425,8 +426,7 @@ export class StationSystem {
     const plan = this.planAddTrack(stn, side);
     if (plan.error) return plan;
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    // ladder merge tiles must not be under a train
-    for (const L of plan.ladders) if (L.path.length && g.trains.tileReserved(L.path[L.path.length - 1])) return { error: 'err_train_on_track' };
+    // (merge tiles only gain a connection; trains on them re-derive their reservations)
     g.economy.spend(plan.cost, 'construction');
     const a = this.axisOf(stn);
     for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);
@@ -443,6 +443,7 @@ export class StationSystem {
     stn.tracks.push({ tiles: plan.tiles, role: 'any', dir: 'both', off: plan.off, ladder: ladderTiles });
     this.markTiles(stn);
     g.world.view.clearTreesMany(built);
+    g.world.view.clearCorridorMany(built);
     net.bumpVersion();
     g.railView.animateBuild(built);
     stn.build = 1;
@@ -465,7 +466,7 @@ export class StationSystem {
     const E = end ? tk.tiles[tk.tiles.length - 1] : tk.tiles[0];
     const B = step(E, dOut);
     if (B < 0) return { error: 'err_out_of_map' };
-    if (net.special.has(B)) return { error: 'err_occupied', bad: B };
+    if (net.special.has(B) || net.waypoints.has(B)) return { error: 'err_occupied', bad: B };
     const r = net.tileBlockedReason(B);
     if (r) return { error: r, bad: B };
     if (net.kind(B) !== K_NORMAL) return { error: 'err_bad_terrain', bad: B };
@@ -495,6 +496,7 @@ export class StationSystem {
       net.tier[plan.tile] = net.tier[E];
     }
     if (end) tk.tiles.push(plan.tile); else tk.tiles.unshift(plan.tile);
+    for (let d = 0; d < 8; d++) net.signals.delete(plan.tile * 8 + d);   // stations signal themselves
     this.markTiles(stn);
     g.world.view.clearTrees(plan.tile);
     net.bumpVersion();

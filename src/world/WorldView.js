@@ -213,7 +213,7 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
         mesh.setMatrixAt(k, m4);
         mesh.setColorAt(k, _c.setRGB(t.tint, t.tint, t.tint));
         if (!this.treeAt.has(t.i)) this.treeAt.set(t.i, []);
-        this.treeAt.get(t.i).push({ kind, k });
+        this.treeAt.get(t.i).push({ kind, k, x: t.x, z: t.z, s: t.s });
       });
       if (!L.length) mesh.setColorAt(0, _c.setRGB(1, 1, 1));
       mesh.instanceMatrix.needsUpdate = true;
@@ -244,6 +244,32 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
   }
   clearTreesMany(tiles) { for (const t of tiles) this.clearTrees(t); }
 
+  // Vegetation corridor: remove trees on neighbouring tiles whose crowns reach
+  // over the track path of `tile` (centre to each connected edge).
+  clearCorridor(tile) {
+    const net = this.game.net;
+    if (!net.conn[tile]) return;
+    const cx = (tx(tile) + 0.5) * TILE, cz = (tz(tile) + 0.5) * TILE;
+    const segs = [];
+    for (let d = 0; d < 8; d++) if (net.hasDir(tile, d)) segs.push([cx, cz, cx + DXS[d] * TILE / 2, cz + DZS[d] * TILE / 2]);
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const x = tx(tile) + dx, z = tz(tile) + dz;
+      if (x < 0 || z < 0 || x >= N || z >= N) continue;
+      const n = idx(x, z);
+      const l = this.treeAt.get(n);
+      if (!l || !l.length) continue;
+      const keep = [];
+      for (const tr of l) {
+        let hit = false;
+        for (const [ax, az, bx, bz] of segs) if (segDist(tr.x, tr.z, ax, az, bx, bz) < 0.62 + 0.3 * tr.s) { hit = true; break; }
+        if (hit) { this.treeMeshes[tr.kind].setMatrixAt(tr.k, zero); this.treeMeshes[tr.kind].instanceMatrix.needsUpdate = true; } else keep.push(tr);
+      }
+      if (keep.length !== l.length) { if (keep.length) this.treeAt.set(n, keep); else { this.treeAt.delete(n); this.game.cleared.add(n); } }
+    }
+  }
+  clearCorridorMany(tiles) { for (const t of tiles) this.clearCorridor(t); }
+
   // ---------- clouds over locked regions ----------
   buildClouds() {
     const W = this.W;
@@ -259,7 +285,10 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
       if (r === 0) continue;
       const bx = (x + 1) * TILE + rng.range(-0.8, 0.8), bz = (z + 1) * TILE + rng.range(-0.8, 0.8);
       const by = Math.max(W.tileH[i], 0) + 3.6 + rng.range(0, 1.2);
-      list.push({ r, x: bx, y: by, z: bz, s: rng.range(1.7, 2.5), sy: rng.range(0.42, 0.6), phase: rng.range(0, 6.28) });
+      // regions within 3 tiles: clouds bordering playable land stay small and low
+      const near = new Set();
+      for (let dz = -3; dz <= 4; dz++) for (let dx = -3; dx <= 4; dx++) { const xx = x + dx, zz = z + dz; if (xx >= 0 && zz >= 0 && xx < N && zz < N && W.region[idx(xx, zz)] !== r) near.add(W.region[idx(xx, zz)]); }
+      list.push({ r, x: bx, y: by, z: bz, s: rng.range(1.5, 2.2), sy: rng.range(0.4, 0.55), phase: rng.range(0, 6.28), near: [...near] });
     }
     this.cloudList = list;
     this.clouds = new THREE.InstancedMesh(geo, mat, list.length);
@@ -282,6 +311,14 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
         const f = clamp(a - ((c.phase * 13) % 1) * 0.6, 0, 1);
         if (f >= 1) continue;
         s *= 1 - f; y += f * 6;
+      }
+      // keep the view onto playable land clear
+      if (c.near.some((nr) => prog.regionUnlocked(nr))) { s *= 0.62; y -= 1.4; }
+      const cam = this.game.camera;
+      if (cam && cam.viewSize < 22) {
+        const d = Math.hypot(c.x - cam.target.x, c.z - cam.target.z);
+        const rad = cam.viewSize * 0.9;
+        if (d < rad) s *= 0.25 + 0.75 * (d / rad);
       }
       p.set(c.x + Math.sin(time * 0.15 + c.phase) * 0.3, y + Math.sin(time * 0.3 + c.phase) * 0.15, c.z);
       q.identity();
@@ -310,3 +347,10 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
 }
 
 export { lerp, REGIONS };
+
+const DXS = [1, 1, 0, -1, -1, -1, 0, 1], DZS = [0, 1, 1, 1, 0, -1, -1, -1];
+function segDist(px, pz, ax, az, bx, bz) {
+  const vx = bx - ax, vz = bz - az, wx = px - ax, wz = pz - az;
+  const t = Math.max(0, Math.min(1, (wx * vx + wz * vz) / (vx * vx + vz * vz || 1)));
+  return Math.hypot(px - (ax + vx * t), pz - (az + vz * t));
+}
