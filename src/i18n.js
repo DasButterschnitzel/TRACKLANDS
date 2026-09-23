@@ -1,4 +1,5 @@
 // Localization dictionaries (English, German) and lookup with parameters.
+import { EN_RAIL, DE_RAIL } from './i18n_rail.js';
 export const LANGS = [{ id: 'en', name: 'English' }, { id: 'de', name: 'Deutsch' }];
 let lang = 'en';
 export const missing = new Set();
@@ -453,4 +454,6 @@ const DE = {
   created_by: 'Erstellt von',
 };
 
+Object.assign(EN, EN_RAIL);
+Object.assign(DE, DE_RAIL);
 const DICT = { en: EN, de: DE };

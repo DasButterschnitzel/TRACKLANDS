@@ -13,6 +13,7 @@ import { locoModel } from '../trains/Trains.js';
 import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels.js';
 import { MATS } from '../core/ModelBuilder.js';
 import { MonetizationService } from '../services/Monetization.js';
+import { RailUIMixin } from './RailUI.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -50,6 +51,9 @@ export class UI {
     E.on('saved', () => { const s = $('#save-dot'); if (s) { s.classList.remove('flash'); void s.offsetWidth; s.classList.add('flash'); } });
     for (const ev of ['research', 'levelUp', 'regionUnlocked', 'contractDone', 'contractClaimed', 'achievement', 'objectiveDone', 'trainBought', 'trainSold', 'dailyClaimed', 'stationUpgraded']) E.on(ev, () => this.refreshPanel());
     this.renderGrant();
+    this.bindPreviews();
+    E.on('overlay', () => this.renderToolbar());
+    E.on('consistChanged', () => { if (this.panel === 'builder') this.refreshPanel(); });
   }
 
   detach() {
@@ -150,29 +154,31 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements'];
-    $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
+    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements'];
+    $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'trains' ? 'trains' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
   renderToolbar() {
     const g = this.game; if (!g) return;
     const C = g.construction;
-    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['bulldoze', 'bulldoze'], ['decor', 'decor']];
+    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
     const btn = ([id, ic], k) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${k + 1})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
-    const heat = g.railView.heatOn;
+    const ov = g.overlays.mode;
     const undo = C.canUndo();
+    const menuOpen = $('#overlay-menu') && !$('#overlay-menu').hidden;
     $('#toolbar').innerHTML = `<div class="tools">${tools.map(btn).join('')}</div>
       <div class="tools2">
-        <button class="tool small ${heat ? 'on' : ''}" data-act="heatmap" data-tip="${this.tr('heatmap')} (H)" aria-label="${this.tr('heatmap')}">${icon('heat')}</button>
+        <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')} (O)${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
         <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
-      </div>`;
+      </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>`;
+    if (menuOpen) this.renderOverlayMenu();
     // contextual sub bar
     let sub = '';
     if (C.tool === 'track') {
       sub = TRACK_TIERS.map((t, i) => {
         const locked = t.research && !g.progression.research.has(t.research);
         return `<button class="chip ${C.tier === i ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="tier" data-arg="${i}" data-tip="${locked ? this.tr('requires') + ': ' + this.tr('res_' + t.research) : this.tr('tier_' + t.id + '_desc')}">${locked ? icon('lock') : ''}<b>${this.tr('tier_' + t.id)}</b><small>${fmt(g.economy.costs.trackTile(i, 0))}● · ${t.speed} km/h</small></button>`;
-      }).join('') + `<span class="sub-hint">${this.tr('hint_drag_track')}</span>`;
+      }).join('') + `<span class="sub-sep"></span>` + ['double', 'single'].map((m) => `<button class="chip ${C.trackMode === m ? 'on' : ''}" data-act="trackMode" data-arg="${m}" data-tip="${this.tr('track_' + m + '_desc')}"><b>${this.tr('track_' + m)}</b><small>${m === 'single' ? '−35%' : this.tr('track_double_small')}</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_drag_track')}</span>`;
     } else if (C.tool === 'decor') {
       sub = DECORATIONS.map((d) => {
         const locked = !g.progression.isUnlocked(d.unlock);
@@ -184,6 +190,14 @@ export class UI {
       sub = `<span class="sub-hint">${icon('depot')} ${this.tr('hint_depot', { cost: fmt(g.economy.costs.depot()) })}</span>`;
     } else if (C.tool === 'bulldoze') {
       sub = `<span class="sub-hint">${icon('bulldoze')} ${this.tr('hint_bulldoze')}</span>`;
+    } else if (C.tool === 'signal') {
+      sub = ['block', 'path', 'oneway'].map((ty) => {
+        const ok = C.signalUnlocked(ty);
+        const res = { block: 'block_signals', path: 'path_signals', oneway: 'one_way_signals' }[ty];
+        return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
+      }).join('') + `<span class="sub-hint">${this.tr('hint_signal')}</span>`;
+    } else if (C.tool === 'waypoint') {
+      sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
     const sb = $('#subbar');
     sb.innerHTML = sub;
@@ -343,9 +357,12 @@ export class UI {
       this._v.set(x, y, z).project(cam);
       if (this._v.x < -1.2 || this._v.x > 1.2 || this._v.y < -1.2 || this._v.y > 1.2) { el.style.display = 'none'; return false; }
       el.style.display = '';
-      el.style.transform = `translate(${(this._v.x + 1) / 2 * W}px, ${(1 - this._v.y) / 2 * H}px) translate(-50%, -100%)`;
+      el._x = (this._v.x + 1) / 2 * W; el._y = (1 - this._v.y) / 2 * H;
+      el.style.transform = `translate(${el._x}px, ${el._y}px) translate(-50%, -100%)`;
+      order.push(el);
       return true;
     };
+    const order = [];
     const showLabels = g.settings.labels !== false;
     if (showLabels) {
       for (const t of g.towns.list) {
@@ -358,23 +375,28 @@ export class UI {
           const req = g.towns.requirement(t);
           let bars = '';
           if (detail && req) bars = '<div class="lbars">' + Object.keys(req).map((c) => `<div class="lbar" title="${this.cargoName(c)}">${cargoIcon(c)}<i style="--p:${Math.min(100, ((t.progress[c] || 0) / req[c]) * 100)}%"></i><small>${Math.floor(t.progress[c] || 0)}/${req[c]}</small></div>`).join('') + '</div>';
-          el.innerHTML = `<b>${esc(t.name)}</b><small>${this.tr('stage_' + g.towns.stageName(t))}</small>${bars}`;
+          el.innerHTML = `<b>${esc(t.name)}</b><small>${this.tr('stage_' + g.towns.stageName(t))}</small>${bars}`; el._w = 0;
         }
         place(el, (t.x + 0.5) * TILE, g.world.tileH[t.z * N + t.x] + 3.2, (t.z + 0.5) * TILE);
       }
       if (vs < 26) for (const s of g.stations.list) {
         const el = this.label('station:' + s.id, 'station' + (s.warn ? ' warn' : ''));
         const sig = s.name + s.warn;
-        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('station')}<span>${esc(s.name)}</span>${s.warn ? icon('warn', 'w') : ''}`; el.className = 'wlabel station' + (s.warn ? ' warn' : ''); }
+        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('station')}<span>${esc(s.name)}</span>${s.warn ? icon('warn', 'w') : ''}`; el.className = 'wlabel station' + (s.warn ? ' warn' : ''); el._w = 0; }
         place(el, tileCX(s.tile), g.net.railH(s.tile) + 2.3, tileCZ(s.tile));
       }
       if (vs < 24) for (const ind of g.industries.list) {
         if (!g.progression.regionUnlocked(ind.region)) continue;
         const el = this.label('industry:' + ind.id, 'industry');
         const sig = ind.level + getLang();
-        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('factory')}<span>${esc(g.industries.displayName(ind))}</span>`; }
+        if (el._sig !== sig) { el._sig = sig; el.innerHTML = `${icon('factory')}<span>${esc(g.industries.displayName(ind))}</span>`; el._w = 0; }
         place(el, (ind.x + 1) * TILE, g.industries.baseHeight(ind) + 3.2, (ind.z + 1) * TILE);
       }
+    }
+    if (showLabels && vs < 22) for (const [tile, w] of g.net.waypoints) {
+      const el = this.label('wp:' + tile, 'waypoint');
+      if (el._sig !== w.name) { el._sig = w.name; el._w = 0; el.innerHTML = `${icon('waypoint')}<span>${esc(w.name)}</span>`; }
+      place(el, tileCX(tile), g.net.railH(tile) + 1.6, tileCZ(tile));
     }
     REGIONS.forEach((r, i) => {
       if (g.progression.regionUnlocked(i)) return;
@@ -384,6 +406,15 @@ export class UI {
       const c = g.world.centers[i];
       place(el, c[0] * TILE, 7, c[1] * TILE);
     });
+    // de-overlap: labels placed earlier (towns > stations > industries) win
+    const taken = [];
+    for (const el of order) {
+      if (!el._w) { el._w = el.offsetWidth; el._h = el.offsetHeight; }
+      const r = { x0: el._x - el._w / 2, x1: el._x + el._w / 2, y0: el._y - el._h, y1: el._y };
+      const hit = taken.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
+      el.classList.toggle('ovl', hit);
+      if (!hit) taken.push(r);
+    }
     for (const [k, el] of this.labels) if (!el._used) { el.remove(); this.labels.delete(k); }
   }
 
@@ -407,7 +438,7 @@ export class UI {
   get panelDefs() {
     return {
       company: { title: 'menu_company', render: () => this.pCompany(), live: true },
-      research: { title: 'menu_research', render: () => this.pResearch(), after: () => this.drawResearchLines() },
+      research: { title: 'menu_research', render: () => this.pResearch(), after: () => this.drawResearchLines(), wide: true },
       objectives: { title: 'menu_objectives', render: () => this.pObjectives(), live: true },
       contracts: { title: 'menu_contracts', render: () => this.pContracts(), live: true },
       collection: { title: 'menu_collection', render: () => this.pCollection() },
@@ -416,6 +447,8 @@ export class UI {
       achievements: { title: 'menu_achievements', render: () => this.pAchievements() },
       settings: { title: 'settings', render: () => this.pSettings() },
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
+      builder: { title: 'train_builder', render: () => this.pBuilder(), wide: true },
+      trains: { title: 'menu_trains', render: () => this.pTrains(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
     };
   }
@@ -447,6 +480,7 @@ export class UI {
     const el = $('#panel');
     const body = $('.pbody', el);
     const scroll = body ? body.scrollTop : 0;
+    el.classList.toggle('wide', !!def.wide);
     el.innerHTML = `<div class="phead"><h2>${this.tr(def.title)}</h2><button class="icon-btn" data-act="closePanel" aria-label="${this.tr('close')}">${icon('close')}</button></div><div class="pbody">${def.render()}</div>`;
     const nb = $('.pbody', el);
     if (!first) nb.scrollTop = scroll;
@@ -802,7 +836,7 @@ export class UI {
     return `${dsel}<p class="muted">${this.tr('shop_desc')}</p><div class="shop">${list}</div>`;
   }
 
-  openTrainShop(depotId) { if (depotId != null) this.shopDepot = depotId; this.openPanel('trainshop', depotId ?? null); }
+  openTrainShop(depotId) { this.openBuilder({ depotId }); }
 
   // ---------- inspector ----------
   showInspector(sel) {
@@ -841,26 +875,6 @@ export class UI {
     return `<div class="crow">${cargoIcon(c)}<span>${this.cargoName(c)}</span>${cap ? this.bar(amt / cap, amt / cap > 0.9 ? 'warn' : '') : ''}<b>${fmt(Math.floor(amt))}${cap ? '/' + fmt(cap) : ''}</b>${extra}</div>`;
   }
 
-  iStation(s) {
-    const g = this.game;
-    const up = g.stations.upgradeInfo(s);
-    const cap = g.stations.storage(s);
-    const towns = s.links.towns.map((id) => g.towns.byId(id)).filter(Boolean);
-    const inds = s.links.industries.map((id) => g.industries.byId(id)).filter(Boolean);
-    const stock = Object.keys(s.stock).filter((c) => s.stock[c] >= 1);
-    const trains = g.trains.trains.filter((t) => t.target === s.id);
-    const styles = g.progression.stationStyles().map((st) => `<option value="${st.id}" ${s.style === st.id ? 'selected' : ''}>${this.tr('sty_' + st.id)}</option>`).join('');
-    return `<div class="pill-row"><span class="pill">${this.tr('slvl_' + s.level)}</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
-      ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}
-      <h4>${this.tr('serves')}</h4><div class="links">${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('') || `<span class="muted">${this.tr('nothing_linked')}</span>`}</div>
-      <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>
-      <h4>${this.tr('waiting_cargo')}</h4>${stock.map((c) => this.cargoRow(c, s.stock[c], cap)).join('') || `<p class="muted">${this.tr('none_waiting')}</p>`}
-      <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
-      <div class="row wrap">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}`}</div>
-      <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>
-      <p class="muted small">${this.tr('station_stats', { d: fmt(s.delivered), p: fmt(s.picked) })}</p>`;
-  }
-
   iDepot(d) {
     const g = this.game;
     const trains = g.trains.trains.filter((t) => t.homeDepot === d.id);
@@ -881,6 +895,7 @@ export class UI {
       <h4>${this.tr('production_chain')}</h4>${recipe}
       ${ins.length ? `<h4>${this.tr('needs')}</h4>${ins.map((c) => this.cargoRow(c, ind.inp[c] || 0, cap * 2)).join('')}` : ''}
       <h4>${this.tr('produces')}</h4>${outs.map((c) => this.cargoRow(c, ind.out[c] || 0, cap)).join('')}
+      <h4>${this.tr('carried_by')}</h4>${outs.map((c) => this.cargoWagonsRow(c)).join('')}
       <h4>${this.tr('growth')}</h4>${ind.level < 4 ? `${this.bar(g.industries.levelProgress(ind))}<small class="muted">${this.tr('next_ilvl', { name: this.tr('ilvl_' + (ind.level + 1)) })}</small>` : `<span class="good">${this.tr('max_level')}</span>`}
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}`;
   }
@@ -902,37 +917,6 @@ export class UI {
       <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('town_no_station')}</p>`}
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>`;
-  }
-
-  iTrain(t) {
-    const g = this.game, st = t._st, m = st.model;
-    const target = g.stations.byId(t.target);
-    const kmh = Math.round(t.v / TILE * KMH_PER_TILE_S);
-    const loadF = t.cargo.filter((l) => l.c !== 'PASSENGERS').reduce((a, l) => a + l.n, 0), loadP = t.cargo.filter((l) => l.c === 'PASSENGERS').reduce((a, l) => a + l.n, 0);
-    const cargo = t.cargo.map((l) => this.cargoRow(l.c, l.n, 0, `<small class="muted">${esc(g.stations.byId(l.from)?.name || '')}</small>`)).join('') || `<p class="muted">${this.tr('empty')}</p>`;
-    const upg = TRAIN_UPGRADES.map((k) => {
-      const lvl = t.upg[k];
-      const cost = g.economy.costs.trainUpgrade(m, lvl);
-      const pips = Array.from({ length: TRAIN_UPGRADE_MAX }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
-      return `<div class="upg"><span data-tip="${this.tr('upg_' + k + '_desc')}">${this.tr('upg_' + k)}</span><span class="pips">${pips}</span>${lvl >= TRAIN_UPGRADE_MAX ? `<small class="good">${this.tr('max')}</small>` : `<button class="btn small" data-act="upgradeTrain" data-arg="${t.id}:${k}" ${g.economy.canAfford(cost) ? '' : 'disabled'}>${fmt(cost)}●</button>`}</div>`;
-    }).join('');
-    const stations = g.stations.list;
-    const route = t.mode === 'manual' ? `<div class="route">${t.route.map((r, i) => {
-      const s = g.stations.byId(r.st);
-      return `<div class="rstop ${i === t.routeIdx % Math.max(1, t.route.length) ? 'cur' : ''}"><span>${i + 1}. ${esc(s ? s.name : '?')}</span><button class="icon-btn small" data-act="routeUp" data-arg="${t.id}:${i}" aria-label="up">▲</button><button class="icon-btn small" data-act="routeDown" data-arg="${t.id}:${i}" aria-label="down">▼</button><button class="icon-btn small" data-act="routeDel" data-arg="${t.id}:${i}" aria-label="${this.tr('remove')}">${icon('close')}</button></div>`;
-    }).join('') || `<p class="muted">${this.tr('route_empty')}</p>`}
-      <label class="set"><span>${this.tr('add_stop')}</span><select data-change="routeAdd" data-id="${t.id}"><option value="">—</option>${stations.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label>
-      <h4>${this.tr('cargo_filter')}</h4><div class="chips">${CARGO_IDS.map((c) => { const on = !t.filter || t.filter.includes(c); return `<button class="chip ${on ? 'on' : ''}" data-act="toggleCargo" data-arg="${t.id}:${c}" data-tip="${this.cargoName(c)}">${cargoIcon(c)}</button>`; }).join('')}</div></div>` : `<p class="muted small">${this.tr('auto_desc')}</p>`;
-    const liv = g.progression.liveries().map((l) => `<option value="${l.id}" ${t.livery === l.id ? 'selected' : ''}>${this.tr('liv_' + l.id)}</option>`).join('');
-    return `<div class="pill-row"><span class="pill">${esc(m.name)}</span><span class="pill">${this.tr('era_' + m.era)}</span><span class="pill">${this.tr('trait_' + m.trait)}</span></div>
-      <div class="tstatus ${t.problem ? 'warn' : ''}">${icon(t.problem ? 'warn' : 'route')}<span>${t.problem ? this.tr('prob_' + t.problem) : this.tr('tstate_' + t.state)}${target && !t.problem ? ` → <b>${esc(target.name)}</b>` : ''}</span><small>${kmh} km/h</small></div>
-      <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
-      <h4>${this.tr('cargo')} · ${loadF}/${st.freight} ${icon('contracts', 'mini')} · ${loadP}/${st.pax} ${icon('town', 'mini')}</h4>${cargo}
-      <h4>${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
-      ${route}
-      <h4>${this.tr('upgrades')}</h4>${upg}
-      <label class="set"><span>${this.tr('livery')}</span><select data-change="livery" data-id="${t.id}">${liv}</select></label>
-      <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(Math.round(g.economy.costs.train(m) * COSTS.trainSellRefund))}●)</button></div>`;
   }
 
   // ---------- modals ----------
@@ -989,10 +973,10 @@ export class UI {
     let nodes = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) nodes++;
     const sel = g.selection ? `${g.selection.type}:${g.selection.id}` : '-';
     const tr = g.selection && g.selection.type === 'train' ? g.trains.byId(g.selection.id) : null;
-    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)}` : ''}`;
+    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)} resv ${tr.resvEnd}/${tr.steps.length}\n blockedBy ${tr.blockedBy} ${tr.blockKind || ''} prio ${tr._st.prioRank}\n veh ${tr.veh.map((v) => v.k + v.id + (v.r ? 'r' : '')).join(' ')}` : ''}\nrail: switches ${g.net.switches.size} jres ${g.net.jres.size} runs ${g.net.runLocks.size}\nsignals ${g.net.signals.size} collisions ${g.trains.collisions} deadlocks ${g.trains.incidents.length}`;
   }
 
-  toggleHeatmap() { const g = this.game; g.railView.setHeatmap(!g.railView.heatOn); this.renderToolbar(); if (g.railView.heatOn) this.toast(this.tr('heatmap_desc'), 'info', 'heat'); }
+  toggleHeatmap() { this.actions.overlay('traffic'); }
 
   // ---------- actions ----------
   get actions() {
@@ -1003,10 +987,11 @@ export class UI {
       closeInspector: () => g().select(null),
       toggleMenu: () => $('#menu-rail').classList.toggle('open'),
       speed: (a) => g().setSpeed(+a),
-      tool: (a) => { if (a === 'train') { this.openTrainShop(); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
+      tool: (a) => { if (a === 'train') { this.openBuilder({}); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
       tier: (a) => g().construction.setTier(+a),
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
+      ...this.railActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1063,7 +1048,15 @@ export class UI {
       shopDepot: (el) => { this.shopDepot = +el.value; this.refreshPanel(); },
       stationStyle: (el) => { const s = g().stations.byId(+el.dataset.id); g().stations.setStyle(s, el.value); },
       livery: (el) => { const t = g().trains.byId(+el.dataset.id); t.livery = el.value; t.visualSig = null; },
-      routeAdd: (el) => { if (!el.value) return; const t = g().trains.byId(+el.dataset.id); t.route.push({ st: +el.value }); el.blur(); if (t.state === 'idle') t.stateT = 3; this.renderInspector(); },
+      routeAdd: (el) => {
+        if (!el.value) return;
+        const t = g().trains.byId(+el.dataset.id);
+        const v = el.value;
+        const base = { act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null };
+        t.route.push(v[0] === 'w' ? { ...base, wp: +v.slice(1) } : { ...base, st: +v.slice(1) });
+        el.blur(); if (t.state === 'idle') t.stateT = 3; this.renderInspector();
+      },
+      ...this.railInputs(),
     };
   }
 
@@ -1075,3 +1068,5 @@ export class UI {
     this.app.onRelocalize && this.app.onRelocalize();
   }
 }
+
+Object.assign(UI.prototype, RailUIMixin);

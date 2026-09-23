@@ -1,5 +1,5 @@
 // Offline cache for the installable PWA. Cache-first with background refresh.
-const CACHE = 'tracklands-v1.0.0';
+const CACHE = 'tracklands-v2.0.0';
 const ASSETS = [
   './',
   './icons/icon-192.png',
@@ -9,6 +9,12 @@ const ASSETS = [
   './index.html',
   './manifest.json',
   './src/Game.js',
+  './src/debug/RailTests.js',
+  './src/ui/RailUI.js',
+  './src/ui/Overlays.js',
+  './src/rail/RailFurniture.js',
+  './src/trains/Consist.js',
+  './src/i18n_rail.js',
   './src/audio/Audio.js',
   './src/config.js',
   './src/core/CameraController.js',

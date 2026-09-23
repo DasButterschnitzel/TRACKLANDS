@@ -438,6 +438,24 @@ export class RailNetwork {
   // negative path key (see jkey) checked for compatibility against other paths.
   isJunction(i) { const sp = this.special.get(i); return this.degree(i) >= 3 && !(sp && sp.type === 'station'); }
   laneKeys(stepObj) {
+    const keys = this._laneKeys(stepObj);
+    // fouling points: a diagonal leg passes a tile corner that neighbouring
+    // tracks also run close to; reserve those neighbours as well
+    const i = stepObj.tile;
+    for (const leg of [stepObj.inH == null ? null : opp(stepObj.inH), stepObj.outH]) {
+      if (leg == null || !(leg & 1)) continue;
+      for (const o of [(leg + 7) & 7, (leg + 1) & 7]) {
+        const r = step(i, o);
+        if (r < 0 || !this.conn[r]) continue;
+        const c = dirOf(DX[leg] - DX[o], DZ[leg] - DZ[o]);
+        if (!(this.hasDir(r, c) || this.hasDir(r, (c + 1) & 7) || this.hasDir(r, (c + 7) & 7))) continue;
+        if (this.isJunction(r)) keys.push(-(1 + r * 81 + 8 * 9 + 8));
+        else keys.push(r * 2, r * 2 + 1);
+      }
+    }
+    return keys;
+  }
+  _laneKeys(stepObj) {
     const i = stepObj.tile;
     const sp = this.special.get(i);
     const a = stepObj.inH == null ? 8 : opp(stepObj.inH);
@@ -483,7 +501,7 @@ export class RailNetwork {
       const list = m.get(id) || [];
       if (!list.some((p) => p[0] === a && p[1] === b)) list.push([a, b]);
       m.set(id, list);
-      this.setSwitch(tile, a, b);
+      if (a !== 8 && b !== 8) this.setSwitch(tile, a, b);
     }
   }
   release(keys, id) {
@@ -574,13 +592,13 @@ export class RailNetwork {
       while (cur >= 0 && this.runId[cur] < 0 && guard++ < N * N) {
         this.runId[cur] = rid;
         let fwd = -1, nextT = -1;
+        // continue along the chain (unassigned run neighbour first), else any exit away from prev
         for (let d = 0; d < 8; d++) {
           if (!this.hasDir(cur, d)) continue;
           const j = step(cur, d);
-          if (j === prev) continue;
-          fwd = d; if (isRun(j) && this.runId[j] < 0) nextT = j;
-          break;
+          if (j !== prev && isRun(j) && this.runId[j] < 0) { fwd = d; nextT = j; break; }
         }
+        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && step(cur, d) !== prev) { fwd = d; break; }
         if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && step(cur, d) === prev) fwd = opp(d);
         this.runDir[cur] = fwd;
         prev = cur; cur = nextT;
@@ -604,6 +622,7 @@ export class RailNetwork {
   runLockAdd(rid, sense, id) {
     let L = this.runLocks.get(rid);
     if (!L || !L.ids.size || (L.ids.size === 1 && L.ids.has(id))) { L = { sense, ids: new Set() }; this.runLocks.set(rid, L); }
+    if (L.sense !== sense && !(L.ids.size === 1 && L.ids.has(id))) { this.runConflicts = (this.runConflicts || 0) + 1; }
     L.ids.add(id);
   }
   runLockDrop(rid, id) {

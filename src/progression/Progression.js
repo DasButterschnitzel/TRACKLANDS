@@ -260,6 +260,7 @@ export class Progression {
       level: this.level, xp: this.xp, rp: this.rp, research: [...this.research], regions: [...this.regions], objectives: [...this.objectives],
       developed: [...this.developed], achievements: [...this.achievements], owned: [...this.owned], defaultLivery: this.defaultLivery,
       defaultStationStyle: this.defaultStationStyle, legacy: this.legacy, legend: this.legend, seenUnlocks: [...this.seenUnlocks],
+      templates: this.templates || [],
     };
   }
   deserialize(d) {
@@ -275,6 +276,7 @@ export class Progression {
     this.developed = new Set(arr(d.developed));
     this.achievements = new Set(arr(d.achievements));
     this.owned = new Set(arr(d.owned).filter((id) => LOCOS.some((m) => m.id === id)));
+    this.templates = arr(d.templates).filter((tp) => tp && typeof tp.name === 'string' && Array.isArray(tp.veh)).slice(0, 12);
     this.defaultLivery = LIVERIES.some((l) => l.id === d.defaultLivery) ? d.defaultLivery : 'classic_green';
     this.defaultStationStyle = STATION_STYLES.some((s) => s.id === d.defaultStationStyle) ? d.defaultStationStyle : 'classic';
     this.legacy = d.legacy && typeof d.legacy.count === 'number' ? { count: d.legacy.count } : { count: 0 };

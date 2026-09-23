@@ -36,6 +36,20 @@ const P = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
   gift: '<rect x="4" y="10" width="16" height="11" rx="1" fill="currentColor"/><rect x="3" y="7" width="18" height="4" rx="1" fill="currentColor" opacity=".8"/><path d="M12 7v14" stroke="#fff" stroke-width="2"/>',
   route: '<circle cx="5" cy="6" r="2.5" fill="currentColor"/><circle cx="19" cy="18" r="2.5" fill="currentColor"/><path d="M5 8.5v3a3 3 0 003 3h8a3 3 0 013 3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  signal: '<rect x="8" y="2" width="8" height="13" rx="2" fill="currentColor"/><circle cx="12" cy="5.5" r="2" fill="#ff5a4a"/><circle cx="12" cy="11" r="2" fill="#4ae07a"/><path d="M12 15v7M8 22h8" stroke="currentColor" stroke-width="2"/>',
+  waypoint: '<path d="M6 22V3" stroke="currentColor" stroke-width="2"/><path d="M6 4h12l-3 4 3 4H6" fill="currentColor"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5z" fill="currentColor"/><path d="M3 12.5l9 5 9-5M3 16.5l9 5 9-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>',
+  trains: '<rect x="2" y="7" width="9" height="9" rx="2" fill="currentColor"/><rect x="13" y="8" width="9" height="8" rx="1.5" fill="currentColor" opacity=".7"/><path d="M1 19h22" stroke="currentColor" stroke-width="2"/><circle cx="5" cy="17" r="1.2" fill="currentColor"/><circle cx="8" cy="17" r="1.2" fill="currentColor"/><circle cx="16" cy="17" r="1.2" fill="currentColor"/><circle cx="19" cy="17" r="1.2" fill="currentColor"/>',
+  builder: '<path d="M14.5 4.5a4 4 0 00-5 5L3 16l2.5 2.5L12 12a4 4 0 005-5l-2.5 2.5-2-2z" fill="currentColor"/><path d="M15 19h6" stroke="currentColor" stroke-width="2"/>',
+  wagon: '<rect x="3" y="6" width="18" height="10" rx="1.5" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/><circle cx="17" cy="18" r="2" fill="currentColor"/>',
+  loco: '<path d="M3 16V8h8V5h5v3h3l2 4v4z" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/><circle cx="16" cy="18" r="2" fill="currentColor"/>',
+  left: '<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  right: '<path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  flip: '<path d="M4 9h13l-3-3M20 15H7l3 3" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+  minus: '<path d="M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+  auto: '<path d="M12 2l2.2 5.8L20 10l-5.8 2.2L12 18l-2.2-5.8L4 10l5.8-2.2z" fill="currentColor"/><circle cx="19" cy="19" r="2.2" fill="currentColor"/>',
+  advisor: '<circle cx="12" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 15v3h5v-3M10 21h4" stroke="currentColor" stroke-width="2"/><path d="M12 6v3l2 1" stroke="currentColor" stroke-width="1.8" fill="none"/>',
 };
 
 const CARGO_ICON = {

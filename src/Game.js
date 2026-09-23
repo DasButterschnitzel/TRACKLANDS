@@ -24,6 +24,7 @@ import { Particles } from './vfx/Particles.js';
 import { CameraController } from './core/CameraController.js';
 import { Input } from './core/Input.js';
 import { Tutorial } from './ui/Tutorial.js';
+import { RailTests } from './debug/RailTests.js';
 
 const STEP = 1 / 30;
 
@@ -212,6 +213,8 @@ export class Game {
     }
   }
   focusOn(sel, zoom) { const p = this.entityPos(sel); if (p) this.camera.focus(p.x, p.z, zoom); }
+
+  runRailTests(only) { const r = new RailTests(this).runAll(only); console.table(r); return r; }
 
   // Network-wide bottleneck advisor: stations, single-track sections, deadlocks.
   advisor() {
