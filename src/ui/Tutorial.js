@@ -10,8 +10,8 @@ const STEPS = [
   { id: 'select_town', target: 'town', done: (g, T) => g.selection && g.selection.type === 'town' && g.selection.id === T.townId },
   { id: 'build_station_town', target: 'town', ui: 'tool-station', done: (g, T) => !!T.stationFor('town', T.townId) },
   { id: 'choose_track', ui: 'tool-track', done: (g) => g.construction.tool === 'track' },
-  { id: 'connect', target: 'between', done: (g, T) => { const a = T.stationFor('industry', T.forestId), b = T.stationFor('town', T.townId); return a && b && g.net.connected(a.tile, b.tile); } },
-  { id: 'build_depot', ui: 'tool-depot', target: 'between', done: (g, T) => { const a = T.stationFor('town', T.townId); return a && g.stations.depots.some((d) => g.net.connected(d.tile, a.tile)); } },
+  { id: 'connect', target: 'between', done: (g, T) => T.linkedPair() },
+  { id: 'build_depot', ui: 'tool-depot', target: 'between', done: (g, T) => T.stationsFor('town', T.townId).some((a) => g.stations.depots.some((d) => g.net.connected(d.tile, a.tile))) },
   { id: 'buy_train', ui: 'tool-train', done: (g) => g.trains.trains.length > 0 },
   { id: 'watch_collect', target: 'train', done: (g, T) => T.flags.loaded },
   { id: 'deliver', target: 'train', done: (g) => g.stats.data.deliveries > 0 },
@@ -44,6 +44,15 @@ export class Tutorial {
   }
 
   get active() { return !this.finished && this.game.settings.tutorial !== false; }
+
+  stationsFor(kind, id) {
+    return this.game.stations.list.filter((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));
+  }
+  // any forest station connected by rail to any Greenfield station
+  linkedPair() {
+    const g = this.game, A = this.stationsFor('industry', this.forestId), B = this.stationsFor('town', this.townId);
+    return A.some((a) => B.some((b) => a !== b && g.net.connected(a.tile, b.tile)));
+  }
 
   stationFor(kind, id) {
     return this.game.stations.list.find((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));

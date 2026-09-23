@@ -398,7 +398,7 @@ export class UI {
       el._sig = sig;
       el.innerHTML = `<div class="tut-step">${this.tr('tutorial')} ${st.index + 1}/${st.total}</div>
         <div class="tut-title">${this.tr('tut_' + st.id)}</div><div class="tut-text">${this.tr('tut_' + st.id + '_text')}</div>
-        <div class="tut-btns">${st.button ? `<button class="btn primary" data-act="tutNext">${this.tr(st.button)}</button>` : ''}<button class="btn ghost" data-act="tutSkip">${this.tr('tut_skip')}</button></div>`;
+        <div class="tut-btns">${st.button ? `<button class="btn primary" data-act="tutNext">${this.tr(st.button)}</button>` : `<button class="btn ghost" data-act="tutNext">${this.tr('tut_skip_step')}</button>`}<button class="btn ghost" data-act="tutSkip">${this.tr('tut_skip')}</button></div>`;
     }
     if (st.ui) { const t = document.getElementById(st.ui); if (t) t.classList.add('tut-glow'); }
   }

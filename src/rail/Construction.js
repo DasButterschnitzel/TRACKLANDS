@@ -191,6 +191,19 @@ export class Construction {
     for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, this.tier);
     for (const p of prev) if (p.conn && p.tier > this.tier) net.tier[p.t] = p.tier;
     g.economy.spend(plan.cost, 'construction');
+    // near-miss drags: join a path end to an adjacent station/depot that has no track yet
+    for (const end of [plan.tiles[0], plan.tiles[plan.tiles.length - 1]]) {
+      if (net.special.has(end)) continue;
+      for (const d of [0, 2, 4, 6, 1, 3, 5, 7]) {
+        const j = step(end, d);
+        if (j < 0 || !net.special.has(j) || net.conn[j]) continue;
+        prev.push({ t: j, conn: 0, tier: net.tier[j] });
+        net.connect(end, d);
+        net.tier[j] = net.tier[end];
+        plan.tiles.push(j);
+        break;
+      }
+    }
     g.world.view.clearTreesMany(plan.tiles);
     net.bumpVersion();
     g.stats.inc('trackBuilt', plan.newTiles);
