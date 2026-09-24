@@ -12,6 +12,7 @@ import {
   locoModel, computeStats, consistCost, validateConsist, autoBuild, wagonUnlocked, maxLocos, cloneConsist, parseConsist, serializeConsist, vehLen, assignLoads,
 } from '../trains/Consist.js';
 import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels.js';
+import { vehicleToken, resolvePaint, customToken, parseCustom, isPreset, STRIPES, cssHex, DEFAULT_LIVERY } from '../trains/Livery.js';
 import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
 import { SPACING_CHOICES } from '../trains/Lines.js';
@@ -30,56 +31,78 @@ export const RailUIMixin = {
   ratingBadge(r) { return `<span class="rating r-${r}">${this.tr('rating_' + r)}</span>`; },
   kmh(v) { return Math.round((v / TILE) * KMH_PER_TILE_S); },
 
-  // ---------- consist preview (rendered side view) ----------
-  consistPreview(veh, livery, cargo, scope = 'train') {
-    const key = 'C:' + serializeConsist(veh).join(',') + ':' + livery + ':' + scope + ':' + (cargo || []).map((l) => l.c + l.n).join(',');
+  // ---------- consist preview (rendered 3/4 view of the whole train) ----------
+  // Returns { url, w, h }. The image scales with the train length so a long
+  // consist stays readable (its container scrolls sideways on narrow screens);
+  // sel highlights one vehicle.
+  consistPreview(veh, livery, cargo, scope = 'train', sel = -1) {
+    const key = 'C:' + serializeConsist(veh).join(',') + ':' + livery + ':' + scope + ':' + sel + ':' + (cargo || []).map((l) => l.c + l.n).join(',');
     this.cprev = this.cprev || new Map();
     if (this.cprev.has(key)) return this.cprev.get(key);
     if (this.cprev.size > 60) this.cprev.clear();
     try {
       if (!this.cR) {
         this.cR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-        this.cR.setSize(560, 90, false);
         this.cScene = new THREE.Scene();
         this.cScene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a6a, 2.3));
         const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(2, 5, 6); this.cScene.add(dl);
         this.cCam = new THREE.OrthographicCamera(-7, 7, 1.1, -1.15, 0.1, 50);
+        this.cSelMat = new THREE.MeshBasicMaterial({ color: 0x2fb3a3, transparent: true, opacity: 0.55, depthWrite: false });
       }
-    } catch (e) { return ''; }
+    } catch (e) { return { url: '', w: 560, h: 150 }; }
     const lead = veh.find((v) => v.k === 'L');
     const lm = locoModel(lead ? lead.id : 'pioneer');
-    const cols = liveryColors(lm, scope === 'loco' ? 'classic_green' : livery);
+    const pseudo = { livery, liveryScope: scope };
     const grp = new THREE.Group();
     const st = computeStats(veh, null, this.game.progression.fx);
     const loads = assignLoads(st, cargo || []).wagons;
     let x = 0, wi = 0, vi = 0;
-    const total = veh.reduce((a, v) => a + vehLen(v), 0) + (veh.length - 1) * CONSIST.gap;
+    const total = Math.max(1, veh.reduce((a, v) => a + vehLen(v), 0) + (veh.length - 1) * CONSIST.gap);
     for (const v of veh) {
       const len = vehLen(v);
+      const tok = vehicleToken(pseudo, v);
       let geo;
-      if (v.k === 'L') geo = locoGeometry(v.id, livery, 0);
-      else { const w = loads[wi++]; geo = wagonGeometry(v.id, w && w.c, w && w.n ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0, lm.kind, cols.body, cols.trim, (vi * 3) & 3); }
-      vi++;
+      if (v.k === 'L') geo = locoGeometry(v.id, tok, 0);
+      else { const w = loads[wi++]; geo = wagonGeometry(v.id, w && w.c, w && w.n ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0, lm.kind, resolvePaint(tok, lm), null, (vi * 3) & 3); }
       const m = new THREE.Mesh(geo, MATS);
       // front of the train on the left, matching the vehicle strip
-      m.position.x = -total / 2 + x + len / 2;
+      const cx = -total / 2 + x + len / 2;
+      m.position.x = cx;
       m.rotation.y = v.r ? 0 : Math.PI;
       grp.add(m);
+      if (vi === sel) {
+        const plate = new THREE.Mesh(new THREE.PlaneGeometry(len + 0.1, 0.95), this.cSelMat);
+        plate.rotation.x = -Math.PI / 2; plate.position.set(cx, 0.01, 0);
+        grp.add(plate);
+      }
+      vi++;
       x += len + CONSIST.gap;
     }
-    const half = Math.max(4, total / 2 + 0.3);
-    this.cCam.left = -half; this.cCam.right = half;
-    const hh = half * 90 / 560;
-    this.cCam.top = 0.45 + hh; this.cCam.bottom = 0.45 - hh;
-    this.cCam.position.set(0, 1.4, 10); this.cCam.lookAt(0, 0.45, 0);
+    // size: ~60 px per metre of train, 560-1800 px wide, fixed height
+    const W = Math.round(Math.min(1800, Math.max(560, total * 60 + 90))), H = 190;
+    this.cR.setSize(W, H, false);
+    const half = total / 2 + 0.45;
+    const hh = half * H / W;
+    this.cCam.left = -half; this.cCam.right = half; this.cCam.top = hh; this.cCam.bottom = -hh;
+    // slightly from above so roofs and loads read; centred on the body
+    this.cCam.position.set(0, 0.55 + 10 * Math.sin(0.22), 10 * Math.cos(0.22)); this.cCam.lookAt(0, 0.55, 0);
     this.cCam.updateProjectionMatrix();
-    grp.rotation.y = 0.18;
+    grp.rotation.y = 0.1;
     this.cScene.add(grp);
     this.cR.render(this.cScene, this.cCam);
     const url = this.cR.domElement.toDataURL('image/png');
     this.cScene.remove(grp);
-    this.cprev.set(key, url);
-    return url;
+    grp.traverse((o) => { if (o.geometry && o.geometry.type === 'PlaneGeometry') o.geometry.dispose(); });
+    const out = { url, w: W, h: H };
+    this.cprev.set(key, out);
+    return out;
+  },
+  vehLenOf(v) { return vehLen(v); },
+  consistGap() { return CONSIST.gap; },
+  // preview block: scrolls sideways for long trains; a tap picks the vehicle under it
+  previewBlock(vs, livery, cargo, scope, sel, act) {
+    const p = this.consistPreview(vs, livery, cargo, scope, sel);
+    return `<div class="bpreview" data-n="${vs.length}"><img alt="" src="${p.url}" width="${p.w}" height="${p.h}" style="aspect-ratio:${p.w}/${p.h};min-width:min(100%, ${Math.round(p.w * 0.62)}px)" ${act ? `data-act="${act}" data-pick="1"` : ''} draggable="false"/></div>`;
   },
 
   // ---------- Train Builder ----------
@@ -177,12 +200,13 @@ export const RailUIMixin = {
     // templates
     const tpls = (P.templates || []).map((tp, i) => `<div class="tpl"><button class="tag link" data-act="bldTpl" data-arg="${i}">${esc(tp.name)}</button><button class="icon-btn small" data-act="bldTplDel" data-arg="${i}" aria-label="${this.tr('remove')}">${icon('close')}</button></div>`).join('');
     const depots = g.stations.depots;
-    const liv = P.liveries().map((l) => `<option value="${l.id}" ${b.livery === l.id ? 'selected' : ''}>${this.tr('liv_' + l.id)}</option>`).join('');
+    const lm0 = locoModel((vs.find((v) => v.k === 'L') || { id: 'pioneer' }).id);
+    const liv = P.liveries().map((l) => this.swatch(l.id, lm0, b.livery === l.id, 'bldLiv', l.id, this.tr('liv_' + l.id))).join('') + (parseCustom(b.livery) ? this.swatch(b.livery, lm0, true, 'bldLiv', b.livery, this.tr('liv_custom')) : '');
     const buyErr = !t ? (err || g.trains.canBuy(vs, g.stations.depotById(b.depotId))) : err;
     const main = t
       ? `<button class="btn primary" data-act="bldApply" ${err || (cost.net > 0 && !g.economy.canAfford(cost.net)) ? 'disabled' : ''}>${icon('check')} ${this.tr('bld_apply')} · ${cost.net >= 0 ? fmt(cost.net) + '●' : '+' + fmt(-cost.net) + '●'}</button>`
       : `<button class="btn primary" data-act="bldBuy" ${buyErr ? `disabled data-tip="${this.tr(buyErr)}"` : ''}>${icon('coin', 'mini')} ${this.tr('buy_train')} · ${fmt(cost.net)}●</button>`;
-    return `<div class="bpreview"><img alt="" src="${this.consistPreview(vs, b.livery, t ? t.cargo : null, b.liveryScope)}"/></div>
+    return `${this.previewBlock(vs, b.livery, t ? t.cargo : null, b.liveryScope, b.sel, 'bldPickVeh')}
       <div class="vstrip" role="list">${strip || `<span class="muted">${this.tr('bld_empty')}</span>`}</div>
       ${selRow}
       ${err ? `<div class="card warn small">${icon('warn', 'mini')} ${this.tr(err)}</div>` : ''}
@@ -194,7 +218,8 @@ export const RailUIMixin = {
       <div class="row wrap"><button class="btn" data-act="bldAuto">${icon('auto')} ${this.tr('bld_auto_btn')}</button><button class="btn ghost" data-act="bldAutoFit">${this.tr('bld_auto_fit')}</button></div>
       <h4>${this.tr('bld_details')}</h4>
       <label class="set"><span>${this.tr('name')}</span><input class="inp" maxlength="28" value="${esc(b.name || '')}" placeholder="${this.tr('auto_name')}" data-change="bldName"/></label>
-      <label class="set"><span>${this.tr('livery')}</span><select data-change="bldLivery">${liv}</select></label>
+      <h4>${icon('palette', 'mini')} ${this.tr('livery')}</h4><div class="swatches lv-grid small">${liv}</div>
+      ${t ? `<button class="btn ghost small" data-act="livery" data-arg="${t.id}">${icon('palette', 'mini')} ${this.tr('liv_open_editor')}</button>` : ''}
       <div class="seg small" role="group" aria-label="${this.tr('livery_scope')}"><button class="${b.liveryScope !== 'loco' ? 'on' : ''}" data-act="bldLiveryScope" data-arg="train">${this.tr('livery_scope_train')}</button><button class="${b.liveryScope === 'loco' ? 'on' : ''}" data-act="bldLiveryScope" data-arg="loco">${this.tr('livery_scope_loco')}</button></div>
       ${!t ? `<label class="set"><span>${this.tr('depot')}</span><select data-change="bldDepot">${depots.map((d) => `<option value="${d.id}" ${d.id === b.depotId ? 'selected' : ''}>${esc(d.name)}${g.net.conn[d.tile] ? '' : ' — ' + this.tr('not_connected')}</option>`).join('')}</select></label>` : ''}
       <h4>${this.tr('bld_templates')}</h4><div class="tpls">${tpls || `<span class="muted small">${this.tr('bld_no_templates')}</span>`}</div>
@@ -327,20 +352,58 @@ export const RailUIMixin = {
       const pips = Array.from({ length: TRAIN_UPGRADE_MAX }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
       return `<div class="upg"><span data-tip="${this.tr('upg_' + k + '_desc')}">${this.tr('upg_' + k)}</span><span class="pips">${pips}</span>${lvl >= TRAIN_UPGRADE_MAX ? `<small class="good">${this.tr('max')}</small>` : `<button class="btn small" data-act="upgradeTrain" data-arg="${t.id}:${k}" ${g.economy.canAfford(cost) ? '' : 'disabled'}>${fmt(cost)}●</button>`}</div>`;
     }).join('');
-    const liv = g.progression.liveries().map((l) => `<option value="${l.id}" ${t.livery === l.id ? 'selected' : ''}>${this.tr('liv_' + l.id)}</option>`).join('');
     const mini = t.veh.map((v) => `<i class="mv ${v.k === 'L' ? 'l' : ''}" title="${esc(this.vehName(v))}"></i>`).join('');
     const caps = Object.keys(st.caps).filter((c) => st.caps[c]).map((c) => `<span class="cap">${cargoIcon(c)}${st.caps[c]}</span>`).join('');
     return `<div class="pill-row"><span class="pill">${esc(m.name)}${st.locos.length > 1 ? ` ×${st.locos.length}` : ''}</span><span class="pill">${this.tr('prio_' + st.priority)}</span>${this.ratingBadge(st.rating)}</div>
       <div class="tstatus ${s.warn ? 'warn' : ''}">${icon(s.warn ? 'warn' : 'route')}<span>${esc(s.text)}</span><small>${this.kmh(t.v)} km/h</small></div>
+      ${this.trainActions(t)}
+      ${t.state === 'stored' ? `<div class="card small">${icon('depot', 'mini')} ${this.tr('depot_parked_hint')}</div>` : ''}
       <button class="consist-mini" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}"><span class="mvs">${mini}</span><span>${icon('builder', 'mini')} ${this.tr('train_builder')}</span></button>
       <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
       <h4>${this.tr('cargo')} · ${loadN}/${st.capFull}</h4><div class="caps">${caps || `<span class="muted small">${this.tr('bld_no_cargo')}</span>`}</div>${cargo}
-      <h4>${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
+      <h4 id="tr-route">${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
       ${t.mode === 'manual' ? this.lineBlock(t) + this.scheduleEditor(t) : `<p class="muted small">${this.tr('auto_desc')}</p>`}
-      <h4>${this.tr('upgrades')}</h4>${upg}
-      <label class="set"><span>${this.tr('livery')}</span><select data-change="livery" data-id="${t.id}">${liv}</select></label>
+      <h4 id="tr-upg">${this.tr('upgrades')}</h4>${upg}
       ${this.groupSelect(t)}
       <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
+  },
+
+  // the actions a player needs most, one tap away (touch first)
+  trainActions(t) {
+    const g = this.game;
+    const b = (act, arg, ic, label, cls = '', dis = false) => `<button class="tact ${cls}" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''}>${icon(ic)}<span>${label}</span></button>`;
+    let depot;
+    if (t.state === 'stored') depot = b('depotRelease', t.id, 'play', this.tr('depot_release'), 'hl');
+    else if (t.depotOrder || t.tgtKind === 'depot') depot = b('depotCancel', t.id, 'close', this.tr('depot_cancel'));
+    else depot = b('depotSend', t.id, 'depot', this.tr('depot_send'), '', !g.stations.depots.length && false);
+    return `<div class="tactions" role="toolbar" aria-label="${this.tr('train_actions')}">
+      ${b('builder', t.id, 'builder', this.tr('act_edit_train'))}
+      ${b('scrollTo', '#tr-route', 'route', this.tr('act_route'))}
+      ${depot}
+      ${b('livery', t.id, 'palette', this.tr('livery'))}
+      ${b('follow', t.id, 'focus', this.tr('follow'), '', t.state === 'stored')}
+      ${b('scrollTo', '#tr-upg', 'up', this.tr('act_upgrade'))}
+    </div>${t.state !== 'stored' && !t.depotOrder && g.stations.depots.length > 1 ? `<button class="btn ghost small link" data-act="depotChoose" data-arg="${t.id}">${this.tr('depot_choose')}</button>` : ''}`;
+  },
+  depotResult(t, r) {
+    if (r.ok) { this.toast(this.tr('depot_sent', { name: t.name, depot: r.depot ? r.depot.name : '' }), 'info', 'depot'); this.renderInspector(); return; }
+    const g = this.game;
+    const w = this.modal(`<h3>${icon('warn')} ${this.tr('depot_' + r.reason)}</h3><p>${this.tr('depot_' + r.reason + '_desc')}</p>
+      <div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn primary" data-mbtn="build">${icon('depot', 'mini')} ${this.tr('depot_build')}</button></div>`, { onCancel: () => {} });
+    w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
+    w.querySelector('[data-mbtn=build]').onclick = () => { w.remove(); g.select(null); g.construction.setTool('depot'); };
+    // show where the nearest depot is, if there is one
+    const d = g.stations.depots[0];
+    if (d && r.reason === 'no_depot_route') g.camera.focus(((d.tile % 64) + 0.5) * TILE, (Math.floor(d.tile / 64) + 0.5) * TILE);
+  },
+  depotChooser(t) {
+    const g = this.game;
+    const ch = g.trains.depotChoices(t);
+    if (!ch.length) { this.depotResult(t, { ok: false, reason: g.stations.depots.length ? 'no_depot_route' : 'no_depot' }); return; }
+    const tps = Math.max(0.1, t._st.speed / KMH_PER_TILE_S) * 0.7;
+    const rows = ch.map((c, i) => `<button class="btn ${i ? 'ghost' : 'primary'} wide" data-mbtn="${c.dep.id}">${icon('depot', 'mini')} ${esc(c.dep.name)} <small>${Math.round(c.cost)} ${this.tr('tiles')} · ~${Math.max(5, Math.round(c.cost / tps))} s${i === 0 ? ' · ' + this.tr('nearest') : ''}</small></button>`).join('');
+    const w = this.modal(`<h3>${this.tr('depot_choose')}</h3><div class="col">${rows}</div><div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button></div>`, { onCancel: () => {} });
+    w.querySelectorAll('[data-mbtn]').forEach((el) => { el.onclick = () => { w.remove(); if (el.dataset.mbtn !== 'no') this.depotResult(t, g.trains.orderDepot(t, +el.dataset.mbtn, true)); }; });
   },
 
   scheduleEditor(t) {
@@ -475,6 +538,12 @@ export const RailUIMixin = {
       builder: (a) => this.openBuilder({ trainId: +a }),
       newTrain: () => this.openBuilder({}),
       bldSel: (a) => { b().sel = b().sel === +a ? -1 : +a; re(); },
+      depotSend: (a) => { const t = g().trains.byId(+a); if (t) this.depotResult(t, g().trains.orderDepot(t, null, true)); },
+      depotChoose: (a) => { const t = g().trains.byId(+a); if (t) this.depotChooser(t); },
+      depotCancel: (a) => { const t = g().trains.byId(+a); if (t) { g().trains.cancelDepotOrder(t); this.renderInspector(); } },
+      depotRelease: (a) => { const t = g().trains.byId(+a); if (t && g().trains.releaseFromDepot(t)) { this.toast(this.tr('depot_released', { name: t.name }), 'good', 'train'); this.renderInspector(); } },
+      scrollTo: (a) => { const el = document.querySelector(a); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+      bldPickVeh: (a, el, ev) => { const B = b(); if (!B || !ev || !B.veh.length) return; const r = el.getBoundingClientRect(); const i = this.pickVehicleAt(B.veh, (ev.clientX - r.left) / r.width, CONSIST.gap); B.sel = B.sel === i ? -1 : i; re(); },
       bldCat: (a) => { b().cat = a; re(); },
       bldMove: (a) => { const B = b(), i = B.sel, j = i + +a; if (j < 0 || j >= B.veh.length) return; [B.veh[i], B.veh[j]] = [B.veh[j], B.veh[i]]; B.sel = j; re(); },
       bldFlip: () => { const v = b().veh[b().sel]; if (v) v.r = !v.r; re(); },
@@ -504,6 +573,7 @@ export const RailUIMixin = {
         re();
       },
       bldAutoFit: () => this.railActions().bldAuto(null, null, null, true),
+      bldLiv: (a) => { const B = b(); if (!B) return; B.liveryScope = B.liveryScope || 'train'; B.livery = a; re(); },
       bldLiveryScope: (a) => { const B = b(); if (!B) return; B.liveryScope = a === 'loco' ? 'loco' : 'train'; re(); },
       bldBuy: () => {
         const B = b(), G = g();

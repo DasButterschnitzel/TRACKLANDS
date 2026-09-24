@@ -5,7 +5,7 @@
 // service worker installs the complete new set in the background and waits;
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
-const CACHE = 'tracklands-3.0.0-73aaedc074';
+const CACHE = 'tracklands-3.0.0-375b9d538d';
 const ASSETS = [
   './',
   './icons/icon-192.png',
@@ -43,9 +43,11 @@ const ASSETS = [
   './src/title/TitleScene.js',
   './src/trains/Consist.js',
   './src/trains/Lines.js',
+  './src/trains/Livery.js',
   './src/trains/TrainModels.js',
   './src/trains/Trains.js',
   './src/ui/Handbook.js',
+  './src/ui/LiveryEditor.js',
   './src/ui/NetworkMap.js',
   './src/ui/Overlays.js',
   './src/ui/RailUI.js',

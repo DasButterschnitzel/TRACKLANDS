@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import { TILE, opp, turnOf, step, cheb, worldToTile, clamp, tileCX, tileCZ, DX, DZ } from '../util.js';
 import { LOCOS, TRACK_TIERS, KMH_PER_TILE_S, CARGO, ERA_RESEARCH, WAGONS, STATION } from '../config.js';
 import { K_TUNNEL, K_BRIDGE } from '../rail/RailNetwork.js';
-import { locoGeometry, wagonGeometry, liveryColors, couplerGeometry, retainGeometry, releaseGeometry } from './TrainModels.js';
+import { locoGeometry, wagonGeometry, couplerGeometry, retainGeometry, releaseGeometry } from './TrainModels.js';
+import { vehicleToken, resolvePaint, validToken, DEFAULT_LIVERY } from './Livery.js';
 import {
   locoModel, parseConsist, serializeConsist, cloneConsist, computeStats, livePerf, cargoMass, assignLoads, roomFor, canCarry,
   canLead, vehLen, inferLegacy, consistCost, vehicleCost, validateConsist, autoBuild, GAP,
@@ -131,7 +132,7 @@ export class TrainSystem {
     let veh = Array.isArray(d.veh) ? cloneConsist(d.veh) : parseConsist(d.consist);
     if (!veh.length || !veh.some((v) => v.k === 'L')) veh = inferLegacy(LOCOS.some((m) => m.id === d.model) ? d.model : 'pioneer', [], this.game.progression.research);
     const t = {
-      id: d.id, veh, model: veh.find((v) => v.k === 'L').id, name: d.name || 'Train', livery: d.livery || 'classic_green', liveryScope: d.liveryScope === 'loco' ? 'loco' : 'train',
+      id: d.id, veh, model: veh.find((v) => v.k === 'L').id, name: d.name || 'Train', livery: validToken(d.livery) || DEFAULT_LIVERY, liveryScope: d.liveryScope === 'loco' ? 'loco' : 'train',
       upg: Object.assign({ engine: 0, capacity: 0, accel: 0, loading: 0, efficiency: 0 }, d.upg || {}),
       mode: d.mode === 'manual' ? 'manual' : 'auto',
       route: Array.isArray(d.route) ? d.route.filter((r) => r && (typeof r.st === 'number' || typeof r.wp === 'number')).map(normStop) : [],
@@ -471,7 +472,7 @@ export class TrainSystem {
     }
     t.steps = steps;
     t.s = Math.min(L, ss[ss.length - 1]);
-    t.veh = t.veh.slice().reverse().map((v) => ({ k: v.k, id: v.id, r: !v.r, anim: v.anim }));
+    t.veh = t.veh.slice().reverse().map((v) => ({ k: v.k, id: v.id, r: !v.r, anim: v.anim, ...(v.lv ? { lv: v.lv } : {}) }));
     // lanes are relative to the direction of travel: mirrored, the body is now
     // on the far lane (-1) and crosses over ahead of the new head
     if (t.xo) { const X = t.xo; t.xo = { s0: S - X.s1, s1: S - X.s0, a: -X.b, b: -X.a }; }
@@ -901,7 +902,7 @@ export class TrainSystem {
   // ---------- state machine ----------
   depart(t) {
     const g = this.game;
-    if (t.depotOrder && this.departToDepot(t)) return;
+    if (t.depotOrder) { this.departToDepot(t); return; }
     const here = this.stationAtHead(t);
     if (t.cargo.length) g.pax.validate(t);
     const choice = this.chooseTarget(t, here);
@@ -949,6 +950,39 @@ export class TrainSystem {
     if (t.flipped) this.afterReverse(t, 'run'); else { t.state = 'run'; t.stateT = 0; }
     g.events.emit('trainDepart', t, here);
   }
+
+  // ---------- liveries (cosmetic only: never touch any statistic) ----------
+  // target: 'train' (whole train, own vehicle colours cleared), 'loco' (every
+  // locomotive), 'veh' (vehicle idx)
+  setLivery(t, tok, target = 'train', idx = -1) {
+    tok = validToken(tok);
+    if (!tok) return false;
+    const lists = [t.veh, t.pendingVeh].filter(Boolean);
+    if (target === 'train') {
+      t.livery = tok; t.liveryScope = 'train';
+      for (const vs of lists) for (const v of vs) delete v.lv;
+    } else if (target === 'loco') {
+      for (const vs of lists) for (const v of vs) if (v.k === 'L') v.lv = tok;
+    } else {
+      for (const vs of lists) if (vs[idx]) { if (tok === vehicleToken({ ...t, veh: vs }, { ...vs[idx], lv: null })) delete vs[idx].lv; else vs[idx].lv = tok; }
+    }
+    t.visualSig = null;
+    return true;
+  }
+  // same colours on every train led by the same locomotive model; returns the count
+  liveryToSameType(t) {
+    let n = 0;
+    const locoTok = (t.veh.find((v) => v.k === 'L') || {}).lv || null;
+    for (const o of this.trains) {
+      if (o === t || o.model !== t.model) continue;
+      this.setLivery(o, t.livery, 'train');
+      o.liveryScope = t.liveryScope;
+      if (locoTok) this.setLivery(o, locoTok, 'loco');
+      n++;
+    }
+    return n;
+  }
+  restoreLivery(t) { this.setLivery(t, this.game.progression.defaultLivery, 'train'); }
 
   // ---------- depots: send a train in, park it, bring it out again ----------
   depotExit(dep) { for (let d = 0; d < 8; d++) if (this.net.hasDir(dep.tile, d)) return d; return null; }
@@ -1771,13 +1805,17 @@ export class TrainSystem {
   // track is clear (used to break deadlocks without teleporting into the jam).
   sendToDepot(t) {
     const g = this.game;
-    const dep = g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => this.net.conn[d.tile] && this.net.connected(d.tile, t.steps[0] ? t.steps[0].tile : d.tile));
+    // (a train already ordered to a depot is recovered into that one)
+    const ordered = t.depotOrder ? g.stations.depotById(t.depotOrder.id) : null;
+    const dep = (ordered && this.net.conn[ordered.tile] ? ordered : null) || g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => this.net.conn[d.tile] && this.net.connected(d.tile, t.steps[0] ? t.steps[0].tile : d.tile));
     if (!dep || !this.net.conn[dep.tile]) return false;
     this.releaseClaim(t);
     g.stations.unclaimPlatform(t.id);
     this.clearTrail(t);
     t.rev = null; t.via = false; t.pendingLost = false; t.wait = 0; t.deadT = 0; t.reroutes = 0;
     t.homeDepot = dep.id;
+    t.depotIn = null; t.tgtKind = 'station';
+    if (t.depotOrder) { const stay = t.depotOrder.stay; t.depotOrder = null; t.state = stay ? 'stored' : 'spawnwait'; t.stateT = stay ? 0 : -10; g.events.emit('trainInDepot', t, dep, stay); return true; }
     t.state = 'spawnwait'; t.stateT = -10;
     g.events.emit('trainRecovered', t);
     return true;
@@ -1948,9 +1986,9 @@ export class TrainSystem {
     const { wagons } = assignLoads(t._st, t.cargo);
     let wi = 0;
     const parts = t.veh.map((v) => {
-      if (v.k === 'L') return `L${v.id}`;
+      if (v.k === 'L') return `L${v.id}.${vehicleToken(t, v)}`;
       const w = wagons[wi++];
-      return `W${v.id}.${w && w.c ? w.c : ''}.${w && w.n > 0 ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0}`;
+      return `W${v.id}.${w && w.c ? w.c : ''}.${w && w.n > 0 ? Math.min(3, Math.ceil((w.n / Math.max(1, w.cap)) * 3)) : 0}.${vehicleToken(t, v)}`;
     });
     return `${t.livery}${t.liveryScope === 'loco' ? '~loco' : ''}|${detail}|${parts.join(',')}`;
   }
@@ -1958,23 +1996,21 @@ export class TrainSystem {
   buildVisual(t) {
     this.disposeVisual(t);
     const sig = this.consistSig(t);
-    const [liv, detail, partsStr] = sig.split('|');
-    const [livery, scope] = liv.split('~');
+    const [, detail, partsStr] = sig.split('|');
     const lead = t._st.model;
-    // coaches carry the train livery, or the model's house colours when the
-    // livery is applied to the locomotive only
-    const cols = liveryColors(lead, scope === 'loco' ? 'classic_green' : livery);
     const group = new THREE.Group();
     const cars = [];
     const parts = partsStr.split(',');
     let off = 0;
     t.veh.forEach((v, i) => {
       const len = vehLen(v);
+      // each vehicle wears its own livery, else the train's (Livery.js)
+      const tok = vehicleToken(t, v);
       let geo;
-      if (v.k === 'L') geo = locoGeometry(v.id, livery, +detail);
+      if (v.k === 'L') geo = locoGeometry(v.id, tok, +detail);
       else {
         const [, cargo, fill] = parts[i].slice(1).split('.');
-        geo = wagonGeometry(v.id, cargo || null, +fill, lead.kind, cols.body, cols.trim, (t.id * 7 + i * 3) & 3);
+        geo = wagonGeometry(v.id, cargo || null, +fill, lead.kind, resolvePaint(tok, lead), null, (t.id * 7 + i * 3) & 3);
       }
       retainGeometry(geo);
       const mesh = new THREE.Mesh(geo, MATS);

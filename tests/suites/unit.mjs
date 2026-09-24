@@ -44,6 +44,16 @@ export async function run() {
   check(S.validate(noNet) === 'err_save_invalid', 'save without rail network is rejected by validate()');
   check(S.importText('TRKL1:%%%') === null && S.importText('{broken') === null, 'malformed import text returns null');
   // the offline cache must list exactly the shipped files (tools/build-sw.mjs)
+  // liveries: tokens round-trip, bad ones are rejected, vehicles keep their own colours
+  const Lv = await import('../../src/trains/Livery.js');
+  const Cn = await import('../../src/trains/Consist.js');
+  const tok = Lv.customToken({ body: 0x123456, trim: 0xabcdef, accent: null, roof: 0x222222, stripe: 'band' });
+  check(Lv.validToken(tok) === tok && Lv.parseCustom(tok).roof === 0x222222 && Lv.parseCustom(tok).accent === null, 'custom livery token round-trips');
+  check(Lv.validToken('royal_blue') === 'royal_blue' && Lv.validToken('c.zz.00.-.-.x') === null && Lv.validToken(42) === null, 'livery tokens are validated');
+  const cons = Cn.parseConsist(['L:pioneer@royal_blue', 'W:coach:r@' + tok, 'W:coach@bogus']);
+  check(cons.length === 3 && cons[0].lv === 'royal_blue' && cons[1].lv === tok && cons[1].r && !cons[2].lv && Cn.serializeConsist(cons).join() === ['L:pioneer@royal_blue', 'W:coach:r@' + tok, 'W:coach'].join(), 'per-vehicle liveries survive consist serialization');
+  const st1 = Cn.computeStats(cons, null, {}), st2 = Cn.computeStats(Cn.parseConsist(['L:pioneer', 'W:coach:r', 'W:coach']), null, {});
+  check(JSON.stringify(st1) === JSON.stringify(st2), 'liveries never change train statistics');
   const { buildServiceWorker } = await import('../../tools/build-sw.mjs');
   const fs = await import('fs');
   check(fs.readFileSync('service-worker.js', 'utf8') === buildServiceWorker(), 'service-worker.js is up to date (node tools/build-sw.mjs)');

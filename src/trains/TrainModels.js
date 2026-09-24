@@ -12,7 +12,8 @@
 //   maglev   wrap-around skirt over the guideway, no visible wheels, glow line
 import * as THREE from 'three';
 import { ModelBuilder, shade } from '../core/ModelBuilder.js';
-import { CARGO, LOCOS, LIVERIES, WAGONS, locoLen } from '../config.js';
+import { CARGO, LOCOS, WAGONS, locoLen } from '../config.js';
+import { resolvePaint, paintKey } from './Livery.js';
 import { SCALE, PAL } from '../style.js';
 
 const VS = SCALE.vehicle;
@@ -135,7 +136,8 @@ function drivers(mb, n, x0, x1, r, rodCol) {
   if (n > 1) for (const z of [0.285, -0.285]) mb.box(x1 - x0 + 0.08, 0.025, 0.018, rodCol, { x: (x0 + x1) / 2, y: r * 0.75, z });
   return xs;
 }
-function steamLoco(mb, m, L, body, trim, detail) {
+function steamLoco(mb, m, L, P, detail) {
+  const body = P.body, trim = P.trim;
   const big = m.kind === 'steam2';
   const tender = L >= 1.9;
   const tank = m.id === 'meadow_tank' || m.id === 'pioneer';
@@ -143,7 +145,7 @@ function steamLoco(mb, m, L, body, trim, detail) {
   const Le = tender ? L * 0.62 : L;                 // engine part
   const ex = L / 2 - Le / 2;                        // engine centre x
   const r = big ? 0.25 : m.id === 'pioneer' ? 0.19 : 0.21;  // boiler radius
-  const accent = detail >= 2 ? BRASS : trim;
+  const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
   const front = ex + Le / 2;
   const by = 0.3 + r;                               // boiler centre height
   const nDrive = m.id === 'pioneer' ? 2 : m.id === 'meadow_tank' ? 2 : big ? 4 : 3;
@@ -195,7 +197,7 @@ function steamLoco(mb, m, L, body, trim, detail) {
   // cab with overhanging roof, spectacle and side windows
   const cabX = ex - Le / 2 + 0.24;
   mb.box(0.44, 0.5, W + 0.04, body, { x: cabX, y: 0.28 });
-  mb.box(0.54, 0.05, W + 0.14, shade(body, 0.65), { x: cabX, y: 0.78 });
+  mb.box(0.54, 0.05, W + 0.14, P.roof ?? shade(body, 0.65), { x: cabX, y: 0.78 });
   for (const z of [0.12, -0.12]) mb.cyl(0.05, 0.05, 0.02, 8, GLASS, { x: cabX + 0.225, y: 0.62, z, rz: Math.PI / 2, center: true, glow: true });
   for (const z of [GZ + 0.02, -GZ - 0.02]) mb.box(0.24, 0.15, 0.02, GLASS, { x: cabX + 0.02, y: 0.55, z, glow: true });
   mb.box(0.44, 0.03, W + 0.05, accent, { x: cabX, y: 0.44 });
@@ -218,8 +220,9 @@ function steamLoco(mb, m, L, body, trim, detail) {
 }
 
 // ---------- diesel ----------
-function dieselLoco(mb, m, L, body, trim, detail) {
-  const accent = detail >= 2 ? BRASS : trim;
+function dieselLoco(mb, m, L, P, detail) {
+  const body = P.body, trim = P.trim;
+  const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
   const heavy = m.id === 'cargoking';
   const cabUnit = m.id === 'metrorunner';
   underframe(mb, L, DARK, shade(DARK, 1.3));
@@ -249,7 +252,7 @@ function dieselLoco(mb, m, L, body, trim, detail) {
   else { mb.taper(0.15, W, 0.44, W * 0.8, 0.34, body, { x: L / 2 - 0.055, y: FLOOR + 0.02, yb1: 0.04 }); headlights(mb, L / 2 + 0.02, FLOOR + 0.12, 0.14, 1); }
   // cab
   mb.box(cabW, 0.56, W, body, { x: cabX, y: FLOOR + 0.02 });
-  mb.box(cabW + 0.06, 0.04, W + 0.04, shade(body, 0.7), { x: cabX, y: FLOOR + 0.58 });
+  mb.box(cabW + 0.06, 0.04, W + 0.04, P.roof ?? shade(body, 0.7), { x: cabX, y: FLOOR + 0.58 });
   for (const s of [1, -1]) mb.box(0.02, 0.13, W - 0.1, GLASS, { x: cabX + s * (cabW / 2 + 0.005), y: FLOOR + 0.38, glow: true });
   for (const z of [GZ, -GZ]) mb.box(cabW * 0.7, 0.12, 0.02, GLASS, { x: cabX, y: FLOOR + 0.38, z, glow: true });
   // livery stripe, grilles, fans, exhaust, handrails
@@ -263,8 +266,9 @@ function dieselLoco(mb, m, L, body, trim, detail) {
 }
 
 // ---------- electric ----------
-function electricLoco(mb, m, L, body, trim, detail) {
-  const accent = detail >= 2 ? BRASS : trim;
+function electricLoco(mb, m, L, P, detail) {
+  const body = P.body, trim = P.trim;
+  const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
   const heavy = m.id === 'voltstream_e3';
   const sleek = m.id === 'falcon';
   underframe(mb, L, DARK, shade(DARK, 1.2));
@@ -291,6 +295,7 @@ function electricLoco(mb, m, L, body, trim, detail) {
   else { const n = heavy ? 5 : 4; for (let k = 0; k < n; k++) { const x = -bodyL / 2 + 0.2 + k * ((bodyL - 0.4) / (n - 1)); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, GZ, body); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, -GZ, body); } }
   // roof: equipment, insulators, two pantographs (rear one raised)
   const ry = FLOOR + H;
+  if (P.roof != null) mb.box(bodyL, 0.015, W - 0.02, P.roof, { y: ry - 0.005 });
   mb.box(bodyL * 0.5, 0.04, W * 0.6, shade(DARK, 1.3), { y: ry });
   for (const x of [-0.12, 0.12]) mb.cyl(0.025, 0.025, 0.05, 6, 0xe8e2d4, { x, y: ry + 0.02 });
   pantograph(mb, -L / 2 + 0.45, ry + 0.02, true, -1);
@@ -299,8 +304,9 @@ function electricLoco(mb, m, L, body, trim, detail) {
 }
 
 // ---------- high speed power car ----------
-function hstLoco(mb, m, L, body, trim, detail) {
-  const accent = detail >= 2 ? BRASS : trim;
+function hstLoco(mb, m, L, P, detail) {
+  const body = P.body, trim = P.trim;
+  const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
   const freight = m.id === 'novarail';
   const duck = m.id === 'vector_hst';
   const noseL = m.id === 'arrowline_300' || duck ? 0.9 : freight ? 0.55 : 0.7;
@@ -336,8 +342,9 @@ function hstLoco(mb, m, L, body, trim, detail) {
 }
 
 // ---------- maglev ----------
-function maglevLoco(mb, m, L, body, trim, detail) {
-  const accent = detail >= 2 ? 0x9ff6ff : trim;
+function maglevLoco(mb, m, L, P, detail) {
+  const body = P.body, trim = P.trim;
+  const accent = P.accent ?? (detail >= 2 ? 0x9ff6ff : trim);
   const needle = m.id === 'magna_m3';
   const noseL = needle ? 0.95 : 0.7, H = 0.5, x0 = -L / 2, xn = L / 2 - noseL;
   // guideway skirt wrapping down around the beam, no wheels
@@ -363,8 +370,18 @@ function maglevLoco(mb, m, L, body, trim, detail) {
 }
 
 export function liveryColors(model, liveryId) {
-  const lv = LIVERIES.find((l) => l.id === liveryId) || LIVERIES[0];
-  return { body: lv.body ?? model.color, trim: lv.trim };
+  const p = resolvePaint(liveryId, model);
+  return { body: p.body, trim: p.trim, paint: p };
+}
+
+// livery stripes along both sides at height y (accent colour)
+function stripes(mb, len, y, P, x = 0) {
+  const st = P.stripe || 'none';
+  if (st === 'none') return;
+  const c = P.accent ?? P.trim;
+  if (st === 'line') mb.box(len, 0.025, W + 0.012, c, { x, y });
+  else if (st === 'double') { mb.box(len, 0.02, W + 0.012, c, { x, y }); mb.box(len, 0.02, W + 0.012, c, { x, y: y + 0.05 }); }
+  else mb.box(len, 0.075, W + 0.012, c, { x, y });
 }
 
 export function couplerGeometry() {
@@ -374,19 +391,20 @@ export function couplerGeometry() {
   return mb.build();
 }
 
-export function locoGeometry(modelId, liveryId, detail = 0) {
-  const key = `L:${modelId}:${liveryId}:${detail}`;
-  if (cache.has(key)) return cached(key);
+// liv: a livery token (Livery.js) or a resolved paint object
+export function locoGeometry(modelId, liv, detail = 0) {
   const model = LOCOS.find((m) => m.id === modelId) || LOCOS[0];
-  const { body, trim } = liveryColors(model, liveryId);
+  const P = typeof liv === 'object' && liv ? liv : resolvePaint(liv, model);
+  const key = `L:${modelId}:${paintKey(P)}:${detail}`;
+  if (cache.has(key)) return cached(key);
   const mb = new ModelBuilder();
   const L = locoLen(model);
   switch (model.kind) {
-    case 'steam': case 'steam2': steamLoco(mb, model, L, body, trim, detail); break;
-    case 'diesel': dieselLoco(mb, model, L, body, trim, detail); break;
-    case 'electric': electricLoco(mb, model, L, body, trim, detail); break;
-    case 'hst': hstLoco(mb, model, L, body, trim, detail); break;
-    default: maglevLoco(mb, model, L, body, trim, detail);
+    case 'steam': case 'steam2': steamLoco(mb, model, L, P, detail); break;
+    case 'diesel': dieselLoco(mb, model, L, P, detail); stripes(mb, L - 0.2, FLOOR + 0.24, P); break;
+    case 'electric': electricLoco(mb, model, L, P, detail); stripes(mb, L - 0.3, FLOOR + 0.2, P); break;
+    case 'hst': hstLoco(mb, model, L, P, detail); stripes(mb, L - 1, FLOOR + 0.22, P, -0.45); break;
+    default: maglevLoco(mb, model, L, P, detail); stripes(mb, L - 1, FLOOR + 0.2, P, -0.4);
   }
   return store(key, mb.build());
 }
@@ -415,9 +433,12 @@ const variantTint = (c, v) => (v ? shade(c, [1, 0.92, 1.07, 0.86][v & 3]) : c);
 
 // fill: 0 empty, 1..3 load level. cargoId: what the wagon currently carries.
 // variant: 0..3 per-vehicle weathering for freight stock.
-export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimCol, variant = 0) {
+// paint: a resolved paint object, or (older callers) body colour + trim colour
+export function wagonGeometry(wagonId, cargoId, fill, eraKind, paint, trimArg, variant = 0) {
   const w = WAGONS[wagonId] ? wagonId : 'boxcar';
-  const key = `W:${w}:${cargoId || ''}:${fill | 0}:${eraKind}:${liveryBody}:${trimCol}:${variant | 0}`;
+  const P = typeof paint === 'object' && paint ? paint : { body: paint, trim: trimArg, accent: null, roof: null, stripe: 'none' };
+  const liveryBody = P.body, trimCol = P.trim;
+  const key = `W:${w}:${cargoId || ''}:${fill | 0}:${eraKind}:${paintKey(P)}:${variant | 0}`;
   if (cache.has(key)) return cached(key);
   const mb = new ModelBuilder();
   const L = WAGONS[w].len;
@@ -436,8 +457,9 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimC
       const H = ROOF - FLOOR - 0.04;
       mb.box(L - 0.02, H, W, body, { y: FLOOR });
       mb.box(L - 0.02, 0.04, W + 0.006, trim, { y: FLOOR + 0.1 });
-      if (modern || w === 'commuter') mb.box(L - 0.06, 0.06, W - 0.06, shade(body, 0.8), { y: FLOOR + H });
-      else { mb.cyl(0.3, 0.3, L - 0.04, 12, shade(body, 0.62), { y: FLOOR + H - 0.03, rz: Math.PI / 2, center: true, sx: 0.28, sz: 0.87 }); }
+      if (modern || w === 'commuter') mb.box(L - 0.06, 0.06, W - 0.06, P.roof ?? shade(body, 0.8), { y: FLOOR + H });
+      else { mb.cyl(0.3, 0.3, L - 0.04, 12, P.roof ?? shade(body, 0.62), { y: FLOOR + H - 0.03, rz: Math.PI / 2, center: true, sx: 0.28, sz: 0.87 }); }
+      if (w !== 'premium') stripes(mb, L - 0.04, FLOOR + 0.2, P);
       if (w === 'premium') { sideWindows(mb, -L / 2 + 0.15, L / 2 - 0.15, FLOOR + 0.26, 0.15, 4, 0.24); mb.box(L * 0.9, 0.02, W + 0.008, BRASS, { y: FLOOR + H - 0.07 }); }
       else if (w === 'commuter') {
         sideWindows(mb, -L / 2 + 0.12, L / 2 - 0.12, FLOOR + 0.26, 0.13, 6, 0.13);
@@ -460,7 +482,8 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimC
       mb.box(L - 0.12, 0.1, 0.02, GLASS, { y: FLOOR + H - 0.2, z: GZ, glow: true });
       mb.box(L - 0.12, 0.1, 0.02, GLASS, { y: FLOOR + H - 0.2, z: -GZ, glow: true });
       mb.box(L, 0.08, W + 0.01, shade(liveryBody, 0.75), { y: FLOOR - 0.02 });
-      mb.box(L - 0.1, 0.04, W - 0.1, shade(liveryBody, 0.85), { y: FLOOR + H });
+      mb.box(L - 0.1, 0.04, W - 0.1, P.roof ?? shade(liveryBody, 0.85), { y: FLOOR + H });
+      stripes(mb, L - 0.02, FLOOR + 0.22, P);
       gangway(mb, L, H);
       break;
     }

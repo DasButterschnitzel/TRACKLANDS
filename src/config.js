@@ -289,15 +289,22 @@ export const EVENTS = [
 ];
 
 // ---------- COSMETICS ----------
+// Train liveries: body (null = the model's house colour), trim, accent (lining
+// and stripes), roof (null = a darker body shade) and stripe style. The first
+// nine are free presets; the last two are rewards. Players can also mix a
+// custom livery (Livery.js).
 export const LIVERIES = [
-  { id: 'classic_green', body: null, trim: 0xd9b45a, unlock: { level: 1 } },
-  { id: 'royal_blue', body: 0x2f4f8f, trim: 0xe0c060, unlock: { level: 3 } },
-  { id: 'industrial_red', body: 0x9a3a2f, trim: 0x2b2b2b, unlock: { level: 6 } },
-  { id: 'cream_express', body: 0xe8dcc0, trim: 0x7a2f2f, unlock: { achievement: 'growing_town' } },
-  { id: 'teal_modern', body: 0x2e9a8f, trim: 0xf0f0f0, unlock: { achievement: 'electric_dreams' } },
-  { id: 'midnight_black', body: 0x22252b, trim: 0xc0c6cc, unlock: { level: 15 } },
-  { id: 'sunset_orange', body: 0xe07a3a, trim: 0x3a2f4a, unlock: { level: 25 } },
-  { id: 'golden_jubilee', body: 0xd4a62a, trim: 0x1f1f24, unlock: { level: 40 } },
+  { id: 'classic_green', body: null, trim: 0xd9b45a, accent: null, roof: null, stripe: 'none', unlock: { level: 1 } },
+  { id: 'royal_blue', body: 0x2f4f8f, trim: 0xe0c060, accent: 0xe0c060, roof: 0x2a3140, stripe: 'line', unlock: { level: 1 } },
+  { id: 'cream_express', body: 0xe8dcc0, trim: 0x7a2f2f, accent: 0x7a2f2f, roof: 0x5a4a44, stripe: 'band', unlock: { level: 1 } },
+  { id: 'industrial_red', body: 0x7e2a33, trim: 0x2b2b2b, accent: 0xd8c08a, roof: null, stripe: 'line', unlock: { level: 1 } },
+  { id: 'midnight_black', body: 0x22252b, trim: 0xc0c6cc, accent: 0xc0c6cc, roof: 0x16181c, stripe: 'double', unlock: { level: 1 } },
+  { id: 'silverline', body: 0xb9c0c8, trim: 0x2b3a55, accent: 0x3a78c2, roof: 0x7a828c, stripe: 'band', unlock: { level: 1 } },
+  { id: 'golden_jubilee', body: 0xd4a62a, trim: 0x1f1f24, accent: 0x1f1f24, roof: 0x3a3226, stripe: 'double', unlock: { level: 1 } },
+  { id: 'regional_red', body: 0xc23a2f, trim: 0xf0ede6, accent: 0xf0ede6, roof: 0x5e6268, stripe: 'band', unlock: { level: 1 } },
+  { id: 'teal_modern', body: 0x2e9a8f, trim: 0xf0f0f0, accent: 0xf2d35a, roof: 0x3e4a52, stripe: 'band', unlock: { level: 1 } },
+  { id: 'sunset_orange', body: 0xe07a3a, trim: 0x3a2f4a, accent: 0x3a2f4a, roof: null, stripe: 'double', unlock: { level: 25 } },
+  { id: 'heritage_maroon', body: 0x5e2430, trim: 0xd9b45a, accent: 0xd9b45a, roof: 0x2a2a2e, stripe: 'line', unlock: { achievement: 'growing_town' } },
 ];
 export const STATION_STYLES = [
   { id: 'classic', roof: 0x8a4a3a, wall: 0xe8dcc4, unlock: { level: 1 } },

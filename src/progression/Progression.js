@@ -1,5 +1,6 @@
 // Company level, research, regions, objectives, achievements, train collection,
 // cosmetics, legacy and the Railway Legend completion state.
+import { validToken } from '../trains/Livery.js';
 import {
   MAX_LEVEL, xpForLevel, rpForLevel, RESEARCH, RESEARCH_UNLOCK_LEVEL, REGIONS, OBJECTIVES, ACHIEVEMENTS, LOCOS, ERA_RESEARCH,
   LIVERIES, STATION_STYLES, REGION_PREV_OBJECTIVES, REGION_DEVELOPED_AT, LEGACY_LEVEL, LEGEND_REQ, COSTS,
@@ -277,7 +278,7 @@ export class Progression {
     this.achievements = new Set(arr(d.achievements));
     this.owned = new Set(arr(d.owned).filter((id) => LOCOS.some((m) => m.id === id)));
     this.templates = arr(d.templates).filter((tp) => tp && typeof tp.name === 'string' && Array.isArray(tp.veh)).slice(0, 12);
-    this.defaultLivery = LIVERIES.some((l) => l.id === d.defaultLivery) ? d.defaultLivery : 'classic_green';
+    this.defaultLivery = validToken(d.defaultLivery) || 'classic_green';
     this.defaultStationStyle = STATION_STYLES.some((s) => s.id === d.defaultStationStyle) ? d.defaultStationStyle : 'classic';
     this.legacy = d.legacy && typeof d.legacy.count === 'number' ? { count: d.legacy.count } : { count: 0 };
     this.legend = !!d.legend;

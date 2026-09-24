@@ -346,6 +346,8 @@ export class Game {
     E.on('weather', (w) => this.ui.weatherChanged(w));
     E.on('stationUpgraded', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.camera.shake(0.2); });
     E.on('trainRecovered', (t) => ui.toast(ui.tr('toast_train_recovered', { name: t.name }), 'info', 'train'));
+    E.on('trainInDepot', (t, dep, stay) => { if (stay) ui.toast(ui.tr('toast_in_depot', { name: t.name, depot: dep ? dep.name : '' }), 'info', 'depot'); });
+    E.on('depotUnreachable', (t) => ui.toast(ui.tr('toast_depot_unreachable', { name: t.name }), 'warn', 'depot'));
     E.on('deadlockResolved', (t, how) => ui.toast(ui.tr('toast_deadlock_' + how, { name: t.name }), 'info', 'train'));
     E.on('trainRunaround', (t) => {
       const loco = t.visual && t.visual.cars[0] && t.visual.cars[0].mesh;

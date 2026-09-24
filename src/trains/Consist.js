@@ -6,6 +6,7 @@
 import {
   LOCOS, WAGONS, WAGON_IDS, CARGO, CONSIST, TRAIN_UPGRADE_EFFECT, PRIORITY, locoLen, locoMass, locoBidir,
 } from '../config.js';
+import { validToken } from './Livery.js';
 
 export function locoModel(id) { return LOCOS.find((m) => m.id === id) || LOCOS[0]; }
 
@@ -18,15 +19,20 @@ export function parseConsist(arr) {
   if (!Array.isArray(arr)) return out;
   for (const s of arr) {
     if (typeof s !== 'string') continue;
-    const [k, id, r] = s.split(':');
-    if (k === 'L' && LOCOS.some((m) => m.id === id)) out.push({ k: 'L', id, r: r === 'r' });
-    else if (k === 'W' && WAGONS[id]) out.push({ k: 'W', id, r: r === 'r' });
+    // 'L:pioneer:r@royal_blue' - kind, id, reversed, own livery (optional)
+    const [spec, liv] = s.split('@');
+    const [k, id, r] = spec.split(':');
+    const lv = liv ? validToken(liv) : null;
+    const v = k === 'L' && LOCOS.some((m) => m.id === id) ? { k: 'L', id, r: r === 'r' } : k === 'W' && WAGONS[id] ? { k: 'W', id, r: r === 'r' } : null;
+    if (!v) continue;
+    if (lv) v.lv = lv;
+    out.push(v);
     if (out.length >= CONSIST.maxVehicles) break;
   }
   return out;
 }
-export function serializeConsist(vs) { return vs.map((v) => `${v.k}:${v.id}${v.r ? ':r' : ''}`); }
-export function cloneConsist(vs) { return vs.map((v) => ({ k: v.k, id: v.id, r: v.r })); }
+export function serializeConsist(vs) { return vs.map((v) => `${v.k}:${v.id}${v.r ? ':r' : ''}${v.lv ? '@' + v.lv : ''}`); }
+export function cloneConsist(vs) { return vs.map((v) => (v.lv ? { k: v.k, id: v.id, r: v.r, lv: v.lv } : { k: v.k, id: v.id, r: v.r })); }
 
 export function vehLen(v) { return v.k === 'L' ? locoLen(locoModel(v.id)) : WAGONS[v.id].len; }
 export function vehMass(v) { return v.k === 'L' ? locoMass(locoModel(v.id)) : WAGONS[v.id].mass; }

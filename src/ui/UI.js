@@ -16,6 +16,7 @@ import { MATS } from '../core/ModelBuilder.js';
 import { MonetizationService } from '../services/Monetization.js';
 import { RailUIMixin } from './RailUI.js';
 import { HandbookMixin } from './Handbook.js';
+import { LiveryEditorMixin } from './LiveryEditor.js';
 import { log } from '../core/Log.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -488,6 +489,7 @@ export class UI {
       settings: { title: 'settings', render: () => this.pSettings() },
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
       builder: { title: 'train_builder', render: () => this.pBuilder(), wide: true },
+      livery: { title: 'livery_editor', render: () => this.pLivery(), wide: true },
       trains: { title: 'menu_trains', render: () => this.pTrains(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
       handbook: { title: 'handbook', render: () => this.pHandbook() },
@@ -1079,6 +1081,7 @@ export class UI {
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
       ...this.railActions(),
+      ...this.liveryActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1152,6 +1155,7 @@ export class UI {
         el.blur(); if (t.state === 'idle') t.stateT = 3; this.renderInspector();
       },
       ...this.railInputs(),
+      ...this.liveryInputs(),
     };
   }
 
@@ -1164,4 +1168,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin);
