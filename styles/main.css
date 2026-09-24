@@ -727,3 +727,9 @@ details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
 .music-now { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .music-now > div:first-of-type { display: flex; flex-direction: column; flex: 1; min-width: 120px; }
 .music-now small { color: var(--ink2); }
+
+/* industry stake: four quarters */
+.stake { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+.stake .pips { display: inline-flex; gap: 3px; }
+.stake .pips i { width: 14px; height: 14px; border-radius: 3px; border: 2px solid var(--teal2); background: transparent; }
+.stake .pips i.on { background: var(--teal2); }

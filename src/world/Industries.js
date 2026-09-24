@@ -2,7 +2,8 @@
 // procedural animated visuals.
 import * as THREE from 'three';
 import { N, TILE, idx, cheb } from '../util.js';
-import { INDUSTRIES, INDUSTRY_LEVEL_THRESH, TOWN_ACCEPTS } from '../config.js';
+import { INDUSTRIES, INDUSTRY_LEVEL_THRESH, INDUSTRY_INVEST, TOWN_ACCEPTS, CARGO } from '../config.js';
+import { cleanFin } from '../economy/Ledger.js';
 import { ModelBuilder, meshFrom, shade, MATS } from '../core/ModelBuilder.js';
 import { t as tr } from '../i18n.js';
 
@@ -13,6 +14,7 @@ export class IndustrySystem {
     this.group = new THREE.Group();
     game.scene.add(this.group);
     this.cropMat = new THREE.MeshLambertMaterial({ color: 0x8ab04a, flatShading: true });
+    this.month = -1;
   }
 
   byId(id) { return this.list.find((i) => i.id === id); }
@@ -21,7 +23,7 @@ export class IndustrySystem {
   init(world) {
     this.list = world.industries.map((s, k) => ({
       id: 1000 + k, type: s.type, x: s.x, z: s.z, region: s.region, townName: s.townName,
-      level: 0, inp: {}, out: {}, cycles: 0, every: {}, transported: 0, produced: 0, idle: 0,
+      level: 0, inp: {}, out: {}, cycles: 0, every: {}, transported: 0, produced: 0, idle: 0, stake: 0, pv: 0, lastPv: 0,
     }));
     for (const ind of this.list) this.markFootprint(ind);
   }
@@ -93,11 +95,16 @@ export class IndustrySystem {
     if (!cfg.primary) r *= 1 + fx.processing;
     if (ind.type === 'FARM') r *= 1 + (ev.farmProd || 0);
     if (ind.type === 'MINE' || ind.type === 'COAL_MINE') r *= 1 + (ev.mineProd || 0);
+    if (ind.stake >= 0.5) r *= 1 + INDUSTRY_INVEST.ownerBonus;
     return r * g.difficulty.growthMul ** 0;
   }
 
   tick(dt) {
     const g = this.game;
+    if (g.ledger) {
+      const m = g.ledger.monthIndex();
+      if (m !== this.month) { if (this.month >= 0 && m > this.month) this.closeMonth(); this.month = m; }
+    }
     for (const ind of this.list) {
       if (!g.progression.regionUnlocked(ind.region)) continue;
       const cfg = INDUSTRIES[ind.type];
@@ -121,7 +128,7 @@ export class IndustrySystem {
             ind.inp[c] = (ind.inp[c] || 0) - fromIn; need -= fromIn;
             if (need > 0) ind.out[c] = Math.max(0, (ind.out[c] || 0) - need);
           }
-          for (const c in rc.out) { ind.out[c] = (ind.out[c] || 0) + rc.out[c]; ind.produced += rc.out[c]; }
+          for (const c in rc.out) { ind.out[c] = (ind.out[c] || 0) + rc.out[c]; ind.produced += rc.out[c]; ind.pv = (ind.pv || 0) + rc.out[c] * (CARGO[c] ? CARGO[c].value : 0); }
           produced = true;
         }
       }
@@ -165,6 +172,155 @@ export class IndustrySystem {
     const thr = INDUSTRY_LEVEL_THRESH[ind.level] * (1 - this.game.progression.fx.industryGrowth);
     const prev = ind.level ? INDUSTRY_LEVEL_THRESH[ind.level - 1] * (1 - this.game.progression.fx.industryGrowth) : 0;
     return Math.max(0, Math.min(1, (ind.transported - prev) / (thr - prev)));
+  }
+
+
+  // ---------- investment: stakes, dividends, expansion, new sites ----------
+  // Everything is booked in the ledger with the industry as the object.
+  baseValue(ind) { return (INDUSTRY_INVEST.base[ind.type] || 5000) * this.game.economy.costs.mul(); }
+  // what the whole site is worth: its plant (by level) plus a year of margin
+  value(ind) {
+    const I = INDUSTRY_INVEST;
+    return Math.round(this.baseValue(ind) * (1 + ind.level * 0.6) + (ind.lastPv || 0) * I.margin * 12);
+  }
+  stakeCost(ind) { return Math.round(this.value(ind) * INDUSTRY_INVEST.step); }
+  stakeSale(ind) { return Math.round(this.value(ind) * INDUSTRY_INVEST.step * INDUSTRY_INVEST.sellBack); }
+  stakeValue() { let v = 0; for (const ind of this.list) if (ind.stake > 0) v += ind.stake * this.value(ind) * INDUSTRY_INVEST.sellBack; return v; }
+  owned() { return this.list.filter((i) => i.stake > 0); }
+  dividendEstimate(ind, stake = ind.stake) { return Math.round(stake * INDUSTRY_INVEST.margin * (ind.lastPv || ind.pv || 0)); }
+
+  buyStakeError(ind) {
+    if (!ind) return 'err_no_target';
+    if (!this.game.progression.regionUnlocked(ind.region)) return 'err_locked_region';
+    if (ind.stake >= 1 - 1e-6) return 'err_stake_full';
+    if (!this.game.economy.canAfford(this.stakeCost(ind))) return 'err_no_money';
+    return null;
+  }
+  buyStake(ind) {
+    const err = this.buyStakeError(ind);
+    if (err) return { error: err };
+    const cost = this.stakeCost(ind);
+    this.game.economy.spend(cost, 'shares', { type: 'industry', id: ind.id }, '~inv_n_buy');
+    ind.stake = Math.min(1, Math.round((ind.stake + INDUSTRY_INVEST.step) * 4) / 4);
+    this.game.events.emit('industryStake', ind);
+    return { ok: true, cost };
+  }
+  sellStake(ind) {
+    if (!ind || !(ind.stake > 0)) return { error: 'err_no_stake' };
+    const got = this.stakeSale(ind);
+    this.game.economy.earn(got, 'share_sale', false, { type: 'industry', id: ind.id }, '~inv_n_sell');
+    ind.stake = Math.max(0, Math.round((ind.stake - INDUSTRY_INVEST.step) * 4) / 4);
+    this.game.events.emit('industryStake', ind);
+    return { ok: true, got };
+  }
+
+  expandCost(ind) { return Math.round(this.baseValue(ind) * INDUSTRY_INVEST.expand * Math.pow(ind.level + 1, 1.4)); }
+  expandError(ind) {
+    if (!ind) return 'err_no_target';
+    if (!this.game.progression.regionUnlocked(ind.region)) return 'err_locked_region';
+    if (ind.level >= 4) return 'err_max_level';
+    if (!this.game.economy.canAfford(this.expandCost(ind))) return 'err_no_money';
+    return null;
+  }
+  // pay for the next level now (the delivered-cargo counter moves up with it,
+  // so growth continues from there)
+  expand(ind) {
+    const err = this.expandError(ind);
+    if (err) return { error: err };
+    const cost = this.expandCost(ind);
+    this.game.economy.spend(cost, 'industry_fund', { type: 'industry', id: ind.id }, '~inv_n_expand');
+    ind.transported = Math.max(ind.transported, INDUSTRY_LEVEL_THRESH[ind.level] * (1 - this.game.progression.fx.industryGrowth));
+    this.checkLevel(ind);
+    return { ok: true, cost, level: ind.level };
+  }
+
+  // month end: book the dividends of the month that closed
+  closeMonth() {
+    const g = this.game;
+    for (const ind of this.list) {
+      ind.lastPv = Math.round(ind.pv || 0);
+      ind.pv = 0;
+      if (ind.stake > 0) {
+        const d = this.dividendEstimate(ind);
+        if (d > 0) g.economy.earn(d, 'dividend', false, { type: 'industry', id: ind.id }, '~inv_n_div');
+      }
+    }
+  }
+
+  // ---------- new sites ----------
+  foundCost(type) { return Math.round((INDUSTRY_INVEST.base[type] || 5000) * INDUSTRY_INVEST.found * this.game.economy.costs.mul()); }
+  foundTypes() {
+    // the kinds of site the company can fund: any kind found in an open region
+    const g = this.game, s = new Set();
+    for (const i of this.list) if (g.progression.regionUnlocked(i.region)) s.add(i.type);
+    return Object.keys(INDUSTRIES).filter((k) => s.has(k));
+  }
+  // nearest town and how far its edge is
+  nearTown(x, z) {
+    let best = null, bd = 1e9;
+    for (const t of this.game.towns.list) {
+      const d = Math.max(Math.abs(t.x - x - 0.5), Math.abs(t.z - z - 0.5)) - this.game.towns.radius(t);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return { town: best, gap: bd };
+  }
+  // the 2x2 site with its top-left corner at tile
+  foundError(tile, type) {
+    const g = this.game, W = g.world;
+    if (tile < 0) return 'err_out_of_map';
+    if (!INDUSTRIES[type]) return 'err_no_target';
+    const x = tile % N, z = Math.floor(tile / N);
+    if (x < 1 || z < 1 || x > N - 3 || z > N - 3) return 'err_out_of_map';
+    const hs = [];
+    for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) {
+      const i = idx(x + dx, z + dz);
+      const r = g.net.tileBlockedReason(i);
+      if (r) return r;
+      if (W.type[i] !== 0) return 'err_bad_terrain';
+      if (g.net.conn[i] || g.net.special.has(i) || g.net.waypoints.has(i) || g.occupancy.owner[i]) return 'err_occupied';
+      if (g.roads && g.roads.hasRoad(i)) return 'err_occupied';
+      if (g.decor && g.decor.at(i)) return 'err_occupied';
+      hs.push(W.tileH[i]);
+    }
+    if (Math.max(...hs) - Math.min(...hs) > 1.2) return 'err_too_steep';
+    // not right next to another site
+    for (const o of this.list) if (Math.abs(o.x - x) < 4 && Math.abs(o.z - z) < 4) return 'err_industry_near';
+    if (type === 'PORT') {
+      let w = 0;
+      for (let dz = -2; dz <= 3; dz++) for (let dx = -2; dx <= 3; dx++) if (x + dx >= 0 && z + dz >= 0 && x + dx < N && z + dz < N && W.type[idx(x + dx, z + dz)] === 1) w++;
+      if (w < 3) return 'err_port_water';
+    }
+    const near = this.nearTown(x, z);
+    if (near.town && near.gap < INDUSTRY_INVEST.townGap && g.authority && !g.authority.allowed(near.town, 'industry_near_town')) return 'err_permit_denied';
+    if (!g.economy.canAfford(this.foundCost(type))) return 'err_no_money';
+    return null;
+  }
+  found(tile, type) {
+    const err = this.foundError(tile, type);
+    if (err) return { error: err };
+    const g = this.game, x = tile % N, z = Math.floor(tile / N);
+    const near = this.nearTown(x, z);
+    const id = Math.max(1999, ...this.list.map((i) => i.id)) + 1;
+    const ind = this.addSite({ id, type, x, z, region: g.world.region[tile], townName: near.town ? near.town.name : 'Frontier' });
+    const cost = this.foundCost(type);
+    g.economy.spend(cost, 'industry_fund', { type: 'industry', id }, '~inv_n_found');
+    ind.stake = INDUSTRY_INVEST.foundStake;
+    if (near.town && near.gap < INDUSTRY_INVEST.townGap && g.authority) g.authority.change(near.town, ind.type === 'FARM' || ind.type === 'FOREST' ? -1 : -4, 'auth_industry');
+    g.stations.relinkAll();
+    this.onStationsChanged();
+    if (g.towns.onStationsChanged) g.towns.onStationsChanged();
+    this.buildVisual(ind);
+    g.events.emit('industryFounded', ind);
+    return { ok: true, ind, cost };
+  }
+  addSite(site) {
+    const ind = { id: site.id, type: site.type, x: site.x, z: site.z, region: site.region, townName: site.townName, site: { type: site.type, x: site.x, z: site.z, region: site.region, townName: site.townName },
+      level: 0, inp: {}, out: {}, cycles: 0, every: {}, transported: 0, produced: 0, idle: 0, stake: 0, pv: 0, lastPv: 0 };
+    this.list.push(ind);
+    this.markFootprint(ind);
+    const v = this.game.world.view;
+    if (v && v.clearTreesMany) { const ts = []; for (let dz = -1; dz <= 2; dz++) for (let dx = -1; dx <= 2; dx++) { const xx = site.x + dx, zz = site.z + dz; if (xx >= 0 && zz >= 0 && xx < N && zz < N) ts.push(idx(xx, zz)); } v.clearTreesMany(ts); }
+    return ind;
   }
 
   // ---------- visuals ----------
@@ -244,16 +400,35 @@ export class IndustrySystem {
   }
 
   serialize() {
-    return this.list.map((i) => ({ id: i.id, level: i.level, inp: i.inp, out: i.out, transported: i.transported, produced: i.produced }));
+    return this.list.map((i) => {
+      const o = { id: i.id, level: i.level, inp: i.inp, out: i.out, transported: i.transported, produced: i.produced };
+      if (i.stake > 0) o.stake = i.stake;
+      if (i.pv || i.lastPv) { o.pv = Math.round(i.pv || 0); o.lastPv = i.lastPv || 0; }
+      if (i.fin) o.fin = i.fin;
+      if (i.site) o.site = i.site;
+      return o;
+    });
   }
   deserialize(arr) {
     if (!Array.isArray(arr)) return;
     for (const d of arr) {
-      const ind = this.byId(d.id);
+      let ind = this.byId(d.id);
+      // a site the company funded: build it again where it was
+      if (!ind && d && d.site && INDUSTRIES[d.site.type]) {
+        const s = d.site, x = s.x | 0, z = s.z | 0;
+        let free = x >= 0 && z >= 0 && x < N - 1 && z < N - 1;
+        for (let dz = 0; dz < 2 && free; dz++) for (let dx = 0; dx < 2 && free; dx++) if (this.game.occupancy.blocked[idx(x + dx, z + dz)]) free = false;
+        if (free) ind = this.addSite({ id: d.id, type: s.type, x, z, region: this.game.world.region[idx(x, z)], townName: typeof s.townName === 'string' ? s.townName.slice(0, 40) : 'Frontier' });
+      }
       if (!ind) continue;
       ind.level = Math.max(0, Math.min(4, d.level | 0));
       ind.inp = sanitizeStore(d.inp); ind.out = sanitizeStore(d.out);
       ind.transported = +d.transported || 0; ind.produced = +d.produced || 0;
+      const st = +d.stake;
+      ind.stake = isFinite(st) && st > 0 ? Math.min(1, Math.round(st * 4) / 4) : 0;
+      ind.pv = Math.max(0, +d.pv || 0); ind.lastPv = Math.max(0, +d.lastPv || 0);
+      const f = cleanFin(d.fin);
+      if (f) ind.fin = f;
     }
   }
 }

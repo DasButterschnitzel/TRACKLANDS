@@ -375,6 +375,11 @@ export class Game {
     E.on('contractExpired', () => ui.toast(ui.tr('toast_contract_expired'), 'info', 'contracts'));
     E.on('eventStart', (ev) => ui.banner(ui.tr('ev_' + ev.id), ui.tr('ev_' + ev.id + '_desc')));
     E.on('eventEnd', () => ui.banner(null));
+    E.on('industryFounded', (ind) => {
+      A.play('construct');
+      P.burst((ind.x + 1) * TILE, this.industries.baseHeight(ind) + 1, (ind.z + 1) * TILE);
+      this.overlays && this.overlays.invalidate && this.overlays.invalidate();
+    });
     E.on('industryLevel', (ind) => {
       A.play('industryUp');
       const x = (ind.x + 1) * TILE, z = (ind.z + 1) * TILE;

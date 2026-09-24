@@ -110,6 +110,8 @@ export function sanitize(d) {
     ind.inp = numMap(ind.inp); ind.out = numMap(ind.out);
     ind.level = Math.round(num(ind.level, 0, 0, 4));
     ind.transported = num(ind.transported, 0, 0); ind.produced = num(ind.produced, 0, 0);
+    if (ind.stake !== undefined) ind.stake = num(ind.stake, 0, 0, 1);
+    if (ind.site !== undefined && !(isObj(ind.site) && fin(ind.site.x) && fin(ind.site.z) && typeof ind.site.type === 'string')) delete ind.site;
   }
   d.towns = withId(d.towns);
   for (const tw of d.towns) {

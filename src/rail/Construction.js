@@ -2,7 +2,7 @@
 // decorations, coverage visualization and a short undo window.
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt } from '../util.js';
-import { COSTS, DECORATIONS, TRACK_TIERS } from '../config.js';
+import { COSTS, DECORATIONS, TRACK_TIERS, INDUSTRY_INVEST } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from './RailNetwork.js';
 
 const UNDO_WINDOW = 10;
@@ -107,6 +107,7 @@ export class Construction {
     if (this.tool === 'select' || this.tool === 'train' || tile < 0) { this.ghost.count = 0; this.cover.count = 0; this.flush(this.ghost); return; }
     let ok = true, info = '';
     if (this.tool === 'station') { this.previewStation(tile, tile); return; }
+    if (this.tool === 'industry') { this.previewFound(tile); return; }
     if (this.tool === 'station' || this.tool === 'depot') {
       const err = g.stations.placeError(tile, this.tool);
       ok = !err;
@@ -150,6 +151,33 @@ export class Construction {
     if (info) g.ui.cursorInfo(info, ok); else g.ui.hideCursorInfo();
   }
 
+  // fund a new industry: a 2x2 site with its corner at the tile
+  foundKind() {
+    const types = this.game.industries.foundTypes();
+    if (!types.includes(this.fundType)) this.fundType = types[0];
+    return this.fundType;
+  }
+  previewFound(tile) {
+    const g = this.game, type = this.foundKind();
+    const err = type ? g.industries.foundError(tile, type) : 'err_no_target';
+    const x = tile % N, z = Math.floor(tile / N);
+    let k = 0;
+    for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (inMap(x + dx, z + dz)) this.putQuad(this.ghost, k++, idx(x + dx, z + dz), err ? 0xd0503f : 0x3fc8b8);
+    this.ghost.count = k;
+    this.flush(this.ghost);
+    const near = g.industries.nearTown(x, z);
+    const warn = !err && near.town && near.gap < INDUSTRY_INVEST.townGap ? ' · ' + g.ui.tr('found_near_town', { name: near.town.name }) : '';
+    g.ui.cursorInfo(err ? g.ui.tr(err) : `${g.ui.tr('ind_' + type)} · ${fmt(g.industries.foundCost(type))} ●${warn}`, !err);
+  }
+  placeFound(tile) {
+    const g = this.game, type = this.foundKind();
+    const r = g.industries.found(tile, type);
+    if (r.error) { g.ui.error(r.error); return; }
+    g.ui.toast(g.ui.tr('found_done', { name: g.industries.displayName(r.ind) }), 'good', 'factory');
+    this.setTool('select');
+    g.select({ type: 'industry', id: r.ind.id });
+  }
+
   showCoverage(tile) {
     const g = this.game;
     const tiles = Array.isArray(tile) ? tile : [tile];
@@ -190,6 +218,7 @@ export class Construction {
       case 'depot': this.placeDepot(tile); break;
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
       case 'road': this.drag = { a: tile, b: tile }; this.previewRoad(); break;
+      case 'industry': this.placeFound(tile); break;
       case 'roadstop': { const r = g.roads.addStop(tile, this.stopKind || 'bus'); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('stop_built', { name: r.stop.name }), 'good', 'station'); g.select({ type: 'roadstop', id: r.stop.id }); } break; }
       default: break;
     }

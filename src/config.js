@@ -142,6 +142,23 @@ export const INDUSTRIES = {
   PORT: { primary: true, rate: 10, recipes: [{ in: {}, out: { GOODS: 1 } }, { in: {}, out: { OIL: 1 } }], accepts: ['WOOD', 'GRAIN', 'STEEL', 'FUEL', 'LUMBER'], storage: 80 },
 };
 export const INDUSTRY_TYPES = Object.keys(INDUSTRIES);
+// Investing in industries (src/world/Industries.js). base: what the site is
+// worth at level 0 (× difficulty cost). A stake is bought in quarters at the
+// site's value; a stake pays a monthly dividend of margin × the value of what
+// the site produced that month. Funding an expansion raises the level at once;
+// funding a new site builds one on free land. Majority owners (≥ 50 %) run
+// the site: +10 % production.
+export const INDUSTRY_INVEST = {
+  base: { FOREST: 1200, FARM: 1200, MINE: 1500, COAL_MINE: 1500, OIL_FIELD: 2000, SAWMILL: 1800, FOOD_PROC: 2000, STEEL_MILL: 2900, REFINERY: 2900, FACTORY: 2700, DIST_CENTER: 2400, PORT: 3600 },
+  step: 0.25,          // stakes are bought and sold in quarters
+  margin: 0.5,         // dividend: share × margin × monthly output value
+  sellBack: 0.8,       // a stake sells for 80 % of its value
+  expand: 2.2,         // expansion cost: base × expand × (level + 1)^1.4
+  found: 4.5,          // a new site: base × found
+  foundStake: 0.25,    // the founder keeps a quarter
+  ownerBonus: 0.1,     // production bonus when the company holds ≥ 50 %
+  townGap: 4,          // a new site needs this many tiles from a town's edge (else: permit)
+};
 
 // ---------- TOWNS ----------
 export const TOWN_STAGES = ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'];

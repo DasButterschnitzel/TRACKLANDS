@@ -19,11 +19,11 @@ export const YEARS_KEPT = 10;
 export const LOAN_STEP = 1000;
 
 // income / expense categories (i18n: fin_<id>)
-export const INCOME_CATS = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'sale', 'refund', 'other', 'loan_in', 'deposit_back'];
-export const EXPENSE_CATS = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit'];
+export const INCOME_CATS = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'sale', 'refund', 'other', 'loan_in', 'deposit_back', 'dividend', 'share_sale'];
+export const EXPENSE_CATS = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit', 'industry_fund', 'shares'];
 // categories that are not profit or loss (cash moves between company and bank,
 // or money coming back for something that was spent)
-export const NON_PL = new Set(['loan_in', 'loan_out', 'deposit', 'deposit_back']);
+export const NON_PL = new Set(['loan_in', 'loan_out', 'deposit', 'deposit_back', 'shares', 'share_sale']);
 
 // old Economy categories → ledger categories
 const MAP_IN = { delivery: 'freight', pax: 'pax', mail: 'mail', objective: 'objective', tutorial: 'objective', offline: 'other', grant: 'grant', sale: 'sale', refund: 'refund', contract: 'contract', daily: 'contract' };
@@ -92,6 +92,7 @@ export class Ledger {
     else if (ref.type === 'station') o = g.stations.byId(ref.id);
     else if (ref.type === 'road' && g.roads) o = g.roads.byId(ref.id);
     else if (ref.type === 'roadstop' && g.roads) o = g.roads.stopById(ref.id);
+    else if (ref.type === 'industry' && g.industries) o = g.industries.byId(ref.id);
     if (!o) return;
     const f = o.fin || (o.fin = { m: this.monthIndex(), rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0 });
     this.objRoll(f);
@@ -175,12 +176,13 @@ export class Ledger {
     let stations = 0;
     for (const s of g.stations.list) stations += E.costs.station() * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
     stations += g.stations.depots.length * E.costs.depot() * 0.5;
+    const shares = g.industries ? g.industries.stakeValue() : 0;
     const recent = this.months.slice(-6);
     const avgProfit = recent.length ? recent.reduce((a, p) => a + this.profitOf(p).profit, 0) / recent.length : 0;
     const earnings = Math.max(0, avgProfit) * 12;
     const cash = Math.round(E.coins), debt = this.loan;
-    const total = Math.max(0, cash - debt + vehicles + track + stations + earnings);
-    return { cash, debt, vehicles: Math.round(vehicles), track: Math.round(track), stations: Math.round(stations), earnings: Math.round(earnings), total: Math.round(total) };
+    const total = Math.max(0, cash - debt + vehicles + track + stations + shares + earnings);
+    return { cash, debt, vehicles: Math.round(vehicles), track: Math.round(track), stations: Math.round(stations), shares: Math.round(shares), earnings: Math.round(earnings), total: Math.round(total) };
   }
   // purchase price, depreciated 4 % per year of age, never below 25 %
   vehicleValue(t) {

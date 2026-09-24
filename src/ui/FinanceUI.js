@@ -31,13 +31,14 @@ export const FinanceUIMixin = {
   },
   pFinance() {
     const tab = this.finTab || 'overview';
-    const tabs = ['overview', 'ledger', 'history', 'log', 'value', 'stats'].map((k) => `<button class="${tab === k ? 'on' : ''}" data-act="finTab" data-arg="${k}" aria-pressed="${tab === k}">${this.tr('fin_tab_' + k)}</button>`).join('');
+    const tabs = ['overview', 'ledger', 'history', 'log', 'value', 'invest', 'stats'].map((k) => `<button class="${tab === k ? 'on' : ''}" data-act="finTab" data-arg="${k}" aria-pressed="${tab === k}">${this.tr('fin_tab_' + k)}</button>`).join('');
     let body = '';
     if (tab === 'overview') body = this.finOverview();
     else if (tab === 'ledger') body = this.finLedger();
     else if (tab === 'history') body = this.finHistory();
     else if (tab === 'log') body = this.finLog();
     else if (tab === 'value') body = this.finValue();
+    else if (tab === 'invest') body = this.finInvest();
     else body = this.pStats();
     return `<div class="seg fin-tabs" role="tablist">${tabs}</div>${body}`;
   },
@@ -179,6 +180,9 @@ export const FinanceUIMixin = {
     if (ref.type === 'station') { const s = g.stations.byId(ref.id); return s ? s.name : ''; }
     if (ref.type === 'depot') { const d = g.stations.depotById(ref.id); return d ? d.name : ''; }
     if (ref.type === 'tile') return this.tr('fin_site');
+    if (ref.type === 'industry') { const i = g.industries.byId(ref.id); return i ? g.industries.displayName(i) : ''; }
+    if (ref.type === 'road' && g.roads) { const v = g.roads.byId(ref.id); return v ? v.name : ''; }
+    if (ref.type === 'roadstop' && g.roads) { const s = g.roads.stopById(ref.id); return s ? s.name : ''; }
     return '';
   },
   // log notes: plain text, '~key:n' (i18n) or '~dlv|CARGO|n|from|to'
@@ -206,7 +210,7 @@ export const FinanceUIMixin = {
     const L = this.game.ledger, v = L.companyValue();
     const row = (k, n, neg) => `<tr><th scope="row">${this.tr('fin_v_' + k)}</th><td class="${neg ? 'neg' : ''}">${neg ? '−' : ''}${fmt(Math.abs(n))} ●</td></tr>`;
     return `<div class="fin-table-wrap"><table class="fin-table">
-      <tbody>${row('cash', v.cash)}${row('vehicles', v.vehicles)}${row('track', v.track)}${row('stations', v.stations)}${row('earnings', v.earnings)}${row('debt', v.debt, true)}
+      <tbody>${row('cash', v.cash)}${row('vehicles', v.vehicles)}${row('track', v.track)}${row('stations', v.stations)}${v.shares ? row('shares', v.shares) : ''}${row('earnings', v.earnings)}${row('debt', v.debt, true)}
       <tr class="sum big"><th scope="row">${this.tr('fin_value')}</th><td>${fmt(v.total)} ●</td></tr></tbody></table></div>
       <p class="muted small">${this.tr('fin_value_note')}</p>${this.finLoanBox()}`;
   },
@@ -270,6 +274,9 @@ export const FinanceUIMixin = {
         if (type === 'train' && G.trains.byId(+id)) { this.closePanel(); G.select({ type: 'train', id: +id }); }
         else if (type === 'station' && G.stations.byId(+id)) { this.closePanel(); G.select({ type: 'station', id: +id }); }
         else if (type === 'depot') { const d = G.stations.depotById(+id); if (d) { this.closePanel(); G.camera.focus(((d.tile % 64) + 0.5) * 2, (Math.floor(d.tile / 64) + 0.5) * 2); } }
+        else if (type === 'industry' && G.industries.byId(+id)) { this.closePanel(); G.select({ type: 'industry', id: +id }); }
+        else if (type === 'road' && G.roads.byId(+id)) { this.closePanel(); G.select({ type: 'roadveh', id: +id }); }
+        else if (type === 'roadstop' && G.roads.stopById(+id)) { this.closePanel(); G.select({ type: 'roadstop', id: +id }); }
         else if (type === 'tile') { this.closePanel(); G.camera.focus(((+id % 64) + 0.5) * 2, (Math.floor(+id / 64) + 0.5) * 2); }
       },
     };

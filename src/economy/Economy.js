@@ -62,7 +62,7 @@ export class Economy {
     if (!n) return;
     this.coins += n;
     if (this.game.ledger) this.game.ledger.book(n, cat, ref, note);
-    if (cat !== 'refund' && cat !== 'sale') this.game.stats.inc('coinsEarned', n);
+    if (cat !== 'refund' && cat !== 'sale' && cat !== 'share_sale') this.game.stats.inc('coinsEarned', n);
     if (xp) this.game.progression.addXP(n * REVENUE.xpPerCoin);
     this.game.events.emit('coins', n, cat);
   }

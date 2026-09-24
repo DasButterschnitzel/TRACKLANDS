@@ -241,6 +241,7 @@ export class Input {
       case '9': g.construction.setTool('waypoint'); break;
       case 'r': g.construction.setTool('road'); break;
       case 'b': g.construction.setTool('roadstop'); break;
+      case 'i': g.construction.setTool('industry'); break;
       case 'o': g.ui.toggleOverlayMenu(); break;
       case 't': g.ui.openPanel('trains'); break;
       case 'm': g.ui.openPanel('map'); break;

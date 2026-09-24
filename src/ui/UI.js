@@ -19,6 +19,7 @@ import { HandbookMixin } from './Handbook.js';
 import { LiveryEditorMixin } from './LiveryEditor.js';
 import { FinanceUIMixin } from './FinanceUI.js';
 import { RoadUIMixin } from './RoadUI.js';
+import { IndustryUIMixin } from './IndustryUI.js';
 import { roadModel } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
@@ -178,8 +179,8 @@ export class UI {
   renderToolbar() {
     const g = this.game; if (!g) return;
     const C = g.construction;
-    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
-    const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B' };
+    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['industry', 'factory'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
+    const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B', industry: 'I' };
     const btn = ([id, ic]) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${KEYS[id]})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
     const ov = g.overlays.mode;
     const undo = C.canUndo();
@@ -230,6 +231,10 @@ export class UI {
       sub = `<span class="sub-hint">${icon('road')} ${this.tr('hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
     } else if (C.tool === 'roadstop') {
       sub = ['bus', 'truck'].map((k) => `<button class="chip ${(C.stopKind || 'bus') === k ? 'on' : ''}" data-act="stopKind" data-arg="${k}"><b>${icon(k, 'mini')} ${this.tr('tool_roadstop_' + k)}</b><small>${fmt(g.roads.stopCost())}●</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_roadstop')}</span>`;
+    } else if (C.tool === 'industry') {
+      const types = g.industries.foundTypes();
+      if (!types.includes(C.fundType)) C.fundType = types[0];
+      sub = types.map((k) => `<button class="chip ${C.fundType === k ? 'on' : ''}" data-act="fundType" data-arg="${k}"><b>${this.tr('ind_' + k)}</b><small>${fmt(g.industries.foundCost(k))}●</small></button>`).join('') + `<span class="sub-hint">${icon('factory')} ${this.tr('hint_found')}</span>`;
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
@@ -1049,7 +1054,8 @@ export class UI {
       <h4>${this.tr('carried_by')}</h4>${outs.map((c) => this.cargoWagonsRow(c)).join('')}
       ${opp ? `<h4>${this.tr('opportunities')} ${this.helpBtn('freight')}</h4><div class="opps">${opp}</div><p class="muted small">${this.tr('opportunities_help')}</p>` : ''}
       <h4>${this.tr('growth')}</h4>${ind.level < 4 ? `${this.bar(g.industries.levelProgress(ind))}<small class="muted">${this.tr('next_ilvl', { name: this.tr('ilvl_' + (ind.level + 1)) })}</small>` : `<span class="good">${this.tr('max_level')}</span>`}
-      <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}`;
+      <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}
+      ${locked ? '' : this.investBlock(ind)}`;
   }
 
   iTown(t) {
@@ -1155,6 +1161,7 @@ export class UI {
       ...this.liveryActions(),
       ...this.financeActions(),
       ...this.roadActions(),
+      ...this.industryActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1245,4 +1252,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin);
