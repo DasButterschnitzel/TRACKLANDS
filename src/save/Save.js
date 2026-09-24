@@ -170,7 +170,7 @@ export function migrateV2toV3(d) {
   }
   if (Array.isArray(d.trains)) {
     for (const t of d.trains) {
-      if (!t) continue;
+      if (!t || typeof t !== 'object') continue;
       // consist is inferred with world context on load (TrainSystem.deserialize)
       if (!Array.isArray(t.consist)) t.legacyConsist = true;
       if (Array.isArray(t.route)) t.route = t.route.filter((r) => r && typeof r.st === 'number').map((r) => Object.assign({ act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null }, r));

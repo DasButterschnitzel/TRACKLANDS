@@ -21,6 +21,11 @@ export async function run() {
   check(a.economy.coins === raw.economy.coins, 'coins preserved (' + raw.economy.coins + ')');
   check(a.progression.level === raw.progression.level && a.progression.research.length === raw.progression.research.length, 'level and research preserved');
 
+  // regression (savefuzz case 290): train entries that are not objects in a v2 save
+  const junk = JSON.parse(JSON.stringify(raw)); junk.trains.splice(1, 0, 1e15, 'x', true);
+  let jr = null; try { jr = S.migrate(junk); } catch (e) { jr = e; }
+  check(jr && !(jr instanceof Error) && S.validate(jr) === null, 'v2 save with non-object train entries migrates' + (jr instanceof Error ? ': ' + jr.message : ''));
+
   // damage repair
   const d = JSON.parse(once);
   d.stations.stations.push(null); d.stations.stations[0].stock.PASSENGERS = true;

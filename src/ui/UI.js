@@ -165,7 +165,7 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements', 'handbook'];
+    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements', 'handbook', 'settings'];
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'trains' ? 'trains' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
@@ -367,7 +367,13 @@ export class UI {
       el.dataset.key = key;
       $('#labels').appendChild(el);
       this.labels.set(key, el);
+      // touch adjustment snaps taps near a label onto it; a finger that
+      // actually landed beside the label (on a train, say) taps the world
+      el.addEventListener('pointerdown', (e) => { el._down = e.pointerType === 'mouse' ? null : { x: e.clientX, y: e.clientY }; });
       el.addEventListener('click', () => {
+        const d = el._down, r = el.getBoundingClientRect();
+        el._down = null;
+        if (d && (d.x < r.left - 1 || d.x > r.right + 1 || d.y < r.top - 1 || d.y > r.bottom + 1)) { this.game.input.tap(d.x, d.y); return; }
         const [type, id] = key.split(':');
         if (type === 'region') this.game.select({ type: 'region', id: +id });
         else this.game.select({ type, id: +id });

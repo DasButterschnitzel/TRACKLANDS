@@ -74,7 +74,9 @@ const layoutCheck = () => {
     if (b.width === 0 || b.height === 0) return;
     if (b.left < -1 || b.top < -1 || b.right > W + 1 || b.bottom > H + 1) probs.push(`${label} outside viewport (${Math.round(b.left)},${Math.round(b.top)} ${Math.round(b.width)}x${Math.round(b.height)})`);
   };
-  inView('#topbar', 'top bar'); inView('#toolbar', 'toolbar'); inView('#panel.open', 'panel'); inView('#inspector:not([hidden])', 'inspector');
+  inView('#topbar', 'top bar');
+  for (const c of document.querySelectorAll('#topbar > *')) if (!c.classList.contains('spacer')) inView(`#topbar > ${c.id ? '#' + c.id : '.' + [...c.classList].join('.')}`, 'top bar ' + (c.id || c.className));
+  inView('#toolbar', 'toolbar'); inView('#panel.open', 'panel'); inView('#inspector:not([hidden])', 'inspector');
   // children of the toolbar must be reachable (inside viewport or in a scroll container)
   const tb = document.querySelector('#toolbar');
   if (tb) for (const btn of tb.querySelectorAll('button')) {
@@ -137,6 +139,18 @@ export async function run({ browser, base, quick, args = {} }) {
       await page.waitForTimeout(700);
       await page.screenshot({ path: path.join(dir, `${label}-${screen}.png`) });
       for (const p of await page.evaluate(layoutCheck)) probs.add(`${screen}: ${p}`);
+    }
+    // touch: a tap just beside a world label (touch adjustment snaps it onto
+    // the label) must reach the world at the finger position, not the label
+    if (ctxOpts.hasTouch) {
+      await page.evaluate(() => { const g = window.__tracklands.game; g.select(null); g.ui.closePanel && g.ui.closePanel(); g.speed = 0; window.__taps = []; const o = g.input.tap.bind(g.input); g.input.tap = (x, y) => { window.__taps.push([x, y]); return o(x, y); }; });
+      await page.waitForTimeout(300);
+      const at = await page.evaluate(() => { for (const el of document.querySelectorAll('#labels .wlabel')) { const r = el.getBoundingClientRect(); if (!r.width || r.top < 120 || r.bottom > innerHeight - 160) continue; for (const dy of [6, 9, 12]) { const x = r.left + r.width / 2, y = r.bottom + dy, e = document.elementFromPoint(x, y); if (e && e.id === 'view') return [x, y]; } } return null; });
+      if (at) {
+        await page.touchscreen.tap(at[0], at[1]); await page.waitForTimeout(400);
+        const taps = await page.evaluate(() => window.__taps);
+        if (!taps.some(([x, y]) => Math.hypot(x - at[0], y - at[1]) < 3)) probs.add(`touch: tap beside a label at ${at.map(Math.round)} did not reach the world`);
+      }
     }
     const miss = await page.evaluate(async () => { const m = await import('./src/i18n.js'); return [...m.missing]; });
     const bad = probs.size || miss.length || errors.length;

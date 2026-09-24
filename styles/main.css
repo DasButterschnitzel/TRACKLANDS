@@ -605,3 +605,15 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 /* update ready */
 #update-ready { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + var(--safe-t)); z-index: 60; display: flex; align-items: center; gap: 10px; background: var(--paper, #f6f1e7); color: var(--ink); padding: 8px 10px 8px 14px; border-radius: 16px; box-shadow: var(--shadow); max-width: calc(100vw - 24px); }
 #update-ready span { font-weight: 600; }
+
+/* narrow phones: the top bar keeps coins, level and speed; settings moves into
+   the menu drawer, research points into the research panel */
+.rail-btn[data-arg=settings] { display: none; }
+@media (max-width: 430px) {
+  #topbar .icon-btn[data-arg=settings] { display: none; }
+  #menu-rail .rail-btn[data-arg=settings] { display: grid; }
+  #menu-rail.open .rail-btn[data-arg=settings] { display: flex; }
+  #topbar { gap: 4px; }
+  .speeds .spd { min-width: 28px; }
+}
+@media (max-width: 360px) { #topbar .res.rp { display: none; } }
