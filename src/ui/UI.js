@@ -23,6 +23,7 @@ import { IndustryUIMixin } from './IndustryUI.js';
 import { roadModel } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
+import { WEATHER } from '../world/Environment.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -150,6 +151,7 @@ export class UI {
       </button>
       <button class="res coins" data-act="panel" data-arg="finance" data-tip="${this.tr('menu_finance')}">${icon('coin')}<span class="cv"><span id="coins-v">${fmt(g.economy.coins)}</span><small id="date-v">${this.monthName(g.ledger.monthIndex())}</small></span></button>
       <button class="res rp" data-act="panel" data-arg="research" data-tip="${this.tr('research_points')}">${icon('rp')}<span id="rp-v">${P.rp}</span></button>
+      <button class="res wx" id="wx" data-act="weatherInfo" aria-label="${this.tr('weather')}"></button>
       <div class="spacer"></div>
       <div class="speeds" role="group" aria-label="${this.tr('game_speed')}">${sp}</div>
       <span id="save-dot" class="save-dot" data-tip="${this.tr('autosave')}"></span>
@@ -166,6 +168,11 @@ export class UI {
     const cv = $('#coins-v'); if (cv) cv.textContent = fmt(this._coinsShown);
     const dv = $('#date-v'); if (dv) { const m = g.ledger.monthIndex(); if (dv._m !== m) { dv._m = m; dv.textContent = this.monthName(m); } }
     const rv = $('#rp-v'); if (rv) rv.textContent = P.rp;
+    const wx = $('#wx');
+    if (wx) {
+      const E = g.env, st = g.settings.weather ? E.weather : 'clear', key = st + E.season() + E.forecast + g.settings.weather;
+      if (wx._k !== key) { wx._k = key; wx.innerHTML = `${icon('w_' + st)}<small>${this.tr('season_' + E.season())}</small>`; wx.dataset.tip = this.weatherText(); wx.setAttribute('aria-label', this.weatherText()); }
+    }
     const ln = $('#lvl-num'); if (ln) ln.textContent = P.level;
     const xf = $('#xp-fill'); if (xf) xf.style.width = Math.min(100, (P.xp / P.xpNeeded()) * 100) + '%';
     const lvlBtn = $('.lvl'); if (lvlBtn) lvlBtn.dataset.tip = `${this.tr('company_level')} ${P.level} · ${fmt(P.xp)}/${fmt(P.xpNeeded())} XP`;
@@ -383,7 +390,19 @@ export class UI {
     el.style.transform = `translate(${Math.max(8, px)}px, ${Math.max(8, py)}px)`;
   }
 
-  weatherChanged() {}
+  weatherText() {
+    const g = this.game, E = g.env;
+    if (!g.settings.weather) return `${this.tr('season_' + E.season())} · ${this.tr('weather_off')}`;
+    const W = WEATHER[E.weather] || WEATHER.clear;
+    const fx = [];
+    if (W.speed < 1) fx.push(this.tr('wx_speed', { n: Math.round((1 - W.speed) * 100) }));
+    if (W.accel < 1) fx.push(this.tr('wx_accel', { n: Math.round((1 - W.accel) * 100) }));
+    const farm = g.industries.seasonMul ? g.industries.seasonMul('FARM') : 1;
+    return `${this.tr('wx_' + E.weather)} · ${this.tr('season_' + E.season())}. ${fx.length ? fx.join(', ') : this.tr('wx_no_effect')}. ${farm !== 1 ? this.tr('wx_farms', { n: (farm > 1 ? '+' : '−') + Math.round(Math.abs(farm - 1) * 100) }) + ' ' : ''}${this.tr('wx_next', { w: this.tr('wx_' + E.forecast) })}`;
+  }
+  weatherChanged(w) {
+    if (w === 'storm' || w === 'snow' || w === 'fog') this.toast(this.weatherText(), 'info', 'w_' + w);
+  }
 
   // ---------- world labels ----------
   label(key, cls) {
@@ -1157,6 +1176,7 @@ export class UI {
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
+      weatherInfo: () => this.toast(this.weatherText(), 'info', 'w_' + (g().settings.weather ? g().env.weather : 'clear')),
       ...this.railActions(),
       ...this.liveryActions(),
       ...this.financeActions(),

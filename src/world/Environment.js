@@ -1,4 +1,11 @@
-// Lighting, sky, day/night cycle, weather (rain/snow/cloud shadows) and birds.
+// Lighting, sky, day/night cycle, seasons, weather and birds.
+//
+// Seasons follow the company calendar (Ledger months). The weather is a
+// seeded state machine that runs in game time (tickWeather, from Game.tick):
+// each state lasts a while, then the next one is drawn by the season's
+// weights; the one after it is already known (forecast). Every state has a
+// visible effect on vehicles (WEATHER.speed / accel). Snow settles over
+// winter (snowCover) and melts in spring; the terrain and trees show it.
 import * as THREE from 'three';
 import { N, TILE, clamp, lerp, smoothstep, RNG } from '../util.js';
 import { DAY_LENGTH, REGIONS } from '../config.js';
@@ -18,6 +25,26 @@ const SKY = [
 ];
 const _a = new THREE.Color(), _b = new THREE.Color();
 
+export const SEASON_OF_MONTH = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+// dur: game seconds [min, max]; speed / accel: multipliers for trains and road vehicles
+export const WEATHER = {
+  clear: { dur: [40, 110], speed: 1, accel: 1 },
+  cloudy: { dur: [30, 80], speed: 1, accel: 1 },
+  rain: { dur: [25, 60], speed: 0.95, accel: 0.97 },
+  storm: { dur: [15, 35], speed: 0.9, accel: 0.9 },
+  fog: { dur: [20, 45], speed: 0.93, accel: 1 },
+  snow: { dur: [40, 90], speed: 0.92, accel: 0.85 },
+};
+export const WEATHER_IDS = Object.keys(WEATHER);
+const SEASON_W = {
+  winter: { clear: 3, cloudy: 3, rain: 1, storm: 0, fog: 2, snow: 4 },
+  spring: { clear: 4, cloudy: 3, rain: 3, storm: 1, fog: 1, snow: 0 },
+  summer: { clear: 6, cloudy: 2, rain: 1.5, storm: 1.5, fog: 0, snow: 0 },
+  autumn: { clear: 3, cloudy: 3, rain: 3, storm: 1, fog: 2, snow: 0.3 },
+};
+// how cold a biome is (snow settles in proportion)
+export const BIOME_COLD = { snow: 1, alpine: 1, pine: 0.85, green: 0.7, industrial: 0.6, plains: 0.6, coast: 0.45, desert: 0 };
+
 export class Environment {
   constructor(game) {
     this.game = game;
@@ -27,7 +54,11 @@ export class Environment {
     this.weather = 'clear';
     this.weatherTarget = 'clear';
     this.rain = 0; this.snow = 0; this.cloudiness = 0.2;
-    this.nextWeather = 200;
+    this.nextWeather = 60;
+    this.forecast = 'cloudy';
+    this.snowCover = 0;
+    this.fog = 0;
+    this.flash = 0; this.flashT = 4;
     this.effects = { speed: 1, accel: 1 };
 
     this.hemi = new THREE.HemisphereLight(LIGHT.hemiSky, LIGHT.hemiGround, LIGHT.hemi);
@@ -119,30 +150,31 @@ export class Environment {
     const g = this.game, S = g.settings;
     if (S.dayNight) this.timeOfDay = (this.timeOfDay + gameDt / DAY_LENGTH) % 1;
     else this.timeOfDay = lerp(this.timeOfDay, 0.36, Math.min(1, dt * 0.5));
-    // weather state machine
-    if (S.weather) {
-      this.nextWeather -= gameDt;
-      if (this.nextWeather <= 0) {
-        // seeded: weather changes train speeds, keep runs reproducible
-        if (!this._wrng) this._wrng = new RNG(String((g.world && g.world.seed) ?? 1) + ':weather');
-        const r = this._wrng.next();
-        this.weatherTarget = r < 0.45 ? 'clear' : r < 0.75 ? 'cloudy' : 'rain';
-        this.nextWeather = 180 + this._wrng.next() * 240;
-        if (this.weatherTarget !== this.weather) g.events.emit('weather', this.weatherTarget);
-        this.weather = this.weatherTarget;
-      }
-    } else this.weatherTarget = 'clear';
+    // visuals follow the state (the state itself advances in tickWeather)
+    const st = S.weather ? this.weather : 'clear';
     const cam = g.camera;
     const tr = cam.target;
     const reg = g.world.region[Math.max(0, Math.min(N * N - 1, Math.floor(tr.z / TILE) * N + Math.floor(tr.x / TILE)))];
-    const cold = REGIONS[reg] && (REGIONS[reg].biome === 'snow' || REGIONS[reg].biome === 'alpine');
-    const wantRain = this.weatherTarget === 'rain' && !cold ? 1 : 0;
-    const wantSnow = this.weatherTarget === 'rain' && cold ? 1 : 0;
-    const wantCloud = this.weatherTarget === 'clear' ? 0.2 : this.weatherTarget === 'cloudy' ? 0.7 : 0.9;
+    const coldHere = REGIONS[reg] ? BIOME_COLD[REGIONS[reg].biome] ?? 0.6 : 0.6;
+    const wet = st === 'rain' || st === 'storm';
+    const snowy = st === 'snow' || (wet && coldHere >= 0.95) || (wet && this.season() === 'winter' && coldHere >= 0.8);
+    const wantSnow = snowy && coldHere > 0.3 ? 1 : 0;
+    const wantRain = wantSnow ? 0 : wet ? (st === 'storm' ? 1 : 0.7) : st === 'snow' ? 0.3 : 0;
+    const wantCloud = st === 'clear' ? 0.2 : st === 'cloudy' ? 0.65 : st === 'fog' ? 0.6 : st === 'storm' ? 1 : 0.85;
+    const wantFog = st === 'fog' ? 1 : st === 'snow' ? 0.35 : st === 'storm' ? 0.25 : 0;
     const k = Math.min(1, dt * 0.25);
     this.rain = lerp(this.rain, wantRain, k); this.snow = lerp(this.snow, wantSnow, k); this.cloudiness = lerp(this.cloudiness, wantCloud, k);
-    this.effects.speed = 1 - 0.05 * this.rain;
-    this.effects.accel = 1 - 0.1 * this.snow;
+    this.fog = lerp(this.fog, wantFog, k);
+    const fog = this.game.scene.fog;
+    fog.near = lerp(400, 190, this.fog); fog.far = lerp(900, 430, this.fog);
+    // lightning in a storm (visual only)
+    this.flash = Math.max(0, this.flash - dt * 3);
+    if (st === 'storm' && S.weather) {
+      this.flashT -= dt;
+      if (this.flashT <= 0) { this.flashT = 3 + Math.random() * 7; this.flash = 1; g.events.emit('lightning'); }
+    }
+    const U = g.world.view && g.world.view.uniforms;
+    if (U && U.uSnow) U.uSnow.value = S.weather ? this.snowCover : 0;
 
     this._skyT -= dt;
     if (this._skyT <= 0) { this._skyT = 0.25; this.updateSky(false); }
@@ -210,7 +242,7 @@ export class Environment {
     const cl = this.cloudiness;
     this.sun.color.set(a.sun).lerp(_b.set(b.sun), f);
     this.sun.intensity = lerp(a.si, b.si, f) * (1 - cl * 0.35);
-    this.hemi.intensity = lerp(a.hi, b.hi, f) * (1 - cl * 0.1);
+    this.hemi.intensity = lerp(a.hi, b.hi, f) * (1 - cl * 0.1) + this.flash * 1.6;
     this.hemi.color.set(0xdfefff).lerp(_b.set(0x8aa0d0), n * 0.6);
     // sun position arcs over the diorama; at night it is moonlight from the opposite side
     const ang = (t - 0.25) * Math.PI * 2;
@@ -268,11 +300,56 @@ export class Environment {
     }
   }
 
-  serialize() { return { timeOfDay: this.timeOfDay, weather: this.weather, nextWeather: this.nextWeather }; }
+  // ---------- seasons and weather (game time) ----------
+  season() { const L = this.game.ledger; return SEASON_OF_MONTH[L ? L.monthOfYear() : 5]; }
+  rng() { if (!this._wrng) this._wrng = new RNG(String((this.game.world && this.game.world.seed) ?? 1) + ':weather'); return this._wrng; }
+  // draw the next state by the season's weights (never the same as now)
+  draw(after, season) {
+    const w = SEASON_W[season], r = this.rng();
+    let sum = 0;
+    for (const id of WEATHER_IDS) if (id !== after) sum += w[id];
+    let x = r.next() * sum;
+    for (const id of WEATHER_IDS) { if (id === after) continue; x -= w[id]; if (x <= 0) return id; }
+    return 'clear';
+  }
+  tickWeather(dt) {
+    const g = this.game, S = g.settings;
+    if (!S.weather) { this.effects.speed = 1; this.effects.accel = 1; return; }
+    this.nextWeather -= dt;
+    if (this.nextWeather <= 0) {
+      const season = this.season();
+      // a forecast that no longer fits the season (snow in summer) is redrawn
+      let next = this.forecast;
+      if (!WEATHER[next] || !SEASON_W[season][next] || next === this.weather) next = this.draw(this.weather, season);
+      const prev = this.weather;
+      this.weather = this.weatherTarget = next;
+      const d = WEATHER[next].dur;
+      this.nextWeather = d[0] + this.rng().next() * (d[1] - d[0]);
+      this.forecast = this.draw(next, season);
+      if (prev !== next) g.events.emit('weather', next);
+    }
+    // vehicles ease into the conditions
+    const W = WEATHER[this.weather] || WEATHER.clear;
+    const k = Math.min(1, dt * 0.1);
+    this.effects.speed += (W.speed - this.effects.speed) * k;
+    this.effects.accel += (W.accel - this.effects.accel) * k;
+    // snow settles while it snows in winter and melts otherwise
+    const season = this.season();
+    if (this.weather === 'snow') this.snowCover = Math.min(1, this.snowCover + dt / 60);
+    else if (season !== 'winter') this.snowCover = Math.max(0, this.snowCover - dt / (this.weather === 'rain' ? 30 : 60));
+    else if (this.weather === 'rain' || this.weather === 'storm') this.snowCover = Math.max(0, this.snowCover - dt / 120);
+  }
+
+  serialize() { return { timeOfDay: this.timeOfDay, weather: this.weather, nextWeather: this.nextWeather, forecast: this.forecast, snowCover: Math.round(this.snowCover * 1000) / 1000 }; }
   deserialize(d) {
     if (!d) return;
     this.timeOfDay = typeof d.timeOfDay === 'number' ? d.timeOfDay % 1 : 0.32;
-    this.weather = this.weatherTarget = ['clear', 'cloudy', 'rain'].includes(d.weather) ? d.weather : 'clear';
-    this.nextWeather = +d.nextWeather || 200;
+    this.weather = this.weatherTarget = WEATHER[d.weather] ? d.weather : 'clear';
+    this.nextWeather = Math.min(120, Math.max(1, +d.nextWeather || 60));
+    this.forecast = WEATHER[d.forecast] ? d.forecast : 'cloudy';
+    const sc = +d.snowCover;
+    this.snowCover = isFinite(sc) ? Math.min(1, Math.max(0, sc)) : 0;
+    const W = WEATHER[this.weather];
+    this.effects.speed = W.speed; this.effects.accel = W.accel;
   }
 }

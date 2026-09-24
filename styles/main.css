@@ -733,3 +733,9 @@ details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
 .stake .pips { display: inline-flex; gap: 3px; }
 .stake .pips i { width: 14px; height: 14px; border-radius: 3px; border: 2px solid var(--teal2); background: transparent; }
 .stake .pips i.on { background: var(--teal2); }
+
+/* weather and season in the top bar */
+.res.wx { min-width: 0; padding: 0 12px 0 10px; cursor: pointer; }
+.res.wx small { font-size: .68em; font-weight: 500; opacity: .8; }
+@media (max-width: 600px) { .res.wx small { display: none; } .res.wx { padding: 0 9px; } }
+@media (max-width: 360px) { #topbar .res.wx { display: none; } }

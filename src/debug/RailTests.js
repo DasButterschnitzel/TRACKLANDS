@@ -601,6 +601,9 @@ export class RailTests {
     for (const id of ['station_expansion', 'platform_extension', 'block_signals', 'path_signals']) g.progression.research.add(id);
     g.progression.level = Math.max(g.progression.level, 20);
     g.progression.recomputeFx();
+    // railway scenarios run in fixed conditions (weather is tested on its own)
+    g.settings.weather = false;
+    if (g.env) { g.env.effects.speed = 1; g.env.effects.accel = 1; }
     if (only === 'loop') { this.check('loop', () => this.singleTrack(true)); return this.log; }
     if (only === 'noloop') { this.check('single track, no loop (run locks)', () => this.singleTrack(false)); return this.log; }
     if (only === 'bad') { this.check('bad', () => this.singleTrack(false, 1)); return this.log; }

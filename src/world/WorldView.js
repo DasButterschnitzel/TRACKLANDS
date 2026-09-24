@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { N, TILE, WATER_LEVEL, idx, tx, tz, inMap, RNG, hashStr, lerp, clamp } from '../util.js';
 import { BIOMES, REGIONS } from '../config.js';
+import { BIOME_COLD } from './Environment.js';
 import { ModelBuilder } from '../core/ModelBuilder.js';
 
 const _c = new THREE.Color(), _c2 = new THREE.Color();
@@ -13,7 +14,7 @@ export class WorldView {
     this.W = W;
     this.group = new THREE.Group();
     game.scene.add(this.group);
-    this.uniforms = { uTime: { value: 0 } };
+    this.uniforms = { uTime: { value: 0 }, uSnow: { value: 0 } };
     this.buildTerrain();
     this.buildWater();
     this.buildTable();
@@ -59,19 +60,26 @@ export class WorldView {
     const W = this.W, H = W.heights, S = N + 1;
     const pos = new Float32Array(N * N * 6 * 3);
     const col = new Float32Array(N * N * 6 * 3);
-    let o = 0;
+    const cold = new Float32Array(N * N * 6);
+    let o = 0, oc = 0;
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const a = [x * TILE, H[z * S + x], z * TILE], b = [(x + 1) * TILE, H[z * S + x + 1], z * TILE];
       const c = [x * TILE, H[(z + 1) * S + x], (z + 1) * TILE], d = [(x + 1) * TILE, H[(z + 1) * S + x + 1], (z + 1) * TILE];
       for (const v of [a, c, b, b, c, d]) { pos[o++] = v[0]; pos[o++] = v[1]; pos[o++] = v[2]; }
+      // how cold the tile is: snow settles in proportion (none on water)
+      const mix = W.biomeMix[idx(x, z)];
+      const cv = W.type[idx(x, z)] === 1 ? 0 : (BIOME_COLD[mix.a] ?? 0.6) * mix.w + (BIOME_COLD[mix.b] ?? 0.6) * (1 - mix.w);
+      for (let k = 0; k < 6; k++) cold[oc++] = cv;
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aCold', new THREE.BufferAttribute(cold, 1));
     g.computeVertexNormals();
     this.terrainGeo = g;
     this.recolorTerrain();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    this.snowShader(mat, true);
     this.terrain = new THREE.Mesh(g, mat);
     this.terrain.receiveShadow = true;
     this.terrain.name = 'terrain';
@@ -151,6 +159,26 @@ export class WorldView {
     this.group.add(this.table);
   }
 
+  // snow cover (Environment.snowCover): upward faces turn white; on the
+  // terrain in proportion to how cold the tile is
+  snowShader(mat, terrain) {
+    const U = this.uniforms;
+    const prev = mat.onBeforeCompile;
+    mat.onBeforeCompile = (sh, r) => {
+      if (prev) prev(sh, r);
+      sh.uniforms.uSnow = U.uSnow;
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>
+varying float vSnow;
+${terrain ? 'attribute float aCold;' : ''}`)
+        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+vSnow = smoothstep(0.55, 0.9, normalize(mat3(modelMatrix) * objectNormal).y)${terrain ? ' * aCold' : ' * 0.85'};`);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSnow;\nvarying float vSnow;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 0.98), clamp(uSnow * vSnow * 1.15, 0.0, 0.92));');
+    };
+    mat.customProgramCacheKey = () => 'snow' + (terrain ? 't' : 'o');
+    return mat;
+  }
+
   swayMaterial() {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const U = this.uniforms;
@@ -165,7 +193,7 @@ transformed.x += sw * max(transformed.y, 0.0);
 transformed.z += sw * 0.6 * max(transformed.y, 0.0);
 #endif`);
     };
-    return mat;
+    return this.snowShader(mat, false);
   }
 
   buildTrees() {

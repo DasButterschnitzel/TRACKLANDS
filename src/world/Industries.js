@@ -7,6 +7,8 @@ import { cleanFin } from '../economy/Ledger.js';
 import { ModelBuilder, meshFrom, shade, MATS } from '../core/ModelBuilder.js';
 import { t as tr } from '../i18n.js';
 
+const SEASON_FARM = { winter: 0.7, spring: 1, summer: 1.1, autumn: 1.2 };
+
 export class IndustrySystem {
   constructor(game) {
     this.game = game;
@@ -87,6 +89,12 @@ export class IndustrySystem {
     }
     return out;
   }
+  // farms follow the seasons (the year averages to 1)
+  seasonMul(type) {
+    const g = this.game;
+    if (type !== 'FARM' || !g.env || !g.settings.weather) return 1;
+    return SEASON_FARM[g.env.season()] || 1;
+  }
   transportShare(ind) { return ind.produced > 0 ? Math.min(1, ind.transported / ind.produced) : 0; }
 
   rate(ind) {
@@ -96,6 +104,7 @@ export class IndustrySystem {
     if (ind.type === 'FARM') r *= 1 + (ev.farmProd || 0);
     if (ind.type === 'MINE' || ind.type === 'COAL_MINE') r *= 1 + (ev.mineProd || 0);
     if (ind.stake >= 0.5) r *= 1 + INDUSTRY_INVEST.ownerBonus;
+    r *= this.seasonMul(ind.type);
     return r * g.difficulty.growthMul ** 0;
   }
 
@@ -368,8 +377,12 @@ export class IndustrySystem {
 
   updateVisuals(dt, time) {
     const g = this.game;
-    const season = (Math.sin(time * 0.02) + 1) / 2;
-    this.cropMat.color.setHSL(0.25 - season * 0.13, 0.55, 0.42 + season * 0.08);
+    // crops: green in spring, ripe gold in late summer and autumn, bare in winter
+    const sn = g.env ? g.env.season() : 'summer';
+    const tgt = { spring: [0.27, 0.55, 0.42], summer: [0.17, 0.6, 0.48], autumn: [0.11, 0.62, 0.5], winter: [0.08, 0.2, 0.45] }[sn];
+    const hsl = this._cropHsl || (this._cropHsl = tgt.slice());
+    for (let k = 0; k < 3; k++) hsl[k] += (tgt[k] - hsl[k]) * Math.min(1, dt * 0.5);
+    this.cropMat.color.setHSL(hsl[0], hsl[1], hsl[2]);
     const v = new THREE.Vector3();
     for (const ind of this.list) {
       if (!ind.obj) continue;

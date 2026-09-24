@@ -33,8 +33,9 @@ import * as crossings from './suites/crossings.mjs';
 import * as roads from './suites/roads.mjs';
 import * as audio from './suites/audio.mjs';
 import * as industry from './suites/industry.mjs';
+import * as weather from './suites/weather.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];
