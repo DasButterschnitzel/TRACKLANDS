@@ -143,13 +143,13 @@ export async function run({ browser, base, quick, args = {} }) {
     // touch: a tap just beside a world label (touch adjustment snaps it onto
     // the label) must reach the world at the finger position, not the label
     if (ctxOpts.hasTouch) {
-      await page.evaluate(() => { const g = window.__tracklands.game; g.select(null); g.ui.closePanel && g.ui.closePanel(); g.speed = 0; window.__taps = []; const o = g.input.tap.bind(g.input); g.input.tap = (x, y) => { window.__taps.push([x, y]); return o(x, y); }; });
+      await page.evaluate(() => { const g = window.__tracklands.game; g.select(null); g.ui.closePanel && g.ui.closePanel(); g.speed = 0; g.ui.toast = () => {}; document.querySelector('#toasts').innerHTML = ''; window.__taps = []; const o = g.input.tap.bind(g.input); g.input.tap = (x, y) => { window.__taps.push([x, y]); return o(x, y); }; });
       await page.waitForTimeout(300);
-      const at = await page.evaluate(() => { for (const el of document.querySelectorAll('#labels .wlabel')) { const r = el.getBoundingClientRect(); if (!r.width || r.top < 120 || r.bottom > innerHeight - 160) continue; for (const dy of [6, 9, 12]) { const x = r.left + r.width / 2, y = r.bottom + dy, e = document.elementFromPoint(x, y); if (e && e.id === 'view') return [x, y]; } } return null; });
+      const at = await page.evaluate(() => { for (const el of document.querySelectorAll('#labels .wlabel')) { const r = el.getBoundingClientRect(); if (!r.width || r.top < 120 || r.bottom > innerHeight - 160) continue; for (const dy of [6, 9, 12]) { const x = r.left + r.width / 2, y = r.bottom + dy, e = document.elementFromPoint(x, y); if (e && e.id === 'view') return [x, y, el.dataset.key]; } } return null; });
       if (at) {
         await page.touchscreen.tap(at[0], at[1]); await page.waitForTimeout(400);
         const taps = await page.evaluate(() => window.__taps);
-        if (!taps.some(([x, y]) => Math.hypot(x - at[0], y - at[1]) < 3)) probs.add(`touch: tap beside a label at ${at.map(Math.round)} did not reach the world`);
+        if (!taps.some(([x, y]) => Math.hypot(x - at[0], y - at[1]) < 3)) probs.add(`touch: tap beside a label at ${at.slice(0, 2).map(Math.round)} (${at[2]}) did not reach the world; under the finger now: ${await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? e.id || e.className : '-'; }, at)}`);
       }
     }
     const miss = await page.evaluate(async () => { const m = await import('./src/i18n.js'); return [...m.missing]; });

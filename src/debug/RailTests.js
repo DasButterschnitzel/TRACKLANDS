@@ -509,6 +509,57 @@ export class RailTests {
     };
   }
 
+  // Vehicle wear: a worn train services itself at the depot between stops
+  // (condition restored, servicing booked, replacement rule applied); in
+  // tycoon mode a worn train breaks down, stops on the line, is repaired
+  // and carries on; nothing overlaps or jumps.
+  maintenance() {
+    const a = this.findArea(18, 6);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 3, x0 = a.x0 + 1, g = this.g, M = g.maint;
+    this.line(x0, z, x0 + 13, z);
+    this.finish();
+    const A = this.station(x0 + 2, z), B = this.station(x0 + 12, z);
+    const D = this.depot(x0 + 14, z);
+    g.net.connect(idx(x0 + 13, z), E);
+    this.finish();
+    const mode0 = M.mode;
+    M.mode = 'relaxed';
+    const t = this.train(['L:pioneer', 'W:coach', 'W:coach'], D, [A, B]);
+    const lvl0 = g.progression.level; g.progression.level = Math.max(lvl0, 3);
+    const rule = M.addRule('pioneer', 'ironhill', 0, 0.99);
+    const r1 = this.run(20, 1 / 30, [t]);
+    t.cond = 0.5;
+    const n0 = g.ledger.log.filter((e) => e.cat === 'maint_vehicles').length;
+    let serviced = false, sec = 0;
+    const on = () => { serviced = true; };
+    g.events.on('trainServiced', on);
+    while (!serviced && sec < 180) { const r = this.run(1, 1 / 30, [t]); r1.overlaps += r.overlaps; r1.jumps = (r1.jumps || 0) + (r.jumps || 0); sec++; }
+    g.events.off && g.events.off('trainServiced', on);
+    const booked = g.ledger.log.filter((e) => e.cat === 'maint_vehicles').length - n0;
+    const restored = M.cond(t) > 0.8;
+    const replaced = t.veh[0].id === 'ironhill' || t.veh.some((v) => v.id === 'ironhill');
+    M.removeRule(rule ? rule.id : -1);
+    // tycoon: breakdowns on the line
+    M.mode = 'tycoon';
+    const trips0 = t.trips;
+    let broke = false, stopped = false, sec2 = 0;
+    const r2 = { overlaps: 0 };
+    while (sec2 < 240 && !(broke && t.broken === 0 && t.trips > trips0)) {
+      if (t.state === 'run' && t.v > 0.5 && !broke) t.cond = 0.2;
+      const r = this.run(0.5, 1 / 30, [t]); r2.overlaps += r.overlaps; r2.jumps = (r2.jumps || 0) + (r.jumps || 0);
+      if (t.broken > 0) { broke = true; if (t.v < 0.05) stopped = true; t.autoService = false; }
+      sec2 += 0.5;
+    }
+    const moved = t.trips > trips0;
+    M.mode = mode0; g.progression.level = lvl0;
+    this.cleanup([t]);
+    return {
+      ok: serviced && booked === 1 && restored && replaced && broke && stopped && moved && !r1.overlaps && !r2.overlaps && !r1.jumps && !r2.jumps,
+      detail: `serviced ${serviced} after ${sec}s · booked ${booked} · condition ${Math.round(M.cond(t) * 100)}% · replaced ${replaced} · breakdown ${broke} stopped ${stopped} · trips after ${t.trips - trips0} · overlaps ${r1.overlaps + r2.overlaps} jumps ${(r1.jumps || 0) + (r2.jumps || 0)}`,
+    };
+  }
+
   // Signal row tool: dragging along a line places a signal every N tiles in
   // the drag direction plus one in front of a junction; undo removes them all
   // and refunds; the block overlay splits the line into sections at them.
@@ -560,7 +611,8 @@ export class RailTests {
     if (only === 'overtake') { this.check('overtaking at a station', () => this.overtaking()); return this.log; }
     if (only === 'depot') { this.check('send to depot', () => this.depotOrders()); return this.log; }
     if (only === 'works') { this.check('pending construction on occupied track', () => this.pendingWorks()); return this.log; }
-    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); this.check('send to depot', () => this.depotOrders()); this.check('pending construction on occupied track', () => this.pendingWorks()); return this.log; }
+    if (only === 'maint') { this.check('servicing, breakdowns, replacement', () => this.maintenance()); return this.log; }
+    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); this.check('send to depot', () => this.depotOrders()); this.check('pending construction on occupied track', () => this.pendingWorks()); this.check('servicing, breakdowns, replacement', () => this.maintenance()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));

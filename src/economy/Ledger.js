@@ -20,7 +20,7 @@ export const LOAN_STEP = 1000;
 
 // income / expense categories (i18n: fin_<id>)
 export const INCOME_CATS = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'sale', 'refund', 'other', 'loan_in', 'deposit_back'];
-export const EXPENSE_CATS = ['op_trains', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit'];
+export const EXPENSE_CATS = ['op_trains', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit'];
 // categories that are not profit or loss (cash moves between company and bank,
 // or money coming back for something that was spent)
 export const NON_PL = new Set(['loan_in', 'loan_out', 'deposit', 'deposit_back']);

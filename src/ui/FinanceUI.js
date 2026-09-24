@@ -7,6 +7,8 @@
 //  stats     – the long-running company statistics
 import { fmt, escapeHtml as esc } from '../util.js';
 import { icon } from './icons.js';
+import { LOCOS } from '../config.js';
+import { locoModel } from '../trains/Consist.js';
 import { INCOME_CATS, EXPENSE_CATS, NON_PL, MONTH_S, LOAN_STEP } from '../economy/Ledger.js';
 
 const POS = '#12927f', NEG = '#c05a2e';   // validated pair (dataviz validator, light surface)
@@ -216,6 +218,27 @@ export const FinanceUIMixin = {
     return `<div class="fin-mini">${cell('fin_this_month', f.rev - f.cost, true)}${cell('fin_last_month', f.lastRev - f.lastCost, true)}${cell('fin_life_rev', f.lifeRev)}${cell('fin_life_profit', f.lifeRev - f.lifeCost, true)}</div>`;
   },
 
+  // train inspector: condition, servicing, replacement rule
+  condBlock(t) {
+    const g = this.game, M = g.maint;
+    if (!M.on()) return '';
+    const c = M.cond(t), base = M.baseCond(t);
+    const at = M.serviceAt(t);
+    const rule = M.rules.find((r) => r.from === t.model);
+    const P = g.progression, cur = locoModel(t.model);
+    const newer = LOCOS.filter((m) => m.id !== t.model && m.era >= cur.era && P.locoUnlocked(m) && m.role !== 'shunter');
+    const state = t.broken > 0 ? `<span class="neg">${this.tr('st_broken_down', { s: Math.ceil(t.broken) })}</span>` : c < at ? `<span class="warnc">${this.tr('cond_due')}</span>` : `<span class="pos">${this.tr('cond_ok')}</span>`;
+    return `<h4>${this.tr('cond_heading')}</h4>
+      <div class="cond"><div class="cond-bar" role="meter" aria-valuenow="${Math.round(c * 100)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.round(c * 100)}%"></i><b style="left:${Math.round(at * 100)}%" title="${this.tr('svc_at')}"></b></div>
+        <small>${Math.round(c * 100)} % · ${this.tr('cond_max', { n: Math.round(base * 100) })} · ${state}${t.breakdowns ? ' · ' + this.tr('cond_breakdowns', { n: t.breakdowns }) : ''}</small></div>
+      <div class="row wrap">
+        <label class="tog small"><input type="checkbox" ${t.autoService !== false ? 'checked' : ''} data-change="svcAuto" data-id="${t.id}"/><i></i><small>${this.tr('svc_auto')}</small></label>
+        <label class="set inline"><small>${this.tr('svc_at')}</small><select data-change="svcAt" data-id="${t.id}">${[0.5, 0.6, 0.7, 0.8, 0.9].map((v) => `<option value="${v}" ${Math.abs(v - at) < 0.01 ? 'selected' : ''}>${v * 100} %</option>`).join('')}</select></label>
+      </div>
+      <label class="set"><span>${this.tr('repl_rule', { model: esc(cur.name) })}</span><select data-change="replTo" data-id="${t.id}"><option value="">${this.tr('repl_none')}</option>${newer.map((m) => `<option value="${m.id}" ${rule && rule.to === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+      ${rule ? `<p class="muted small">${this.tr('repl_desc', { from: esc(cur.name), to: esc(locoModel(rule.to).name), y: rule.ageY, c: Math.round(rule.cond * 100) })}</p>` : ''}
+      <p class="muted small">${this.tr('rel_' + M.mode + '_desc')}</p>`;
+  },
   financeActions() {
     const g = () => this.game;
     const re = () => this.refreshPanel();

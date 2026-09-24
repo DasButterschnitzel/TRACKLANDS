@@ -22,6 +22,7 @@ import { Environment } from './world/Environment.js';
 import { TrainSystem, locoModel } from './trains/Trains.js';
 import { Economy } from './economy/Economy.js';
 import { Ledger } from './economy/Ledger.js';
+import { Maintenance } from './trains/Maintenance.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
 import { Particles } from './vfx/Particles.js';
@@ -76,6 +77,7 @@ export class Game {
     this.towns.init(this.world);
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
+    this.maint = new Maintenance(this);
     this.pax = new PaxFlow(this);
     this.lines = new Lines(this);
     this.particles = new Particles(this);
@@ -106,6 +108,7 @@ export class Game {
 
   fresh(opts) {
     this.ledger.startYear = Math.min(2100, Math.max(1800, (opts && opts.startYear) | 0 || 1950));
+    if (opts && ['off', 'relaxed', 'tycoon'].includes(opts.reliability)) this.maint.mode = opts.reliability;
     this.economy.coins = this.difficulty.money + (this.progression.legacy.count * 2500);
     this.progression.rp += this.progression.legacy.count * 3;
     this.towns.buildAll();
@@ -133,6 +136,7 @@ export class Game {
     // the books (older saves start them now, in 1950)
     if (s.ledger) this.ledger.deserialize(s.ledger); else this.ledger.cur.m = this.ledger.monthIndex();
     this.camera.deserialize(s.camera);
+    this.maint.deserialize(s.maint);
     this.trains.deserialize(s.trains);
     this.works.deserialize(s.works);
     this.world.view.recolorTerrain();
@@ -143,7 +147,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -355,6 +359,8 @@ export class Game {
     E.on('stationUpgraded', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.camera.shake(0.2); });
     E.on('trainRecovered', (t) => ui.toast(ui.tr('toast_train_recovered', { name: t.name }), 'info', 'train'));
     E.on('trainInDepot', (t, dep, stay) => { if (stay) ui.toast(ui.tr('toast_in_depot', { name: t.name, depot: dep ? dep.name : '' }), 'info', 'depot'); });
+    E.on('trainBrokeDown', (t) => ui.toast(ui.tr('toast_broke_down', { name: t.name }), 'warn', 'train'));
+    E.on('trainReplaced', (t) => ui.toast(ui.tr('toast_replaced', { name: t.name, model: locoModel(t.model).name }), 'good', 'train'));
     E.on('depotUnreachable', (t) => ui.toast(ui.tr('toast_depot_unreachable', { name: t.name }), 'warn', 'depot'));
     E.on('deadlockResolved', (t, how) => ui.toast(ui.tr('toast_deadlock_' + how, { name: t.name }), 'info', 'train'));
     E.on('trainRunaround', (t) => {
@@ -379,6 +385,7 @@ export class Game {
     this.stations.tick(dt);
     this.pax.tick(dt);
     this.trains.tick(dt);
+    this.maint.tick(dt);
     this.works.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);

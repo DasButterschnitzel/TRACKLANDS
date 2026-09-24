@@ -921,6 +921,7 @@ export class UI {
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
+      ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p>` : ''}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
       <h3>${this.tr('save_data')}</h3><div class="row wrap">
@@ -1181,6 +1182,10 @@ export class UI {
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
+      relMode: (el) => { if (this.game && ['off', 'relaxed', 'tycoon'].includes(el.value)) { this.game.maint.mode = el.value; this.refreshPanel(); } },
+      svcAt: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.serviceAt = +el.value; this.renderInspector(); } },
+      svcAuto: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.autoService = el.checked; this.renderInspector(); } },
+      replTo: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (!t) return; if (el.value) this.game.maint.addRule(t.model, el.value, 25, 0.55); else { const r = this.game.maint.rules.find((x) => x.from === t.model); if (r) this.game.maint.removeRule(r.id); } this.renderInspector(); },
       lang: (el) => { setLang(el.value); this.app.setSetting('lang', el.value); this.relocalize(); },
       shopDepot: (el) => { this.shopDepot = +el.value; this.refreshPanel(); },
       stationStyle: (el) => { const s = g().stations.byId(+el.dataset.id); g().stations.setStyle(s, el.value); },

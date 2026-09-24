@@ -692,3 +692,9 @@ button.fin-row { cursor: pointer; } button.fin-row:hover { background: rgba(31,4
 .fin-mini > div { background: rgba(31,42,58,.05); border-radius: var(--r-s); padding: 6px 8px; display: flex; flex-direction: column; }
 .fin-mini small { color: var(--ink2); font-size: .75em; }
 .seg.wrap { flex-wrap: wrap; }
+.cond { margin: 4px 0 8px; }
+.cond-bar { position: relative; height: 10px; border-radius: 5px; background: rgba(31,42,58,.1); overflow: visible; margin-bottom: 4px; }
+.cond-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: #12927f; }
+.cond-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .55; }
+.warnc { color: #9a6410; }
+.set.inline { display: inline-flex; gap: 6px; align-items: center; }

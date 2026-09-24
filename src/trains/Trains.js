@@ -146,7 +146,8 @@ export class TrainSystem {
       xs: [], ys: [], zs: [], ss: [], steps: [], s: 0, v: 0, stopS: Infinity, resvEnd: -1,
       lane: 1, held: new Set(), runs: new Set(), claim: null, problem: null, loadTime: 0, lastStepIdx: -1,
       visual: null, fade: 1, reroutes: 0, homeDepot: d.depotId ?? null, unreachable: new Map(), recover: 0,
-      created: d.created || Date.now(), bought: typeof d.bought === 'number' && isFinite(d.bought) ? d.bought : 0, fin: cleanFin(d.fin), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
+      created: d.created || Date.now(), bought: typeof d.bought === 'number' && isFinite(d.bought) ? d.bought : 0, fin: cleanFin(d.fin),
+      cond: typeof d.cond === 'number' && d.cond >= 0.2 && d.cond <= 1 ? d.cond : null, serviceAt: typeof d.serviceAt === 'number' && d.serviceAt >= 0 && d.serviceAt <= 0.95 ? d.serviceAt : null, autoService: d.autoService !== false, broken: typeof d.broken === 'number' && d.broken > 0 && d.broken < 60 ? d.broken : 0, breakdowns: Math.max(0, d.breakdowns | 0), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
       waitTotal: 0, pendingVeh: null, deadT: 0,
       // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
       spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '',
@@ -703,6 +704,18 @@ export class TrainSystem {
     t.via = false; t.v = 0;
     // shunting loop guard: after repeated reversals accept either heading, no more shunts
     t.viaCount = (t.viaCount || 0) + 1;
+    // heading for a depot: the shunt serves the way into the shed
+    if (t.tgtKind === 'depot' && t.depotOrder) {
+      const dep = this.game.stations.depotById(t.depotOrder.id);
+      const dt = dep ? this.depotTarget(dep) : null;
+      const o = dt && t.viaCount <= 3 ? this.planOptions(t, dt, true) : [];
+      const rv = o.find((x) => x.kind === 'reverse');
+      if (rv && this.applyRoute(t, rv)) { this.afterReverse(t, 'run'); return; }
+      if (o.length && this.applyRoute(t, o[0])) return;
+      t.depotOrder = null; t.tgtKind = 'station'; t.svcTry = this.game.time;
+      t.state = 'depart'; t.stateT = 0;
+      return;
+    }
     const tgt = t.plat ? (t.viaCount > 2 ? { tile: t.plat.tile, heading: null, noShunt: true } : { tile: t.plat.tile, heading: t.plat.heading }) : null;
     if (!tgt) { t.state = 'idle'; t.stateT = 0; return; }
     const opts = this.planOptions(t, tgt, true).filter((o) => o.kind === 'reverse');
@@ -905,6 +918,12 @@ export class TrainSystem {
   depart(t) {
     const g = this.game;
     if (t.depotOrder) { this.departToDepot(t); return; }
+    // due for a service: the nearest reachable depot first, then on with the route
+    if (g.maint && g.maint.needsService(t) && !(t.svcTry > g.time - 60)) {
+      t.svcTry = g.time;
+      const ch = this.depotChoices(t);
+      if (ch.length && ch[0].cost < 60) { t.depotOrder = { id: ch[0].dep.id, stay: false, service: true }; if (this.departToDepot(t) !== false) return; t.depotOrder = null; t.problem = null; }
+    }
     const here = this.stationAtHead(t);
     if (t.cargo.length) g.pax.validate(t);
     const choice = this.chooseTarget(t, here);
@@ -1069,6 +1088,7 @@ export class TrainSystem {
     t.depotIn = null; t.v = 0; t.tgtKind = 'station'; t.target = null; t.curStop = null; t.depotOrder = null;
     if (dep) t.homeDepot = dep.id;
     t.state = stay ? 'stored' : 'spawnwait'; t.stateT = 0;
+    if (g.maint) g.maint.service(t, dep);
     g.events.emit('trainInDepot', t, dep, stay);
   }
   releaseFromDepot(t) {
@@ -1158,7 +1178,14 @@ export class TrainSystem {
   arrive(t) {
     const g = this.game, S = g.stations;
     if (t.depotIn) { this.parkInDepot(t); return; }
-    if (t.tgtKind === 'depot') { if (!this.enterDepot(t)) { t.state = 'depart'; t.stateT = 0; t.v = 0; } return; }
+    if (t.tgtKind === 'depot') {
+      if (this.enterDepot(t)) { t.depotMiss = 0; return; }
+      // not at the shed after all: try again, but give up the order after a few misses
+      t.depotMiss = (t.depotMiss || 0) + 1;
+      if (t.depotMiss > 3) { t.depotMiss = 0; t.depotOrder = null; t.tgtKind = 'station'; t.svcTry = this.game.time; }
+      t.state = 'depart'; t.stateT = 0; t.v = 0;
+      return;
+    }
     if (!t.pulled && t.tgtKind !== 'wp' && this.pullForward(t)) { t.pulled = true; t.state = 'run'; return; }
     t.viaCount = 0;
     if (t.tgtKind === 'wp') {
@@ -1306,7 +1333,7 @@ export class TrainSystem {
     if (this._deadT <= 0) { this._deadT = 1; this.detectDeadlocks(); this.checkInvariants(); }
     // running costs, booked per train
     for (const t of this.trains) {
-      const op = t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1);
+      const op = t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1) * (g.maint ? g.maint.opMul(t) : 1);
       if (op > 0) g.economy.operatingCost((op / 60) * dt, { type: 'train', id: t.id });
     }
   }
@@ -1550,7 +1577,7 @@ export class TrainSystem {
     const weather = g.env ? g.env.effects : { speed: 1, accel: 1 };
     const perf = livePerf(st, cargoMass(t.cargo));
     const fx = g.progression.fx;
-    const vmaxTrain = (st.speed * perf.speedMul / KMH_PER_TILE_S) * TILE * weather.speed;
+    const vmaxTrain = (st.speed * perf.speedMul / KMH_PER_TILE_S) * TILE * weather.speed * (g.maint ? g.maint.speedMul(t) : 1);
     const accel = perf.accel * 1.3 * weather.accel;
     const decel = DECEL * (1 + st.brake);
     let lookahead = (t.v * t.v) / (2 * decel) + TILE * 1.3 + t.v * dt;
@@ -1993,6 +2020,7 @@ export class TrainSystem {
       case 'lost': return { key: 'prob_' + (t.problem || 'no_route'), warn: true };
       case 'idle': case 'depart': return t.problem ? { key: 'prob_' + t.problem, warn: true } : { key: 'st_idle' };
       case 'run': {
+        if (t.broken > 0) return { key: 'st_broken_down', p: { s: Math.ceil(t.broken) }, warn: true };
         if (t.v < 0.05 && t.blockKind === 'works' && t.wait > 0.5) return { key: 'st_wait_works' };
         if (t.v < 0.05 && t.blockedBy !== 0 && t.wait > 0.5) {
           const other = this.byId(t.blockedBy);
@@ -2163,6 +2191,7 @@ export class TrainSystem {
         spacing: t.spacing || undefined, group: t.group || undefined,
         depotOrder: t.depotOrder || undefined,
         bought: t.bought ? Math.round(t.bought) : undefined, fin: cleanFin(t.fin),
+        cond: t.cond == null ? undefined : Math.round(t.cond * 1000) / 1000, serviceAt: t.serviceAt == null ? undefined : t.serviceAt, autoService: t.autoService === false ? false : undefined, broken: t.broken > 0 ? Math.round(t.broken) : undefined, breakdowns: t.breakdowns || undefined,
       };
     });
   }
