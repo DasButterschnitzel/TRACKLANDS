@@ -746,3 +746,7 @@ details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
 .fin-row.news .fl-what { display: flex; flex-direction: column; text-align: left; }
 .fin-row.news .fl-what b { font-weight: 600; }
 input.search { width: 100%; box-sizing: border-box; min-height: var(--touch-min); margin: 8px 0; padding: 0 12px; border-radius: var(--r-s); border: 1px solid var(--line); font: inherit; color: var(--ink); background: #fff; -webkit-user-select: text; user-select: text; }
+
+/* station service and layout */
+.svc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.svc-row .seg { margin: 0; }

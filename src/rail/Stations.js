@@ -13,6 +13,8 @@ import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
 import { stationComplexModel, depotModel, stationModel } from './StationModels.js';
 
+export const STATION_SERVICES = ['mixed', 'passenger', 'freight'];
+const SERVICE_LOAD_MUL = 1.25;
 const DIR_NAMES = ['east', 'south', 'south', 'west', 'west', 'north', 'north', 'east'];
 const dirOf = (dx, dz) => { for (let d = 0; d < 8; d++) if (DX[d] === dx && DZ[d] === dz) return d; return -1; };
 
@@ -48,6 +50,8 @@ export class StationSystem {
   storage(stn) { return Math.round(STATION.storage[stn.level] * (1 + this.game.progression.fx.storage)); }
   loadRate(stn, cargos) {
     let r = STATION.loadRate[stn.level];
+    // a station built for one kind of traffic handles it faster
+    if (stn.service && stn.service !== 'mixed') r *= SERVICE_LOAD_MUL;
     if (cargos && stn.facilities.length) {
       let best = 1;
       for (const f of stn.facilities) for (const c of cargos) if (FACILITIES[f] && FACILITIES[f].cargo.includes(c)) best = Math.max(best, FACILITIES[f].mul);
@@ -181,7 +185,38 @@ export class StationSystem {
       for (const rc of cfg.recipes) { for (const c in rc.in) acc.add(c); for (const c in rc.out) sup.add(c); }
       if (cfg.accepts) for (const c of cfg.accepts) acc.add(c);
     }
+    for (const c of [...acc]) if (!this.serves(stn, c)) acc.delete(c);
+    for (const c of [...sup]) if (!this.serves(stn, c)) sup.delete(c);
     stn.accepts = acc; stn.supplies = sup;
+  }
+  // service type: 'mixed' (everything), 'passenger' (passengers and mail
+  // only) or 'freight' (goods only)
+  serves(stn, c) {
+    const sv = stn.service || 'mixed';
+    if (sv === 'mixed') return true;
+    const pax = c === 'PASSENGERS' || c === 'MAIL';
+    return sv === 'passenger' ? pax : !pax;
+  }
+  setService(stn, sv) {
+    if (!STATION_SERVICES.includes(sv) || !stn || stn.road) return false;
+    stn.service = sv === 'mixed' ? undefined : sv;
+    this.relink(stn);
+    // what it no longer handles leaves the platforms
+    for (const c of Object.keys(stn.stock)) if (!this.serves(stn, c)) { delete stn.stock[c]; if (stn.claimed) delete stn.claimed[c]; }
+    const g = this.game;
+    g.industries.onStationsChanged();
+    if (g.towns.onStationsChanged) g.towns.onStationsChanged();
+    if (g.pax && g.pax.onStationsChanged) g.pax.onStationsChanged();
+    g.events.emit('stationEdited', stn);
+    return true;
+  }
+  // how the tracks are laid out: through (open at both ends), terminus
+  // (every track ends at a buffer) or hybrid (some of each)
+  layoutType(stn) {
+    const L = stn.layout || [];
+    if (!L.length) return 'through';
+    const dead = L.filter((l) => l.deadEnd && (l.deadEnd[0] || l.deadEnd[1])).length;
+    return dead === 0 ? 'through' : dead === L.length ? 'terminus' : 'hybrid';
   }
   relinkAll() { for (const s of this.list) this.relink(s); if (this.game.roads) this.game.roads.relinkAll(); this.game.events.emit('stationsRelinked'); }
 
@@ -806,6 +841,7 @@ export class StationSystem {
 
   // ---------- cargo ----------
   receive(stn, c, n) {
+    if (stn.service && !this.serves(stn, c)) return 0;
     const cap = this.storage(stn);
     const cur = stn.stock[c] || 0;
     const take = Math.max(0, Math.min(n, cap - cur));
@@ -935,7 +971,7 @@ export class StationSystem {
       if (b * 2 > layout.length && b > a) terminal = 1; else if (a * 2 > layout.length) terminal = -1;
     }
     let kind;
-    if ((freightTracks && freightTracks === n) || (!towns && inds)) kind = stn.facilities.includes('container_crane') ? 'intermodal' : n >= 3 ? 'yard' : 'freight';
+    if (stn.service !== 'passenger' && ((freightTracks && freightTracks === n) || (!towns && inds) || stn.service === 'freight')) kind = stn.facilities.includes('container_crane') ? 'intermodal' : n >= 3 ? 'yard' : 'freight';
     else if (hs && stn.level >= 2) kind = 'hs';
     else kind = stn.level === 0 ? (n > 1 ? 'village' : 'halt') : ['halt', 'village', 'town', 'city', 'central', 'grand'][stn.level];
     return { kind, terminal };
@@ -1043,7 +1079,7 @@ export class StationSystem {
       nextId: this.nextId,
       stations: this.list.map((s) => ({
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
-        tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities,
+        tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities, service: s.service || undefined,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
         ...(s.paxTo && Object.keys(s.paxTo).length ? { paxTo: s.paxTo } : {}),
       })),
@@ -1085,6 +1121,7 @@ export class StationSystem {
       if (!tracks.length) tracks.push({ tiles: [s.tile], role: 'any', dir: 'both', off: 0, ladder: [] });
       stn.tracks = tracks;
       stn.facilities = Array.isArray(s.facilities) ? s.facilities.filter((f) => FACILITIES[f]).slice(0, 2) : [];
+      if (s.service === 'passenger' || s.service === 'freight') stn.service = s.service;
       if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
       this.list.push(stn);
       this.markTiles(stn);

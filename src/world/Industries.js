@@ -151,11 +151,13 @@ export class IndustrySystem {
           if (amt < 1) continue;
           // competing stations share by cargo rating; a poorly served
           // station gets less (the rest stays at the industry)
-          const shares = g.ratings ? g.ratings.split(sts, c, amt) : sts.map(() => Math.ceil(amt / sts.length));
-          for (let i = 0; i < sts.length; i++) {
+          const sc = sts.some((s) => s.service) ? sts.filter((s) => g.stations.serves(s, c)) : sts;
+          if (!sc.length) continue;
+          const shares = g.ratings ? g.ratings.split(sc, c, amt) : sc.map(() => Math.ceil(amt / sc.length));
+          for (let i = 0; i < sc.length; i++) {
             const want = Math.min(shares[i], Math.floor(ind.out[c]));
             if (want <= 0) continue;
-            const took = g.stations.receive(sts[i], c, want);
+            const took = g.stations.receive(sc[i], c, want);
             ind.out[c] -= took; ind.transported += took;
           }
         }

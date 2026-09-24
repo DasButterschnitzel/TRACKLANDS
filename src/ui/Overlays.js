@@ -1,11 +1,15 @@
 // Information overlays drawn over the world: TRAFFIC, SIGNALS, BLOCKS, ROUTES,
-// CONGESTION, CARGO, ELECTRIFICATION and STATION. Tile tints use one instanced
+// CONGESTION, CARGO, ELECTRIFICATION, STATION, TOWNS (relationship with the
+// company), RATINGS (station cargo ratings) and INDUSTRY (share carried away,
+// company stakes). Tile tints use one instanced
 // quad mesh, routes use line segments, cargo uses instanced columns.
 import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry'];
+// bad → fair → good (the same scale for every overlay that grades something)
+const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
 const ROUTE_COLS = [0xffd24a, 0x4ad0ff, 0xff7a4a, 0x8aff6a, 0xd07aff, 0xff4a9a, 0x4affd0, 0xffffff];
 
@@ -99,6 +103,44 @@ export class Overlays {
         for (const s of g.stations.list) for (const tk of s.tracks) for (const t of tk.tiles) this.quad(k++, t, roleCol[tk.role] || 0xffffff);
         for (const d of g.stations.depots) this.quad(k++, d.tile, 0xe0a33a);
         for (const [t] of net.waypoints) this.quad(k++, t, 0xffffff);
+        break;
+      }
+      case 'towns': {
+        for (const t of g.towns.list) {
+          if (!g.progression.regionUnlocked(t.region)) continue;
+          const col = grade((g.authority ? g.authority.rating(t) : 50) / 100);
+          for (const i of t.roadSet || []) if (k < N * N) this.quad(k++, i, col, 0.35);
+          if (t.buildings) for (const b of t.buildings) if (k < N * N && b.tile != null) this.quad(k++, b.tile, col, 0.35);
+        }
+        break;
+      }
+      case 'ratings': {
+        const R = g.ratings;
+        const all = [...g.stations.list, ...(g.roads ? g.roads.stops : [])];
+        for (const s of all) {
+          const cs = Object.keys(s.ratings || {});
+          if (!cs.length || !R) continue;
+          const v = Math.min(...cs.map((c) => R.rating(s, c)));
+          const tiles = s.tracks ? s.tracks.flatMap((tk) => tk.tiles) : [s.tile];
+          for (const t of tiles) if (k < N * N) this.quad(k++, t, grade(v));
+        }
+        break;
+      }
+      case 'industry': {
+        let n = 0;
+        const I = g.industries;
+        for (const ind of I.list) {
+          if (!g.progression.regionUnlocked(ind.region)) continue;
+          const col = I.linkedStations(ind).length ? grade(I.transportShare(ind)) : 0x8a8f96;
+          for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) this.quad(k++, (ind.z + dz) * N + ind.x + dx, col, 0.9);
+          if (ind.stake > 0 && n < this.cols.instanceMatrix.count) {
+            this._m.makeScale(2.2, 0.3 + ind.stake * 3.2, 2.2).setPosition((ind.x + 1) * TILE, I.baseHeight(ind) + 2.6, (ind.z + 1) * TILE);
+            this.cols.setMatrixAt(n, this._m); this.cols.setColorAt(n, this._c.set(0x3a7ae0)); n++;
+          }
+        }
+        this.cols.count = n;
+        this.cols.instanceMatrix.needsUpdate = true;
+        if (this.cols.instanceColor) this.cols.instanceColor.needsUpdate = true;
         break;
       }
       case 'signals': {

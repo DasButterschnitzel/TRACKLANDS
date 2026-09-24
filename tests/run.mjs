@@ -35,8 +35,9 @@ import * as audio from './suites/audio.mjs';
 import * as industry from './suites/industry.mjs';
 import * as weather from './suites/weather.mjs';
 import * as news from './suites/news.mjs';
+import * as stationtypes from './suites/stationtypes.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

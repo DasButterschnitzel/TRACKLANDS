@@ -16,6 +16,7 @@ import { vehicleToken, resolvePaint, customToken, parseCustom, isPreset, STRIPES
 import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
 import { SPACING_CHOICES } from '../trains/Lines.js';
+import { STATION_SERVICES } from '../rail/Stations.js';
 
 const esc = escapeHtml;
 const $ = (s, r = document) => r.querySelector(s);
@@ -370,6 +371,13 @@ export const RailUIMixin = {
       <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
   },
 
+  // service type (passenger / freight / mixed) and layout (through / terminus / hybrid)
+  serviceBlock(s) {
+    const S = this.game.stations, sv = s.service || 'mixed', lt = S.layoutType(s);
+    const seg = STATION_SERVICES.map((k) => `<button class="${sv === k ? 'on' : ''}" data-act="stService" data-arg="${s.id}:${k}" aria-pressed="${sv === k}" data-tip="${this.tr('svc_' + k + '_desc')}">${this.tr('svc_' + k)}</button>`).join('');
+    return `<div class="svc-row"><span class="sub-label">${this.tr('svc_label')}</span><div class="seg small" role="group" aria-label="${this.tr('svc_label')}">${seg}</div><span class="pill" data-tip="${this.tr('lay_' + lt + '_desc')}">${this.tr('lay_' + lt)}</span></div>
+      <p class="muted small">${this.tr('svc_' + sv + '_desc')}</p>`;
+  },
   stationActions(s, up) {
     const b = (act, arg, ic, label, dis = false, tip = '') => `<button class="tact" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''} ${tip ? `data-tip="${esc(tip)}"` : ''}>${icon(ic)}<span>${label}</span></button>`;
     return `<div class="tactions st" role="toolbar" aria-label="${this.tr('station_actions')}">
@@ -510,6 +518,7 @@ export const RailUIMixin = {
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
     return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
       ${this.stationActions(s, up)}
+      ${this.serviceBlock(s)}
       ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}${adv}
       <h4>${this.tr('serves')}</h4><div class="links">${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('') || `<span class="muted">${this.tr('nothing_linked')}</span>`}</div>
       <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>
@@ -576,6 +585,7 @@ export const RailUIMixin = {
     const b = () => this.bld;
     const re = () => this.refreshPanel();
     return {
+      stService: (a) => { const [id, sv] = a.split(':'); const st = g().stations.byId(+id); if (st && g().stations.setService(st, sv)) { this.app.audio.play('click'); this.toast(this.tr('svc_set', { name: st.name, svc: this.tr('svc_' + sv) }), 'info', 'station'); this.renderInspector(); } },
       builder: (a) => this.openBuilder({ trainId: +a }),
       newTrain: () => this.openBuilder({}),
       bldSel: (a) => { b().sel = b().sel === +a ? -1 : +a; re(); },

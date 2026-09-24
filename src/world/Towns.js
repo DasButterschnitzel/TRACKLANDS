@@ -331,6 +331,8 @@ export class TownSystem {
   }
   // travellers pick the better-served station (cargo rating), all of them go
   push(sts, c, n) {
+    const S = this.game.stations;
+    if (sts.some((s) => s.service)) { sts = sts.filter((s) => S.serves(s, c)); if (!sts.length) return; }
     const R = this.game.ratings;
     if (!R || sts.length === 1) { const per = Math.ceil(n / sts.length); for (const s of sts) { if (n <= 0) break; const k = Math.min(per, n); this.game.stations.receive(s, c, k); n -= k; } return; }
     const w = sts.map((s) => Math.max(0.05, R.rating(s, c)));
