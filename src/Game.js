@@ -26,6 +26,7 @@ import { Maintenance } from './trains/Maintenance.js';
 import { Authority } from './world/Authority.js';
 import { CargoRatings } from './economy/Ratings.js';
 import { Crossings } from './road/Crossings.js';
+import { Roads } from './road/Roads.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
 import { Particles } from './vfx/Particles.js';
@@ -78,6 +79,7 @@ export class Game {
     this.industries.init(this.world);
     this.towns = new TownSystem(this);
     this.crossings = new Crossings(this);
+    this.roads = new Roads(this);
     this.authority = new Authority(this);
     this.ratings = new CargoRatings(this);
     this.towns.init(this.world);
@@ -145,6 +147,8 @@ export class Game {
     this.maint.deserialize(s.maint);
     this.trains.deserialize(s.trains);
     this.works.deserialize(s.works);
+    this.roads.deserialize(s.road);
+    this.roads.afterLoad();
     this.world.view.recolorTerrain();
   }
 
@@ -153,7 +157,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -218,6 +222,8 @@ export class Game {
   }
   selectTile(tile) {
     if (tile < 0) { this.select(null); return; }
+    const rs = this.roads.stopAt(tile);
+    if (rs) { this.select({ type: 'roadstop', id: rs.id }); return; }
     const sp = this.net.special.get(tile);
     if (sp) { this.select({ type: sp.type, id: sp.id }); return; }
     const o = this.occupancy.owner[tile];
@@ -237,6 +243,8 @@ export class Game {
       case 'town': { const t = this.towns.byId(sel.id); return t ? { x: (t.x + 0.5) * TILE, y: this.world.tileH[t.z * N + t.x], z: (t.z + 0.5) * TILE } : null; }
       case 'train': { const t = this.trains.byId(sel.id); if (!t || !t.visual) return null; const p = t.visual.cars[0].mesh.position; return { x: p.x, y: p.y, z: p.z }; }
       case 'region': { const c = this.world.centers[sel.id]; return { x: c[0] * TILE, y: 0, z: c[1] * TILE }; }
+      case 'roadstop': { const s = this.roads.stopById(sel.id); return s ? { x: tileCX(s.tile), y: 0.3, z: tileCZ(s.tile) } : null; }
+      case 'roadveh': { const v = this.roads.byId(sel.id); if (!v) return null; const o = this.roads.vehPos(v, {}); return { x: o.x, y: o.y, z: o.z }; }
       default: return null;
     }
   }
@@ -394,6 +402,7 @@ export class Game {
     this.maint.tick(dt);
     this.authority.tick(dt);
     this.ratings.tick(dt);
+    this.roads.tick(dt);
     this.works.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);
@@ -425,6 +434,7 @@ export class Game {
     this.industries.updateVisuals(dt, this.clock);
     this.towns.updateVisuals(dt, this.clock);
     this.crossings.update(dt);
+    this.roads.updateVisuals();
     this.particles.update(dt);
     this.construction.update();
     this.audio.update(dt);

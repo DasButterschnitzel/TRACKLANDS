@@ -134,6 +134,12 @@ export class Construction {
         ok = d.allowed;
         info = `${g.ui.tr('bld_' + d.arch)} · ${fmt(d.cost)} ● · ${g.ui.tr('auth_short', { d: d.impact })}${d.allowed ? '' : ' · ' + g.ui.tr('err_permit_denied')}`;
       }
+    } else if (this.tool === 'roadstop') {
+      const err = g.roads.stopError(tile, this.stopKind || 'bus');
+      ok = !err; info = err ? g.ui.tr(err) : `${g.ui.tr('tool_roadstop_' + (this.stopKind || 'bus'))} · ${fmt(g.roads.stopCost())} ●`;
+      if (ok) this.showCoverage([tile]);
+    } else if (this.tool === 'road') {
+      ok = g.roads.tileOk(tile); info = ok ? g.ui.tr('hint_drag_road') : g.ui.tr('err_road_blocked');
     } else if (this.tool === 'track') {
       const r = g.net.tileBlockedReason(tile);
       ok = !r; info = r ? g.ui.tr(r) : g.ui.tr('hint_drag_track');
@@ -183,6 +189,8 @@ export class Construction {
       case 'waypoint': this.toggleWaypoint(tile); break;
       case 'depot': this.placeDepot(tile); break;
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
+      case 'road': this.drag = { a: tile, b: tile }; this.previewRoad(); break;
+      case 'roadstop': { const r = g.roads.addStop(tile, this.stopKind || 'bus'); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('stop_built', { name: r.stop.name }), 'good', 'station'); g.select({ type: 'roadstop', id: r.stop.id }); } break; }
       default: break;
     }
     void g;
@@ -199,10 +207,22 @@ export class Construction {
       this.drag.b = tile; this.previewSignalRow();
     } else if (this.tool === 'station' && tile !== this.drag.b) {
       this.drag.b = tile; this.previewStation(this.drag.a, tile);
+    } else if (this.tool === 'road' && tile !== this.drag.b) {
+      this.drag.b = tile; this.previewRoad();
     }
   }
   pointerUp(tile) {
     if (!this.drag) return;
+    if (this.tool === 'road') {
+      const d = this.drag;
+      this.drag = null;
+      if (tile >= 0) d.b = tile;
+      this.clearPreview();
+      if (d.a === d.b) this.game.ui.toast(this.game.ui.tr('hint_drag_road'), 'info');
+      else { const r = this.game.roads.build(this.game.roads.plan(d.a, d.b)); if (r.error) this.game.ui.error(r.error); }
+      this.hover(this.hoverTile);
+      return;
+    }
     if (this.tool === 'station') {
       const d = this.drag;
       this.drag = null;
@@ -357,6 +377,18 @@ export class Construction {
     for (let k = 0; k < plan.tiles.length; k += 2) { const t = plan.tiles[k]; g.particles.emit('dust', tileCX(t), net.railH(t) + 0.2, tileCZ(t), 2); }
     g.events.emit('trackBuilt', plan);
     void mid;
+  }
+
+  // ---------- roads ----------
+  previewRoad() {
+    const g = this.game, R = g.roads;
+    const plan = R.plan(this.drag.a, this.drag.b);
+    let k = 0;
+    for (const t of plan.tiles.length ? plan.tiles : [this.drag.a]) if (k < 400) this.putQuad(this.ghost, k++, t, !plan.ok ? 0xd0503f : g.net.conn[t] ? 0xf0c040 : R.hasRoad(t) ? 0x9aa2a8 : 0xc8ccd0);
+    this.ghost.count = k; this.flush(this.ghost);
+    const ui = g.ui;
+    if (plan.ok) ui.cursorInfo(`${ui.tr('road_len', { n: plan.tiles.length })}${plan.crossings ? ' · ' + ui.tr('road_crossings', { n: plan.crossings }) : ''} · ${fmt(plan.cost)} ●`, g.economy.canAfford(plan.cost));
+    else ui.cursorInfo(ui.tr(plan.reason || 'err_road_no_path'), false);
   }
 
   // ---------- stations / depots ----------
@@ -588,6 +620,8 @@ export class Construction {
     if (sp) return sp.type;
     if (g.net.conn[tile]) return 'track';
     if (g.occupancy.blocked[tile] === 1 && g.authority && g.authority.buildingAt(tile)) return 'building';
+    if (g.roads && g.roads.stopAt(tile)) return 'roadstop';
+    if (g.roads && g.roads.bits[tile]) return 'road';
     if (g.world.view.hasTrees(tile) && !g.occupancy.blocked[tile]) return 'trees';
     return null;
   }
@@ -632,6 +666,8 @@ export class Construction {
         break;
       }
       case 'building': g.ui.offerDemolish(tile); return;
+      case 'roadstop': { const r = g.roads.removeStop(g.roads.stopAt(tile)); if (r.error) { g.ui.error(r.error); return; } break; }
+      case 'road': { const r = g.roads.removeTile(tile); if (r.error) { g.ui.error(r.error); return; } break; }
       case 'trees': {
         const cost = COSTS.treeClear;
         if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
@@ -692,6 +728,12 @@ export class Construction {
       this.restoreConn(e.prev);
       g.stats.inc('trackBuilt', -e.newTiles);
       g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'road') {
+      g.roads.undo(e);
+      g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'roadstop') {
+      const s = g.roads.stopById(e.id);
+      if (s) { const r = g.roads.removeStop(s, 0); if (r.error) { g.ui.error(r.error); this.undoStack.push(e); return; } g.economy.earn(e.cost, 'refund', false); }
     } else if (e.type === 'works') {
       // cancel a pending construction and refund it
       if (g.works.cancel(e.id)) g.ui.toast(g.ui.tr('works_cancelled'), 'info', 'track');

@@ -2,7 +2,7 @@
 // modals, tooltips and the debug overlay. All strings come from i18n.
 import * as THREE from 'three';
 import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
-import {
+import { ROAD_COSTS, ROAD_VEHICLES,
   CARGO, CARGO_IDS, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
@@ -18,6 +18,8 @@ import { RailUIMixin } from './RailUI.js';
 import { HandbookMixin } from './Handbook.js';
 import { LiveryEditorMixin } from './LiveryEditor.js';
 import { FinanceUIMixin } from './FinanceUI.js';
+import { RoadUIMixin } from './RoadUI.js';
+import { roadModel } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
 
@@ -176,8 +178,9 @@ export class UI {
   renderToolbar() {
     const g = this.game; if (!g) return;
     const C = g.construction;
-    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
-    const btn = ([id, ic], k) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${k + 1})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
+    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
+    const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B' };
+    const btn = ([id, ic]) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${KEYS[id]})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
     const ov = g.overlays.mode;
     const undo = C.canUndo();
     const menuOpen = $('#overlay-menu') && !$('#overlay-menu').hidden;
@@ -223,6 +226,10 @@ export class UI {
         const res = { block: 'block_signals', path: 'path_signals', oneway: 'one_way_signals' }[ty];
         return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
       }).join('') + `<span class="sub-sep"></span><span class="sub-label">${this.tr('sig_row')}</span>${[2, 3, 4, 6].map((n) => `<button class="chip mini ${C.signalSpacing === n ? 'on' : ''}" data-act="signalSpacing" data-arg="${n}" data-tip="${this.tr('sig_row_tip', { n })}"><b>${n}</b></button>`).join('')}<span class="sub-hint">${this.tr('hint_signal')}</span>${this.helpBtn('signals')}`;
+    } else if (C.tool === 'road') {
+      sub = `<span class="sub-hint">${icon('road')} ${this.tr('hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
+    } else if (C.tool === 'roadstop') {
+      sub = ['bus', 'truck'].map((k) => `<button class="chip ${(C.stopKind || 'bus') === k ? 'on' : ''}" data-act="stopKind" data-arg="${k}"><b>${icon(k, 'mini')} ${this.tr('tool_roadstop_' + k)}</b><small>${fmt(g.roads.stopCost())}●</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_roadstop')}</span>`;
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
@@ -259,7 +266,7 @@ export class UI {
       // (a rebuilt button would swallow the tap), and only when changed
       const busy = performance.now() - (this._panelPressT || 0) < 1200;
       if (this.panel && this.panelDefs[this.panel] && this.panelDefs[this.panel].live && !busy) this.refreshPanel(false, true);
-      if (this.inspectSel) this.renderInspector();
+      if (this.inspectSel && !busy) this.renderInspector(true);
       this.updateBadges();
       if (this.debugOn) this.renderDebug();
     }
@@ -973,10 +980,11 @@ export class UI {
     this._inspFirst = true;
     this.renderInspector();
   }
-  renderInspector() {
+  renderInspector(live) {
     const g = this.game, sel = this.inspectSel;
     if (!g || !sel) return;
     const el = $('#inspector');
+    if (!el._pressHook) { el._pressHook = true; el.addEventListener('pointerdown', () => { this._panelPressT = performance.now(); }, true); }
     let title = '', body = '', ic = 'info';
     switch (sel.type) {
       case 'station': { const s = g.stations.byId(sel.id); if (!s) return this.game.select(null); ic = 'station'; title = s.name; body = this.iStation(s); break; }
@@ -984,6 +992,8 @@ export class UI {
       case 'industry': { const i = g.industries.byId(sel.id); if (!i) return this.game.select(null); ic = 'factory'; title = g.industries.displayName(i); body = this.iIndustry(i); break; }
       case 'town': { const t = g.towns.byId(sel.id); if (!t) return this.game.select(null); ic = 'town'; title = t.name; body = this.iTown(t); break; }
       case 'train': { const t = g.trains.byId(sel.id); if (!t) return this.game.select(null); ic = 'train'; title = t.name; body = this.iTrain(t); break; }
+      case 'roadstop': { const s = g.roads.stopById(sel.id); if (!s) return this.game.select(null); ic = s.kind; title = s.name; body = this.iRoadStop(s); break; }
+      case 'roadveh': { const v = g.roads.byId(sel.id); if (!v) return this.game.select(null); ic = roadModel(v.model).kind; title = v.name; body = this.iRoadVeh(v); break; }
       case 'region': { ic = 'lock'; title = this.tr('region_' + REGIONS[sel.id].id); body = g.progression.regionUnlocked(sel.id) ? '' : this.regionCard(sel.id); break; }
       default: return;
     }
@@ -991,6 +1001,10 @@ export class UI {
     const scroll = b ? b.scrollTop : 0;
     const focused = document.activeElement && el.contains(document.activeElement) && document.activeElement.tagName === 'SELECT';
     if (focused) return;
+    // live refresh: only when something changed
+    const sig = ic + title + body;
+    if (live && sig === this._inspSig && $('.ibody', el)) return;
+    this._inspSig = sig;
     el.innerHTML = `<div class="phead">${icon(ic)}<h2>${esc(title)}</h2><button class="icon-btn" data-act="focusSel" aria-label="${this.tr('focus')}" data-tip="${this.tr('focus')}">${icon('focus')}</button><button class="icon-btn" data-act="closeInspector" aria-label="${this.tr('close')}">${icon('close')}</button></div><div class="ibody">${body}</div>`;
     if (!this._inspFirst) $('.ibody', el).scrollTop = scroll;
     this._inspFirst = false;
@@ -1119,12 +1133,14 @@ export class UI {
       speed: (a) => g().setSpeed(+a),
       tool: (a) => { if (a === 'train') { this.openBuilder({}); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
       tier: (a) => g().construction.setTier(+a),
+      stopKind: (a) => { g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
       ...this.railActions(),
       ...this.liveryActions(),
       ...this.financeActions(),
+      ...this.roadActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1215,4 +1231,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin);

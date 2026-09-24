@@ -49,8 +49,10 @@ export class Crossings {
     if (net.hasDir(tile, 2) && net.hasDir(tile, 6)) return 0;   // rail N–S, street E–W
     return -1;
   }
-  at(tile) { return this.map.get(tile) || null; }
-  isClosed(tile) { const c = this.map.get(tile); return !!c && c.closed; }
+  // (kept current on demand: the simulation also runs without frames)
+  fresh() { if (this.version !== this.game.net.version && !this._rebuilding) { this._rebuilding = true; try { this.rebuild(); } finally { this._rebuilding = false; } } }
+  at(tile) { this.fresh(); return this.map.get(tile) || null; }
+  isClosed(tile) { this.fresh(); const c = this.map.get(tile); return !!c && c.closed; }
   // road traffic stops entering as soon as the warning starts
   isBlocked(tile) { const c = this.map.get(tile); return !!c && (c.closed || c.warn || c.request > this.game.time); }
   // Interlock: a train may only reserve a crossing that is clear of road
@@ -61,11 +63,12 @@ export class Crossings {
     const c = this.map.get(tile);
     if (!c) return false;
     const g = this.game, cars = g.towns.carList.filter((k) => (k.from === tile && k.f < 0.5) || (k.to === tile && k.f >= 0.4));
-    if (!cars.length) return false;
+    const lorry = g.roads && g.roads.onTile(tile);
+    if (!cars.length && !lorry) return false;
     c.request = g.time + 1.5;
     if (g.time - (this.lastFrame ?? -1e9) > 1) {
       for (const k of cars) { if (k.to === tile) k.f = 0.3; else { const p = k.from; k.from = k.to; k.to = p; k.f = 0.7; } }
-      return false;
+      return !!lorry;   // company vehicles are simulated: they clear out themselves
     }
     return true;
   }
@@ -76,6 +79,14 @@ export class Crossings {
     // track changed: streets re-route around new switches / across new lines
     if (this.version >= 0 && this.version !== g.net.version) for (const t of g.towns.list) if (t.roadSet && g.towns.roadTiles(t).some((i) => g.net.conn[i] || t.roadSet.has(i) !== (this.roadAxisThrough(i) !== -1))) g.towns.buildRoads(t);
     this.map = new Map();
+    // company roads over railway tiles
+    if (g.roads) for (let i = 0; i < g.roads.bits.length; i++) {
+      if (!g.roads.bits[i] || !g.net.conn[i]) continue;
+      const ax = this.roadAxisThrough(i);
+      if (ax == null || ax < 0) continue;
+      const prev = old.get(i);
+      this.map.set(i, { tile: i, axis: ax, closed: prev ? prev.closed : false, arm: prev ? prev.arm : 0, t: 0, town: 0 });
+    }
     for (const t of g.towns.list) {
       if (!t.roadSet) continue;
       for (const i of t.roadSet) {

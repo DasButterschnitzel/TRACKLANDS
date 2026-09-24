@@ -720,3 +720,7 @@ details.crating .rbar { height: 8px; border-radius: 4px; background: rgba(31,42,
 details.crating .rbar em { position: absolute; left: 0; top: 0; bottom: 0; background: #12927f; border-radius: 4px; }
 details.crating small { color: var(--ink2); }
 details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
+.rv-route { display: flex; flex-direction: column; gap: 4px; }
+.rv-stop { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; background: rgba(31,42,58,.05); border-radius: var(--r-s); padding: 4px 8px; }
+.rv-stop > b { text-align: center; }
+.rv-buy { justify-content: flex-start; text-align: left; flex-wrap: wrap; gap: 6px; }

@@ -183,7 +183,7 @@ export class StationSystem {
     }
     stn.accepts = acc; stn.supplies = sup;
   }
-  relinkAll() { for (const s of this.list) this.relink(s); this.game.events.emit('stationsRelinked'); }
+  relinkAll() { for (const s of this.list) this.relink(s); if (this.game.roads) this.game.roads.relinkAll(); this.game.events.emit('stationsRelinked'); }
 
   accepts(stn, c) { return !!(stn.accepts && stn.accepts.has(c)); }
   hasDemand(stn, c, comp) {

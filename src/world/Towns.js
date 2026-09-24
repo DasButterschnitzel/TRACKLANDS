@@ -300,7 +300,7 @@ export class TownSystem {
     const g = this.game, A = g.authority;
     for (const t of this.list) {
       if (!g.progression.regionUnlocked(t.region)) continue;
-      const sts = t._sts || (t._sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id)));
+      const sts = t._sts || (t._sts = [...g.stations.list, ...(g.roads ? g.roads.stops : [])].filter((s) => s.links && s.links.towns.includes(t.id)));
       const r = A ? A.rating(t) : 50;
       let budget = sts.length ? 1 + (r >= 60 ? 1 : 0) + (r >= 80 ? 1 : 0) + Math.min(2, sts.length - 1) : ((t.idleMonths = (t.idleMonths || 0) + 1) % 4 === 0 ? 1 : 0);
       if (r < 20) budget = Math.min(budget, 1);
@@ -315,7 +315,7 @@ export class TownSystem {
     else if (m !== this._month) { this._month = m; this.growMonth(); }
     for (const t of this.list) {
       if (!g.progression.regionUnlocked(t.region)) continue;
-      const sts = t._sts || (t._sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id)));
+      const sts = t._sts || (t._sts = [...g.stations.list, ...(g.roads ? g.roads.stops : [])].filter((s) => s.links && s.links.towns.includes(t.id)));
       if (!sts.length) continue;
       const P = TOWN_PRODUCTION;
       // frequent, well-connected service attracts more travellers (PaxFlow)
@@ -582,6 +582,7 @@ export class TownSystem {
     t.roadMesh = m;
     t.roadSet = tiles;
     if (X) X.version = -1;
+    if (this.game.roads) this.game.roads.townsChanged();
     this.group.add(m);
     // cars
     const want = Math.min(2 + t.stage * 3, 20);

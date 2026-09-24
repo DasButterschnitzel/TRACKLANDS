@@ -167,6 +167,9 @@ export class Input {
     const g = this.game;
     const trainId = this.pickTrain(x, y);
     if (trainId != null) { g.select({ type: 'train', id: trainId }); return; }
+    const gp = this.groundAt(x, y);
+    const rv = gp && g.roads ? g.roads.pickAt(gp) : null;
+    if (rv) { g.select({ type: 'roadveh', id: rv.id }); return; }
     const { tile } = this.tileAt(x, y);
     g.selectTile(tile);
   }
@@ -236,6 +239,8 @@ export class Input {
       case '7': g.construction.setTool('decor'); break;
       case '8': g.construction.setTool('signal'); break;
       case '9': g.construction.setTool('waypoint'); break;
+      case 'r': g.construction.setTool('road'); break;
+      case 'b': g.construction.setTool('roadstop'); break;
       case 'o': g.ui.toggleOverlayMenu(); break;
       case 't': g.ui.openPanel('trains'); break;
       case 'm': g.ui.openPanel('map'); break;

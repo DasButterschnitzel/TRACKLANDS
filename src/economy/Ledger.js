@@ -20,14 +20,14 @@ export const LOAN_STEP = 1000;
 
 // income / expense categories (i18n: fin_<id>)
 export const INCOME_CATS = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'sale', 'refund', 'other', 'loan_in', 'deposit_back'];
-export const EXPENSE_CATS = ['op_trains', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit'];
+export const EXPENSE_CATS = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit'];
 // categories that are not profit or loss (cash moves between company and bank,
 // or money coming back for something that was spent)
 export const NON_PL = new Set(['loan_in', 'loan_out', 'deposit', 'deposit_back']);
 
 // old Economy categories → ledger categories
 const MAP_IN = { delivery: 'freight', pax: 'pax', mail: 'mail', objective: 'objective', tutorial: 'objective', offline: 'other', grant: 'grant', sale: 'sale', refund: 'refund', contract: 'contract', daily: 'contract' };
-const MAP_OUT = { construction: 'construction', trains: 'vehicles', upgrades: 'upgrades', regions: 'regions', decor: 'decor', compensation: 'compensation' };
+const MAP_OUT = { construction: 'construction', trains: 'vehicles', road_vehicles: 'road_vehicles', upgrades: 'upgrades', regions: 'regions', decor: 'decor', compensation: 'compensation' };
 
 // per-object figures from a save (trains, stations)
 export function cleanFin(f) {
@@ -90,6 +90,8 @@ export class Ledger {
     let o = null;
     if (ref.type === 'train') o = g.trains.byId(ref.id);
     else if (ref.type === 'station') o = g.stations.byId(ref.id);
+    else if (ref.type === 'road' && g.roads) o = g.roads.byId(ref.id);
+    else if (ref.type === 'roadstop' && g.roads) o = g.roads.stopById(ref.id);
     if (!o) return;
     const f = o.fin || (o.fin = { m: this.monthIndex(), rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0 });
     this.objRoll(f);

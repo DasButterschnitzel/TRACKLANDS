@@ -30,8 +30,9 @@ import * as finance from './suites/finance.mjs';
 import * as authority from './suites/authority.mjs';
 import * as towns from './suites/towns.mjs';
 import * as crossings from './suites/crossings.mjs';
+import * as roads from './suites/roads.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

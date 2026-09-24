@@ -143,18 +143,18 @@ export class Economy {
   // revenue category of a cargo in the ledger
   revCat(c) { return c === 'PASSENGERS' ? 'pax' : c === 'MAIL' ? 'mail' : 'freight'; }
   // a delivery: booked on the train, credited to both stations' figures
-  bookDelivery(rev, c, n, train, fromStn, toStn) {
+  bookDelivery(rev, c, n, train, fromStn, toStn, ref = null) {
     const L = this.game.ledger;
     const cat = this.revCat(c);
     const note = `~dlv|${c}|${n}|${fromStn ? fromStn.name : ''}|${toStn ? toStn.name : ''}`;
-    this.earn(rev, cat, true, train ? { type: 'train', id: train.id } : null, note);
+    this.earn(rev, cat, true, ref || (train ? { type: 'train', id: train.id } : null), note);
     if (L && rev > 0) { if (toStn) L.objBook({ type: 'station', id: toStn.id }, rev, cat); if (fromStn && fromStn !== toStn) L.objBook({ type: 'station', id: fromStn.id }, rev * 0.5, cat); }
   }
 
   operatingCost(amount, ref = null) {
     if (amount <= 0) return;
     this.coins = Math.max(0, this.coins - amount);
-    if (this.game.ledger) this.game.ledger.bookRunning(amount, 'op_trains', ref);
+    if (this.game.ledger) this.game.ledger.bookRunning(amount, ref && ref.type === 'road' ? 'op_road' : 'op_trains', ref);
     this.totalOpCost += amount;
   }
 

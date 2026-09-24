@@ -56,7 +56,7 @@ export class IndustrySystem {
     this.checkLevel(ind);
   }
 
-  linkedStations(ind) { return this.game.stations.list.filter((s) => s.links && s.links.industries.includes(ind.id)); }
+  linkedStations(ind) { return [...this.game.stations.list, ...(this.game.roads ? this.game.roads.stops : [])].filter((s) => s.links && s.links.industries.includes(ind.id)); }
   // Where each output could go: consumers (towns / industries) by distance,
   // with the connection state and an estimated income for a 10-unit load.
   //   served: both ends have a station on the same rail network

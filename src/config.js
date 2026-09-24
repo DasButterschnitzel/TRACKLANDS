@@ -161,6 +161,19 @@ export const TOWN_PRODUCTION = { paxBase: 6, paxPerPop: 1 / 15, mailBase: 3, mai
 // ---------- TRAINS ----------
 // speed km/h. Internal tiles/sec = kmh / KMH_PER_TILE_S.
 export const KMH_PER_TILE_S = 40;
+
+// ---------- ROAD TRANSPORT ----------
+// buses carry passengers (and some mail); trucks carry the cargo groups of their body
+export const ROAD_VEHICLES = [
+  { id: 'citybus', name: 'Citybus 30', kind: 'bus', cap: 30, mail: 4, speed: 55, price: 900, op: 10, level: 1, color: 0xe8c547 },
+  { id: 'coach', name: 'Coach Express 44', kind: 'bus', cap: 44, mail: 8, speed: 90, price: 2600, op: 22, level: 8, color: 0x3f6e9a },
+  { id: 'box_truck', name: 'Box Truck', kind: 'truck', groups: ['crate', 'mail'], cap: 14, speed: 55, price: 1100, op: 12, level: 1, color: 0xc9793a },
+  { id: 'logging_truck', name: 'Logging Truck', kind: 'truck', groups: ['log'], cap: 16, speed: 50, price: 1200, op: 13, level: 1, color: 0x7a5a3a },
+  { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
+  { id: 'tanker_truck', name: 'Tanker Truck', kind: 'truck', groups: ['liquid'], cap: 16, speed: 55, price: 1500, op: 15, level: 5, color: 0xb8bcc2 },
+  { id: 'flatbed_truck', name: 'Flatbed Truck', kind: 'truck', groups: ['flat'], cap: 14, speed: 55, price: 1400, op: 14, level: 5, color: 0x5a7a4a },
+];
+export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180 };
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express'];
 export const LOCOS = [
   { id: 'pioneer', name: 'Pioneer 0-4-0', era: 1, kind: 'steam', role: 'mixed', speed: 60, accel: 0.9, power: 400, freight: 12, pax: 10, wagons: 2, reliability: 0.9, load: 1.0, op: 20, price: 600, rarity: 'common', trait: 'cheap_op', level: 1, color: 0x2f6b4a },

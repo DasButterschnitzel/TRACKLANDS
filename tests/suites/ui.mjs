@@ -143,7 +143,7 @@ export async function run({ browser, base, quick, args = {} }) {
     // touch: a tap just beside a world label (touch adjustment snaps it onto
     // the label) must reach the world at the finger position, not the label
     if (ctxOpts.hasTouch) {
-      await page.evaluate(() => { const g = window.__tracklands.game; g.select(null); g.ui.closePanel && g.ui.closePanel(); g.speed = 0; g.ui.toast = () => {}; document.querySelector('#toasts').innerHTML = ''; window.__taps = []; const o = g.input.tap.bind(g.input); g.input.tap = (x, y) => { window.__taps.push([x, y]); return o(x, y); }; });
+      await page.evaluate(() => { const g = window.__tracklands.game; g.select(null); g.ui.closePanel && g.ui.closePanel(); g.speed = 0; g.ui.toast = () => {}; document.querySelector('#toasts').innerHTML = ''; g.ui.updateLabels(); g.ui.updateLabels = () => {}; document.querySelectorAll('#labels .wlabel').forEach((el) => el.classList.remove('pulse')); window.__taps = []; const o = g.input.tap.bind(g.input); g.input.tap = (x, y) => { window.__taps.push([x, y]); return o(x, y); }; });
       await page.waitForTimeout(300);
       const at = await page.evaluate(() => { for (const el of document.querySelectorAll('#labels .wlabel')) { const r = el.getBoundingClientRect(); if (!r.width || r.top < 120 || r.bottom > innerHeight - 160) continue; for (const dy of [6, 9, 12]) { const x = r.left + r.width / 2, y = r.bottom + dy, e = document.elementFromPoint(x, y); if (e && e.id === 'view') return [x, y, el.dataset.key]; } } return null; });
       if (at) {
