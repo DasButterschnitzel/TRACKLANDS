@@ -237,7 +237,7 @@ export const RailUIMixin = {
       return `<div class="adv" ${a.preview && a.preview.length ? `data-preview="${a.preview.join(',')}" data-ok="1"` : ''}>${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
     }).join('') : `<p class="muted small">${this.tr('adv_none')}</p>`;
     return `${head}
-      <h3>${icon('advisor', 'mini')} ${this.tr('advisor')}</h3>${advH}
+      <h3>${icon('advisor', 'mini')} ${this.tr('advisor')} ${this.helpBtn('single')}</h3>${advH}
       <h3>${this.tr('trains')} (${g.trains.trains.length})</h3><div class="tlist">${rows || `<p class="muted">${this.tr('no_trains')}</p>`}</div>`;
   },
 
@@ -245,7 +245,7 @@ export const RailUIMixin = {
   pLines() {
     const g = this.game;
     const L = g.lines.list();
-    if (!L.length) return `<p class="muted">${this.tr('lines_empty')}</p>`;
+    if (!L.length) return `<p class="muted">${this.tr('lines_empty')} ${this.helpBtn('lines')}</p>`;
     return L.map((l) => {
       const inc = g.lines.income(l);
       const sp = l.trains[0].spacing || 0;
@@ -256,7 +256,7 @@ export const RailUIMixin = {
         ${this.lineDiagram(l)}
         <div class="row wrap"><label class="set compact"><span>${this.tr('tt_spacing')}</span><select data-change="lineSpacing" data-key="${esc(l.key)}">${this.spacingOptions(same ? sp : null)}</select></label>
         <button class="btn small" data-act="lineAdd" data-arg="${l.trains[0].id}">${icon('plus')} ${this.tr('line_add_train')}</button></div></div>`;
-    }).join('') + `<p class="muted small">${this.tr('tt_help')}</p>`;
+    }).join('') + `<p class="muted small">${this.tr('tt_help')} ${this.helpBtn('lines')}</p>`;
   },
   spacingOptions(cur) {
     return `${cur == null ? '<option value="" selected>—</option>' : ''}${SPACING_CHOICES.map((v) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${v === 0 ? this.tr('tt_off') : v < 0 ? this.tr('tt_even') : this.tr('tt_every', { n: v / 60 })}</option>`).join('')}`;
@@ -414,7 +414,7 @@ export const RailUIMixin = {
       ${supplies.length ? `<h4>${this.tr('supplies')}</h4>${supplies.map((c) => this.cargoWagonsRow(c)).join('')}` : ''}
       <h4>${this.tr('waiting_cargo')}</h4>${stock.map((c) => this.cargoRow(c, s.stock[c], cap)).join('') || `<p class="muted">${this.tr('none_waiting')}</p>`}
       ${this.paxBlock(s)}
-      <h4>${this.tr('platforms')} · ${s.tracks.length}/${S.maxTracks()}</h4><div class="plats">${tracks}</div>
+      <h4>${this.tr('platforms')} · ${s.tracks.length}/${S.maxTracks()} ${this.helpBtn('stations')}</h4><div class="plats">${tracks}</div>
       <div class="row wrap">${addT}</div>
       <p class="muted small">${this.tr('st_edit_help')}</p>
       <h4>${this.tr('facilities')}</h4><div class="chips wrap">${facs}</div>
@@ -442,7 +442,7 @@ export const RailUIMixin = {
     const rows = waiting ? [...tagged.slice(0, 4).map(([id, n]) => `<div class="kvrow"><span>${this.tr('pax_to', { name: name(+id) })}</span><b>${fmt(n)}</b></div>`), open > 0 && tagged.length ? `<div class="kvrow"><span>${this.tr('pax_open')}</span><b>${fmt(open)}</b></div>` : ''].join('') : '';
     const shown = conns.slice(0, 8);
     const list = shown.map((c) => `<button class="tag link" data-act="jump" data-arg="station:${c.st}">${icon('station', 'mini')}${name(c.st)}${c.via != null ? `<small class="muted">&nbsp;${this.tr('pax_via', { name: name(c.via) })}</small>` : ''}</button>`).join('') + (conns.length > shown.length ? `<span class="muted small">${this.tr('pax_more', { n: conns.length - shown.length })}</span>` : '');
-    return `<h4>${this.tr('pax_heading')}</h4><div class="pill-row">${pills.join('')}</div>${rows}
+    return `<h4>${this.tr('pax_heading')} ${this.helpBtn('passengers')}</h4><div class="pill-row">${pills.join('')}</div>${rows}
       <h4>${this.tr('pax_connections')} · ${conns.length}</h4><div class="links">${list || `<span class="muted small">${this.tr('pax_no_conn')}</span>`}</div>`;
   },
 

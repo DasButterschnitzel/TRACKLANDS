@@ -92,8 +92,39 @@ export class Tutorial {
     this.game.ui.hint(text);
   }
 
+  // Just-in-time teaching: one tip the first time a mechanic shows up in the
+  // player's own network (checked every few seconds, never during the
+  // guided steps, off with the tips setting).
+  contextTips(dt) {
+    const g = this.game;
+    this._ctxT = (this._ctxT || 0) - dt;
+    if (this._ctxT > 0 || this.active || g.settings.tips === false) return;
+    this._ctxT = 4;
+    const lines = g.lines.list();
+    const S = g.stats.data;
+    const checks = [
+      ['lines', () => lines.length > 0],
+      ['timetable', () => lines.some((l) => l.trains.length >= 2 && l.trains.every((t) => !t.spacing))],
+      ['transfers', () => (S.paxTransfers || 0) > 0],
+      ['overtaking', () => (S.overtakes || 0) > 0],
+      ['station_types', () => g.stations.list.some((s) => ['city', 'central', 'grand', 'hs', 'yard', 'intermodal'].includes(s.kind))],
+      ['opportunities', () => g.selection && g.selection.type === 'industry'],
+      ['town_growth', () => g.towns.list.some((t) => t.stage >= 2)],
+      ['passing_loop', () => g.advisor().some((a) => a.key === 'adv_passing_loop' || a.key === 'adv_single_short')],
+      ['saturated', () => g.advisor().some((a) => a.key === 'adv_line_saturated')],
+    ];
+    // one tip per check round, so they never pile up
+    for (const [key, cond] of checks) {
+      if (this.hints.has(key)) continue;
+      let hit = false;
+      try { hit = cond(); } catch (e) { hit = false; }
+      if (hit) { this.hintOnce(key); return; }
+    }
+  }
+
   update(dt) {
     const g = this.game;
+    this.contextTips(dt);
     if (!this.active || !g.running) { this.marker.visible = false; if (this._shown) { g.ui.tutorial(null); this._shown = false; } return; }
     const s = STEPS[this.step];
     if (!s) { this.finish(); return; }

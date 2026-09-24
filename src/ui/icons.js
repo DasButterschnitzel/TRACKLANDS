@@ -36,6 +36,7 @@ const P = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
   gift: '<rect x="4" y="10" width="16" height="11" rx="1" fill="currentColor"/><rect x="3" y="7" width="18" height="4" rx="1" fill="currentColor" opacity=".8"/><path d="M12 7v14" stroke="#fff" stroke-width="2"/>',
   route: '<circle cx="5" cy="6" r="2.5" fill="currentColor"/><circle cx="19" cy="18" r="2.5" fill="currentColor"/><path d="M5 8.5v3a3 3 0 003 3h8a3 3 0 013 3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  handbook: '<path d="M3 5.5C5.5 4 8.5 4 12 6c3.5-2 6.5-2 9-.5V19c-2.5-1.5-5.5-1.5-9 .5-3.5-2-6.5-2-9-.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 6v13.5" stroke="currentColor" stroke-width="2"/>',
   signal: '<rect x="8" y="2" width="8" height="13" rx="2" fill="currentColor"/><circle cx="12" cy="5.5" r="2" fill="#ff5a4a"/><circle cx="12" cy="11" r="2" fill="#4ae07a"/><path d="M12 15v7M8 22h8" stroke="currentColor" stroke-width="2"/>',
   waypoint: '<path d="M6 22V3" stroke="currentColor" stroke-width="2"/><path d="M6 4h12l-3 4 3 4H6" fill="currentColor"/>',
   layers: '<path d="M12 3l9 5-9 5-9-5z" fill="currentColor"/><path d="M3 12.5l9 5 9-5M3 16.5l9 5 9-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>',

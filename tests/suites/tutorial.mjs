@@ -56,7 +56,26 @@ export async function run({ browser, base, args }) {
   }
   const fin = await page.evaluate(() => { const g = window.__tracklands.game; return { done: g.tutorial.finished, trains: g.trains.trains.length, del: g.stats.data.deliveries, trips: g.trains.trains.reduce((a, t) => a + t.trips, 0), problems: g.trains.trains.map((t) => t.problem).filter(Boolean) }; });
   lines.push(`result: finished=${fin.done} trains=${fin.trains} trips=${fin.trips} deliveries=${fin.del} problems=${fin.problems.join(',') || 0}`);
+  // contextual teaching after the guided start: a first line triggers its
+  // tip once; with tips switched off nothing new appears
+  const tips = await page.evaluate(() => {
+    const g = window.__tracklands.game, T = g.tutorial;
+    const t = g.trains.trains[0], st = g.stations.list.slice(0, 2);
+    t.mode = 'manual'; t.route = st.map((s) => ({ st: s.id, act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null }));
+    g.lines.version++;
+    for (let i = 0; i < 30 * 10; i++) { g.tick(1 / 30); T.update(1 / 30); }
+    const shown = T.hints.has('lines');
+    const toast = [...document.querySelectorAll('.toast')].some((e) => e.textContent.includes(g.ui.tr('hint_lines').slice(0, 20)));
+    g.settings.tips = false;
+    const before = T.hints.size;
+    g.stats.data.overtakes = 1;
+    for (let i = 0; i < 30 * 10; i++) { g.tick(1 / 30); T.update(1 / 30); }
+    const quiet = T.hints.size === before;
+    g.settings.tips = true;
+    return { shown, toast, quiet };
+  });
+  lines.push(`contextual tips: first line tip ${tips.shown ? 'shown' : 'missing'}${tips.toast ? ' (toast)' : ''} · tips off stays quiet ${tips.quiet}`);
   if (errors.length) lines.push('page errors: ' + errors.slice(0, 3).join(' | '));
   await ctx.close();
-  return { ok: fin.done && fin.trains === 1 && fin.trips > 0 && fin.del > 0 && !errors.length, lines };
+  return { ok: fin.done && fin.trains === 1 && fin.trips > 0 && fin.del > 0 && tips.shown && tips.quiet && !errors.length, lines };
 }

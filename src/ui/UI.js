@@ -15,6 +15,7 @@ import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels
 import { MATS } from '../core/ModelBuilder.js';
 import { MonetizationService } from '../services/Monetization.js';
 import { RailUIMixin } from './RailUI.js';
+import { HandbookMixin } from './Handbook.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -163,7 +164,7 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements'];
+    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements', 'handbook'];
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'trains' ? 'trains' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
@@ -214,7 +215,7 @@ export class UI {
         const ok = C.signalUnlocked(ty);
         const res = { block: 'block_signals', path: 'path_signals', oneway: 'one_way_signals' }[ty];
         return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
-      }).join('') + `<span class="sub-sep"></span><span class="sub-label">${this.tr('sig_row')}</span>${[2, 3, 4, 6].map((n) => `<button class="chip mini ${C.signalSpacing === n ? 'on' : ''}" data-act="signalSpacing" data-arg="${n}" data-tip="${this.tr('sig_row_tip', { n })}"><b>${n}</b></button>`).join('')}<span class="sub-hint">${this.tr('hint_signal')}</span>`;
+      }).join('') + `<span class="sub-sep"></span><span class="sub-label">${this.tr('sig_row')}</span>${[2, 3, 4, 6].map((n) => `<button class="chip mini ${C.signalSpacing === n ? 'on' : ''}" data-act="signalSpacing" data-arg="${n}" data-tip="${this.tr('sig_row_tip', { n })}"><b>${n}</b></button>`).join('')}<span class="sub-hint">${this.tr('hint_signal')}</span>${this.helpBtn('signals')}`;
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
@@ -472,6 +473,7 @@ export class UI {
       builder: { title: 'train_builder', render: () => this.pBuilder(), wide: true },
       trains: { title: 'menu_trains', render: () => this.pTrains(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
+      handbook: { title: 'handbook', render: () => this.pHandbook() },
     };
   }
 
@@ -594,7 +596,7 @@ export class UI {
           ${r.req.length && st === 'locked' ? `<em>${this.tr('requires')}: ${r.req.map((q) => this.tr('res_' + q)).join(', ')}</em>` : ''}</button>`;
       }).join('')}</div>`;
     }).join('');
-    return `<p class="muted">${icon('rp')} ${this.tr('rp_have', { n: P.rp })} · ${this.tr('rp_sources')}</p>${chips}<div class="rtree ${filt === 'all' ? '' : 'one'}"><svg class="rlines"></svg>${cols}</div>`;
+    return `<p class="muted">${icon('rp')} ${this.tr('rp_have', { n: P.rp })} · ${this.tr('rp_sources')} ${this.helpBtn('economy')}</p>${chips}<div class="rtree ${filt === 'all' ? '' : 'one'}"><svg class="rlines"></svg>${cols}</div>`;
   }
   drawResearchLines() {
     const tree = $('.rtree'); if (!tree) return;
@@ -861,7 +863,7 @@ export class UI {
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['low', 'medium', 'high'])}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
-      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}
+      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
       <h3>${this.tr('save_data')}</h3><div class="row wrap">
         ${inGame ? `<button class="btn" data-act="exportSave">${this.tr('export_save')}</button>` : ''}
@@ -960,7 +962,7 @@ export class UI {
       ${ins.length ? `<h4>${this.tr('needs')}</h4>${ins.map((c) => this.cargoRow(c, ind.inp[c] || 0, cap * 2)).join('')}` : ''}
       <h4>${this.tr('produces')}</h4>${outs.map((c) => this.cargoRow(c, ind.out[c] || 0, cap)).join('')}
       <h4>${this.tr('carried_by')}</h4>${outs.map((c) => this.cargoWagonsRow(c)).join('')}
-      ${opp ? `<h4>${this.tr('opportunities')}</h4><div class="opps">${opp}</div><p class="muted small">${this.tr('opportunities_help')}</p>` : ''}
+      ${opp ? `<h4>${this.tr('opportunities')} ${this.helpBtn('freight')}</h4><div class="opps">${opp}</div><p class="muted small">${this.tr('opportunities_help')}</p>` : ''}
       <h4>${this.tr('growth')}</h4>${ind.level < 4 ? `${this.bar(g.industries.levelProgress(ind))}<small class="muted">${this.tr('next_ilvl', { name: this.tr('ilvl_' + (ind.level + 1)) })}</small>` : `<span class="good">${this.tr('max_level')}</span>`}
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}`;
   }
@@ -1068,6 +1070,7 @@ export class UI {
       defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
       defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
       jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      help: (a) => { this.handbookTopic = a; if (this.panel !== 'handbook') this.openPanel('handbook'); else this.refreshPanel(); },
       researchCat: (a) => { this.researchCat = a; this.refreshPanel(); },
       mapMode: (a) => { this.mapMode = a === 'lines' ? 'lines' : 'geo'; this.refreshPanel(); },
       focusSel: () => { if (this.inspectSel) g().focusOn(this.inspectSel); },
@@ -1136,4 +1139,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin);
