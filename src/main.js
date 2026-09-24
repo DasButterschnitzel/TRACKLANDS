@@ -8,6 +8,7 @@ import { SaveStore, migrate, validate, exportText, importText, downloadJSON } fr
 import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES } from './util.js';
+import { readHeightmap } from './world/Heightmap.js';
 import { icon } from './ui/icons.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION } from './config.js';
 import { log } from './core/Log.js';
@@ -248,19 +249,26 @@ class App {
       <h3>${t('ng_world')}</h3>
       <div class="diffs ng-size">${MAP_SIZES.map((n) => `<label class="diff"><input type="radio" name="size" value="${n}" ${n === 64 ? 'checked' : ''}/><b>${t('size_' + n)}</b><small>${t('size_' + n + '_desc')}</small></label>`).join('')}</div>
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+      <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
+      <p class="muted small">${t('ng_heightmap_help')}</p>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
     w.querySelector('#ng-rand').onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); };
     w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
-    w.querySelector('[data-mbtn=go]').onclick = () => {
+    w.querySelector('[data-mbtn=go]').onclick = async () => {
       const raw = w.querySelector('#ng-seed').value.trim() || seed;
       const num = /^\d+$/.test(raw) ? parseInt(raw, 10) % 4294967296 : hashStr(raw);
       const diff = w.querySelector('input[name=diff]:checked').value;
       const mapSize = +w.querySelector('input[name=size]:checked').value;
       const startYear = +w.querySelector('#ng-year').value;
       const reliability = w.querySelector('#ng-rel').value;
+      const file = w.querySelector('#ng-hmap').files[0];
+      let hmap = null;
+      if (file) {
+        try { hmap = await readHeightmap(file, mapSize); } catch (e) { this.ui.toast(t('ng_heightmap_bad'), 'error'); return; }
+      }
       w.remove();
-      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability });
+      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap });
     };
   }
 

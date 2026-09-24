@@ -6,7 +6,7 @@ import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp, setMapSize } from
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION } from './config.js';
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
-import { RailNetwork } from './rail/RailNetwork.js';
+import { RailNetwork, b64, unb64 } from './rail/RailNetwork.js';
 import { RailRenderer } from './rail/RailRenderer.js';
 import { StationSystem } from './rail/Stations.js';
 import { PaxFlow } from './rail/PaxFlow.js';
@@ -65,7 +65,12 @@ export class Game {
 
     // map size: a save keeps its own; a new game picks one (64 before this existed)
     this.mapSize = setMapSize(save ? (save.mapSize | 0) || 64 : (opts.mapSize | 0) || 64);
-    this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION);
+    // an imported height map travels with the save (the world is rebuilt from it)
+    let hm = null;
+    try { hm = save ? (typeof save.hmap === 'string' ? unb64(save.hmap) : null) : (opts.hmap || null); } catch (e) { hm = null; }
+    this.hmap = hm;
+    if (this.hmap && this.hmap.length !== this.mapSize * this.mapSize) this.hmap = null;
+    this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION, { hmap: this.hmap });
     this.occupancy = { blocked: new Uint8Array(N * N), owner: new Int32Array(N * N) };
     this.stats = new Stats(this);
     this.progression = new Progression(this);
@@ -161,7 +166,7 @@ export class Game {
 
   serialize() {
     return {
-      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, difficulty: this.difficultyId,
+      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
       trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),

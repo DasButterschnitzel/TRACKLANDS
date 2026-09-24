@@ -72,6 +72,35 @@ export async function run({ browser, base }) {
   await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running && window.__tracklands.game.mapSize === 128, null, { timeout: 60000 }).catch(() => {});
   const ng = await page.evaluate(async () => { const g = window.__tracklands.game, U = await import('./src/util.js'); return { size: g.mapSize, N: U.N }; });
   check(opts.join(',') === '64,96,128' && ng.size === 128 && ng.N === 128, `the new-game dialog offers ${opts.join(', ')} and starts a 128 world`);
+  // height map: a radial image (dark rim = sea, bright centre = mountains)
+  const png = await page.evaluate(() => {
+    const c = document.createElement('canvas'); c.width = c.height = 200;
+    const x = c.getContext('2d'), gr = x.createRadialGradient(100, 100, 5, 100, 100, 100);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.55, '#707070'); gr.addColorStop(1, '#000000');
+    x.fillStyle = gr; x.fillRect(0, 0, 200, 200);
+    return c.toDataURL('image/png').split(',')[1];
+  });
+  await page.evaluate(() => window.__tracklands.newGameDialog());
+  await page.waitForTimeout(300);
+  await page.click('.modal input[name=size][value="64"]');
+  await page.setInputFiles('#ng-hmap', { name: 'island.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.click('.modal [data-mbtn=go]');
+  await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running && window.__tracklands.game.hmap, null, { timeout: 60000 }).catch(() => {});
+  const hm = await page.evaluate(async () => {
+    const g = window.__tracklands.game, W = g.world, N = 64;
+    if (!g.hmap) return { none: true };
+    const t = (x, z) => W.type[z * N + x];
+    const S = await import('./src/save/Save.js');
+    const d = S.migrate(JSON.parse(JSON.stringify(g.serialize())));
+    window.__hsave = d;
+    return { corners: [t(0, 0), t(63, 0), t(0, 63), t(63, 63)], centreH: Math.round(W.tileH[32 * N + 32] * 10) / 10, rimH: Math.round(W.tileH[2 * N + 32] * 10) / 10, towns: g.towns.list.length, saved: typeof d.hmap === 'string', sig: JSON.stringify([...W.type].slice(0, 400)) };
+  });
+  check(!hm.none && hm.corners.every((v) => v === 1) && hm.centreH > hm.rimH + 1 && hm.towns > 0, `a height map shapes the world: sea at the corners, centre ${hm.centreH} high vs rim ${hm.rimH}, ${hm.towns} towns`);
+  if (!hm.none) {
+    await loadSave(page, await page.evaluate(() => window.__hsave));
+    const hb = await page.evaluate(() => { const W = window.__tracklands.game.world; return JSON.stringify([...W.type].slice(0, 400)); });
+    check(hm.saved && hb === hm.sig, 'the height map is saved and rebuilds the same world');
+  }
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
   await ctx.close();
   return { ok, lines };

@@ -8,7 +8,11 @@ export const T_LAND = 0, T_WATER = 1, T_MOUNTAIN = 2;
 const PREFIX = ['Green', 'Oak', 'Pine', 'River', 'Stone', 'Meadow', 'Iron', 'West', 'High', 'Ash', 'Elm', 'Fox', 'Clear', 'Silver', 'Red', 'Cold', 'Sun', 'Mill', 'Bright', 'Rose', 'Hazel', 'Birch', 'Maple', 'Crow', 'Deer', 'Wolf', 'Lake', 'Glen', 'Amber', 'Copper', 'Frost', 'Gold', 'Hollow', 'Kings', 'Long', 'North', 'East', 'South', 'Thorn', 'Willow', 'Brook', 'Falcon', 'Harbor', 'Salt', 'Sand', 'Ember', 'Cliff', 'Moss'];
 const SUFFIX = ['field', 'ridge', 'haven', 'ford', 'bridge', 'brook', 'vale', 'mere', 'ton', 'wick', 'stead', 'burn', 'holm', 'dale', 'gate', 'mouth', 'port', 'crest', 'wood', 'hill', 'moor', 'well', 'bury', 'side', 'hollow', 'watch', 'fall', 'cross'];
 
-export function generateWorld(seed, version = WORLDGEN_VERSION) {
+// opts.hmap: an imported height map (Uint8Array of N*N, 0 = sea, 255 = peak).
+// It replaces the noise terrain: height, water and mountains follow the
+// image; regions, biomes, trees and sites are generated as usual.
+export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
+  const hmap = opts.hmap && opts.hmap.length === N * N ? opts.hmap : null;
   const seedNum = typeof seed === 'number' ? seed : hashStr(String(seed));
   const nBase = new Noise2D(seedNum + 1), nMtn = new Noise2D(seedNum + 2), nLake = new Noise2D(seedNum + 3);
   const nTree = new Noise2D(seedNum + 4), nWarp = new Noise2D(seedNum + 5), nMisc = new Noise2D(seedNum + 6);
@@ -59,9 +63,19 @@ export function generateWorld(seed, version = WORLDGEN_VERSION) {
     const mn = nMtn.fbm(x * 0.1, z * 0.1, 4) * 0.5 + 0.5;
     const thr = 1.02 - mtn * 0.9;
     W.mtn[i] = mtn > 0 ? smoothstep(thr, thr + 0.14, mn) : 0;
+    if (hmap) { const v = hmap[i] / 255; W.h0[i] = 0.3 + clamp((v - 0.1) / 0.9, 0, 1) * 2.9; W.mtn[i] = smoothstep(0.7, 0.9, v); }
 
     let water = false;
     const ln = nLake.fbm(x * 0.09 + 100, z * 0.09, 3);
+    if (hmap) {
+      water = hmap[i] < 26;
+      if (water) { W.type[i] = T_WATER; W.mtn[i] = 0; } else if (W.mtn[i] > 0.35) W.type[i] = T_MOUNTAIN;
+      const tn0 = nTree.fbm(x * 0.13 + 200, z * 0.13, 3) * 0.5 + 0.5, d0 = tn0 + treesP - 0.7;
+      W.trees[i] = water ? 0 : d0 > 0.32 ? 3 : d0 > 0.2 ? 2 : d0 > 0.08 ? 1 : 0;
+      if (W.type[i] === T_MOUNTAIN && W.mtn[i] > 0.7) W.trees[i] = Math.min(W.trees[i], 1);
+      void ln;
+      continue;
+    }
     if (ln < -0.46 + lakes * 1.0) water = true;
     // coastal ocean along the west edge
     if (REGIONS[r1].biome === 'coast' || (x < 8 * s && z > 18 * s && z < 48 * s)) {
