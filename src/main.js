@@ -9,12 +9,13 @@ import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml } from './util.js';
 import { icon } from './ui/icons.js';
-import { DIFFICULTY, SAVE_VERSION } from './config.js';
+import { DIFFICULTY, SAVE_VERSION, GAME_VERSION } from './config.js';
+import { log } from './core/Log.js';
 
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'high', shadows: 'medium', particles: 'high', dayNight: true, weather: true, labels: true,
+  graphics: 'auto', shadows: 'medium', particles: 'high', dayNight: true, weather: true, labels: true,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
 };
 
@@ -24,7 +25,8 @@ function loadSettings() {
   const out = { ...DEFAULTS };
   for (const k in DEFAULTS) if (s[k] !== undefined && typeof s[k] === typeof DEFAULTS[k] || (k === 'lang' && typeof s[k] === 'string')) out[k] = s[k];
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && s.reducedMotion === undefined) out.reducedMotion = true;
-  if (s.graphics === undefined && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) { out.graphics = 'medium'; out.shadows = 'low'; out.particles = 'medium'; }
+  // phones start lighter; the automatic graphics profile picks the resolution
+  if (s.graphics === undefined && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) { out.shadows = 'low'; out.particles = 'medium'; }
   return out;
 }
 
@@ -43,10 +45,15 @@ class App {
 
   async boot() {
     const canvas = $('#view');
-    try {
-      this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.settings.graphics !== 'low', powerPreference: 'high-performance' });
-    } catch (e) { this.fatal(t('err_webgl')); return; }
-    if (!this.renderer.capabilities.isWebGL2) { this.fatal(t('err_webgl')); return; }
+    // WebGL 2 with antialiasing first; weaker drivers get a second, plainer try
+    for (const opts of [{ antialias: this.settings.graphics !== 'low', powerPreference: 'high-performance' }, { antialias: false, powerPreference: 'default' }]) {
+      try { this.renderer = new THREE.WebGLRenderer({ canvas, ...opts }); if (this.renderer.capabilities.isWebGL2) break; } catch (e) { log.warn('gfx', 'renderer init failed', { opts, err: String(e && e.message || e) }); }
+      if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
+    }
+    if (!this.renderer) { log.error('gfx', 'no WebGL 2'); this.fatal(t('err_webgl')); return; }
+    this.gpu = this.detectGpu();
+    this.autoGfx = this.autoProfile();
+    log.info('gfx', 'renderer ready', { gpu: this.gpu, auto: this.autoGfx, dpr: window.devicePixelRatio });
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.flushSave(); this.ui && this.ui.toast(t('err_generic'), 'error'); });
     canvas.addEventListener('webglcontextrestored', () => location.reload());
     this.renderer.shadowMap.enabled = true;
@@ -66,8 +73,34 @@ class App {
     requestAnimationFrame((ts) => this.loop(ts));
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') this.registerSW();
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
+  }
+
+  // PWA updates: a new release installs completely in the background, then the
+  // game offers to switch (after saving); the page never mixes two releases
+  registerSW() {
+    navigator.serviceWorker.register('./service-worker.js').then((reg) => {
+      const offer = (w) => { if (w && navigator.serviceWorker.controller) { log.info('pwa', 'update ready'); this.ui && this.ui.updateReady(() => { this.flushSave(); w.postMessage('skipWaiting'); }); } };
+      if (reg.waiting) offer(reg.waiting);
+      reg.addEventListener('updatefound', () => { const w = reg.installing; if (w) w.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); }); });
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading || !this._swHadController) return; reloading = true; location.reload(); });
+      this._swHadController = !!navigator.serviceWorker.controller;
+    }).catch((e) => log.warn('pwa', 'service worker registration failed', String(e && e.message || e)));
+  }
+
+  // everything a bug report needs, nothing personal
+  diagnostics() {
+    const g = this.game, r = this.renderer;
+    const d = {
+      version: GAME_VERSION, save: SAVE_VERSION, time: new Date().toISOString(), ua: navigator.userAgent, lang: getLang(),
+      screen: { w: innerWidth, h: innerHeight, dpr: window.devicePixelRatio }, gpu: this.gpu, webgl2: !!(r && r.capabilities.isWebGL2),
+      gfx: { setting: this.settings.graphics, effective: this.gfx() }, fps: Math.round(this.fps), settings: this.settings,
+      game: g ? { seed: g.world.seed, time: Math.round(g.time), trains: g.trains.trains.length, stations: g.stations.list.length, level: g.progression.level, errors: g.trains.errors || 0, collisions: g.trains.collisions, incidents: g.trains.incidents.length } : null,
+      log: log.entries(120),
+    };
+    return JSON.stringify(d, null, 1);
   }
 
   // ?railtest: automated railway scenarios on a throwaway world (never saved)
@@ -100,8 +133,35 @@ class App {
     return a;
   }
 
+  // ---------- graphics profile (auto picks one per device, steps down if slow) ----------
+  detectGpu() {
+    try { const gl = this.renderer.getContext(); const d = gl.getExtension('WEBGL_debug_renderer_info'); return d ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : 'unknown'; } catch (e) { return 'unknown'; }
+  }
+  autoProfile() {
+    const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 4;
+    const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+    const soft = /SwiftShader|llvmpipe|Software|Basic Render/i.test(this.gpu || '');
+    const maxTex = this.renderer.capabilities.maxTextureSize || 4096;
+    if (soft || cores <= 2 || mem <= 2 || maxTex < 4096) return 'low';
+    if (mobile || cores <= 4 || mem <= 4) return 'medium';
+    return 'high';
+  }
+  gfx() { return this.settings.graphics === 'auto' ? this.autoGfx || 'medium' : this.settings.graphics; }
+  // automatic profile only: a long run of low frame rates steps quality down (never up)
+  adaptGfx(dt) {
+    if (this.settings.graphics !== 'auto' || !this.game || document.hidden) { this._slowT = 0; return; }
+    this._slowT = this.fps < 32 ? (this._slowT || 0) + dt : 0;
+    if (this._slowT < 8 || this.autoGfx === 'low') return;
+    this._slowT = 0;
+    this.autoGfx = this.autoGfx === 'high' ? 'medium' : 'low';
+    this.applyPixelRatio();
+    if (this.autoGfx === 'low' && this.game.env) this.game.env.setShadowQuality('low');
+    log.info('gfx', 'auto profile lowered', { to: this.autoGfx, fps: Math.round(this.fps) });
+    this.ui && this.ui.toast(t('gfx_lowered'), 'info', 'settings');
+  }
+
   applyPixelRatio() {
-    const q = this.settings.graphics;
+    const q = this.gfx();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q === 'high' ? 2 : q === 'medium' ? 1.5 : 1));
     this.resize();
   }
@@ -134,10 +194,11 @@ class App {
     const dt = Math.min(0.1, (ts - this.last) / 1000);
     this.last = ts;
     if (dt > 0) this.fps = this.fps * 0.95 + (1 / dt) * 0.05;
+    this.adaptGfx(dt);
     try {
       if (this.game) this.game.frame(dt);
       else if (this.title) { this.title.render(dt); this.audio.update(dt); }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); if ((this._loopErrs = (this._loopErrs || 0) + 1) < 20) log.error('loop', String(e && e.message || e)); }
     requestAnimationFrame((t2) => this.loop(t2));
   }
 
@@ -258,7 +319,7 @@ class App {
       const d = this.game.serialize();
       localStorage.setItem('tracklands.save', JSON.stringify(d));
       this.store.put('main', d);
-    } catch (e) { /* quota or unavailable */ }
+    } catch (e) { log.warn('save', 'flush failed', String(e && e.message || e)); }
   }
 
   onVisibility() {

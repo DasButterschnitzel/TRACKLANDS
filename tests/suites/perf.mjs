@@ -7,7 +7,8 @@ export async function run({ browser, base, quick }) {
   const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 1280, height: 800 } });
   const lines = [];
   let ok = true;
-  const targets = quick ? [8, 24] : [8, 24, 50];
+  // stress: up to 100 trains on one network (the network saturates; tick cost is what counts)
+  const targets = quick ? [8, 24] : [8, 24, 50, 100];
   for (const seed of quick ? [18] : [11, 18]) {
     await startTestGame(page, seed * 1013);
     const res = await page.evaluate(async ([sd, targets]) => {
@@ -17,7 +18,7 @@ export async function run({ browser, base, quick }) {
       const out = [];
       for (const target of targets) {
         let guard = 0;
-        while (g.trains.trains.length < target && guard++ < 400) { F.buyRandom(); for (let k = 0; k < 20; k++) g.tick(1 / 30); }
+        while (g.trains.trains.length < target && guard++ < 800) { F.buyRandom(); for (let k = 0; k < 20; k++) g.tick(1 / 30); }
         for (let k = 0; k < 600; k++) g.tick(1 / 30);
         const N = 1800, times = [];
         for (let k = 0; k < N; k++) { const a = performance.now(); g.tick(1 / 30); times.push(performance.now() - a); }

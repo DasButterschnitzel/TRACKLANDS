@@ -38,5 +38,9 @@ export async function run() {
   const noNet = JSON.parse(once); delete noNet.net;
   check(S.validate(noNet) === 'err_save_invalid', 'save without rail network is rejected by validate()');
   check(S.importText('TRKL1:%%%') === null && S.importText('{broken') === null, 'malformed import text returns null');
+  // the offline cache must list exactly the shipped files (tools/build-sw.mjs)
+  const { buildServiceWorker } = await import('../../tools/build-sw.mjs');
+  const fs = await import('fs');
+  check(fs.readFileSync('service-worker.js', 'utf8') === buildServiceWorker(), 'service-worker.js is up to date (node tools/build-sw.mjs)');
   return { ok, lines };
 }

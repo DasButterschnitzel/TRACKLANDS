@@ -1,7 +1,10 @@
 // Central balancing and content configuration. Gameplay code reads from here only.
 
 export const CREATOR_NAME = ''; // Set to credit the creator in the Credits panel.
-export const GAME_VERSION = '2.0.0';
+export const GAME_VERSION = '3.0.0';
+// World generator version. Saves remember theirs (no field = 1) so a loaded
+// world is always rebuilt exactly as it was; improvements apply to new games.
+export const WORLDGEN_VERSION = 2;
 export const SAVE_VERSION = 3;
 
 export const DIFFICULTY = {

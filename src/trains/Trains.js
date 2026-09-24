@@ -16,6 +16,7 @@ import {
 import { MATS } from '../core/ModelBuilder.js';
 import { SCALE } from '../style.js';
 import { SPACING_CHOICES } from './Lines.js';
+import { log } from '../core/Log.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
@@ -1140,7 +1141,7 @@ export class TrainSystem {
     // higher priority trains claim contested track first
     const order = this.trains.slice().sort((a, b) => (b._st.prioRank - a._st.prioRank) || (a.id - b.id));
     for (const t of order) {
-      try { this.tickTrain(t, dt); } catch (e) { this.errors = (this.errors || 0) + 1; this.lastError = String(e && e.stack || e); console.error('train tick error', e); this.recoverTrain(t); }
+      try { this.tickTrain(t, dt); } catch (e) { this.errors = (this.errors || 0) + 1; this.lastError = String(e && e.stack || e); console.error('train tick error', e); log.error('train', 'tick error, train re-formed', { train: t.name, err: String(e && e.message || e) }); this.recoverTrain(t); }
     }
     // smoothed income per minute of each train (lines list, fleet overview)
     this._incT = (this._incT ?? 10) - dt;

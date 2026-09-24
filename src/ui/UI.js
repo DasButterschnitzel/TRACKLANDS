@@ -16,6 +16,7 @@ import { MATS } from '../core/ModelBuilder.js';
 import { MonetizationService } from '../services/Monetization.js';
 import { RailUIMixin } from './RailUI.js';
 import { HandbookMixin } from './Handbook.js';
+import { log } from '../core/Log.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -281,6 +282,15 @@ export class UI {
   }
   error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error'); this.app.audio.play('error'); }
   hint(text) { this.toast(text, 'hint', 'info'); }
+
+  // a new release is installed and waiting: offer to switch (never automatic mid-game)
+  updateReady(apply) {
+    let el = document.getElementById('update-ready');
+    if (!el) { el = document.createElement('div'); el.id = 'update-ready'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.innerHTML = `${icon('info')}<span>${esc(this.tr('update_ready'))}</span><button class="btn small primary">${esc(this.tr('update_apply'))}</button><button class="icon-btn small" aria-label="${esc(this.tr('close'))}">${icon('close')}</button>`;
+    el.querySelector('.btn').onclick = () => { el.remove(); apply(); };
+    el.querySelector('.icon-btn').onclick = () => el.remove();
+  }
 
   banner(title, desc) {
     const b = $('#banner');
@@ -864,7 +874,7 @@ export class UI {
     const lang = `<label class="set"><span>${this.tr('language')}</span><select data-change="lang">${LANGS.map((l) => `<option value="${l.id}" ${getLang() === l.id ? 'selected' : ''}>${l.name}</option>`).join('')}</select></label>`;
     const inGame = !!this.game;
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
-      <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['low', 'medium', 'high'])}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
+      <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
@@ -873,6 +883,7 @@ export class UI {
         <button class="btn" data-act="importSave">${this.tr('import_save')}</button>
         ${inGame ? `<button class="btn ghost" data-act="resetTutorial">${this.tr('reset_tutorial')}</button>` : ''}
         <button class="btn danger" data-act="resetGame">${this.tr('reset_game')}</button></div>
+      <div class="row wrap"><button class="btn ghost small" data-act="copyDiagnostics">${this.tr('copy_diagnostics')}</button></div>
       <p class="muted small">${this.tr('storage_info')} · v${GAME_VERSION}</p>`;
   }
 
@@ -1043,7 +1054,7 @@ export class UI {
     let nodes = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) nodes++;
     const sel = g.selection ? `${g.selection.type}:${g.selection.id}` : '-';
     const tr = g.selection && g.selection.type === 'train' ? g.trains.byId(g.selection.id) : null;
-    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)} resv ${tr.resvEnd}/${tr.steps.length}\n blockedBy ${tr.blockedBy} ${tr.blockKind || ''} prio ${tr._st.prioRank}\n veh ${tr.veh.map((v) => v.k + v.id + (v.r ? 'r' : '')).join(' ')}` : ''}\nrail: switches ${g.net.switches.size} jres ${g.net.jres.size} runs ${g.net.runLocks.size}\nsignals ${g.net.signals.size} collisions ${g.trains.collisions} deadlocks ${g.trains.incidents.length}`;
+    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)} resv ${tr.resvEnd}/${tr.steps.length}\n blockedBy ${tr.blockedBy} ${tr.blockKind || ''} prio ${tr._st.prioRank}\n veh ${tr.veh.map((v) => v.k + v.id + (v.r ? 'r' : '')).join(' ')}` : ''}\nrail: switches ${g.net.switches.size} jres ${g.net.jres.size} runs ${g.net.runLocks.size}\nsignals ${g.net.signals.size} collisions ${g.trains.collisions} deadlocks ${g.trains.incidents.length}\ngfx ${this.app.settings.graphics}→${this.app.gfx()} gpu ${(this.app.gpu || '').slice(0, 40)}\nlog ${JSON.stringify(log.counts())}\n${log.entries(6).map((e) => `${(e.t / 1000).toFixed(0)}s ${e.lvl} [${e.cat}] ${e.msg}`).join('\n')}`;
   }
 
   toggleHeatmap() { this.actions.overlay('traffic'); }
@@ -1073,6 +1084,11 @@ export class UI {
       defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
       defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
       jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      copyDiagnostics: async () => {
+        const txt = this.app.diagnostics();
+        try { await navigator.clipboard.writeText(txt); this.toast(this.tr('diagnostics_copied'), 'good', 'check'); }
+        catch (e) { const b = new Blob([txt], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'tracklands-diagnostics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+      },
       help: (a) => { this.handbookTopic = a; if (this.panel !== 'handbook') this.openPanel('handbook'); else this.refreshPanel(); },
       researchCat: (a) => { this.researchCat = a; this.refreshPanel(); },
       mapMode: (a) => { this.mapMode = a === 'lines' ? 'lines' : 'geo'; this.refreshPanel(); },

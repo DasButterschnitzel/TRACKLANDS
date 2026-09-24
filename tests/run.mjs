@@ -7,7 +7,7 @@
 //   node tests/run.mjs fuzz --from=1 --to=60
 //   node tests/run.mjs monkey --steps=800 --seeds=1,2 --modes=phone
 //
-// Suites: unit rail seeds fuzz prodsave economy persist import tutorial savefuzz monkey ui perf gallery
+// Suites: unit worldgen rail seeds fuzz prodsave economy persist import pwa tutorial savefuzz monkey ui perf gallery
 // Needs Playwright's Chromium (npx playwright install chromium) or CHROMIUM_PATH.
 import { startServer, launchBrowser } from './lib.mjs';
 import * as unit from './suites/unit.mjs';
@@ -23,8 +23,10 @@ import * as ui from './suites/ui.mjs';
 import * as perf from './suites/perf.mjs';
 import * as gallery from './suites/gallery.mjs';
 import * as economy from './suites/economy.mjs';
+import * as pwa from './suites/pwa.mjs';
+import * as worldgen from './suites/worldgen.mjs';
 
-const ALL = [unit, rail, seeds, fuzz, prodsave, economy, persist, importexport, tutorial, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];
@@ -43,7 +45,7 @@ for (const s of suites) {
   process.stdout.write(`\n▶ ${s.name}${quick ? ' (quick)' : ''}\n`);
   let r;
   try {
-    if (s.name !== 'unit' && !browser) browser = await launchBrowser();
+    if (s.name !== 'unit' && !s.nodeOnly && !browser) browser = await launchBrowser();
     r = await s.run({ browser, base: url, quick, args });
   } catch (e) {
     r = { ok: false, lines: ['EXCEPTION ' + (e && e.stack || e)] };

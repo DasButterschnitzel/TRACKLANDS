@@ -174,6 +174,65 @@ export async function run({ browser, base, args = {} }) {
     await page.screenshot({ path: path.join(dir, `town-stage${stage}.png`) });
   }
   if (want('towns')) lines.push('ok   towns: stages 0-6');
+  // railway structures: an electrified line over a river (bridge + catenary),
+  // a line through a mountain (tunnel portals) and a high-speed line
+  if (want('rail')) {
+    const found = await page.evaluate(() => {
+      const g = window.__tracklands.game, C = g.construction, net = g.net, N = 64;
+      for (let r = 0; r < 8; r++) g.progression.regions.add(r);
+      for (const id of ['reinforced_rail', 'electric_rail', 'high_speed_rail', 'bridge_eng', 'tunnel_eng']) g.progression.research.add(id);
+      g.progression.recomputeFx(); g.economy.coins = 1e9;
+      const out = {};
+      const tryLine = (tier, want, key) => {
+        for (const [dx, dz] of [[0, 10], [10, 0], [0, 14], [14, 0], [0, 7], [7, 0]]) for (let x = 4; x < N - 4 - dx && !out[key]; x += 2) for (let z = 4; z < N - 4 - dz && !out[key]; z += 2) {
+          const a = z * N + x, b = (z + dz) * N + x + dx;
+          if (net.conn[a] || net.conn[b] || g.world.type[a] || g.world.type[b]) continue;
+          C.tier = tier; C.trackMode = 'double'; C.drag = { a, b }; C.previewTrack();
+          if (C.plan && C.plan.ok && (C.plan[want] || 0) > 0) { C.buildTrack(); out[key] = { x, z, dx: Math.sign(dx), dz: Math.sign(dz) }; }
+          C.drag = null; C.clearPreview();
+        }
+      };
+      tryLine(2, 'bridges', 'bridge');
+      // tunnel: lay track straight through a mountain ridge (the planner would go round it)
+      for (const [ddx, ddz] of [[1, 0], [0, 1]]) for (let z = 1; z < N - 2 && !out.tunnel; z++) for (let x = 1; x < N - 2 && !out.tunnel; x++) {
+        const at = (k) => { const xx = x + ddx * k, zz = z + ddz * k; return xx >= 0 && zz >= 0 && xx < N && zz < N ? zz * N + xx : -1; };
+        const T = (k) => (at(k) < 0 ? -1 : g.world.type[at(k)]);
+        if (T(0) !== 0 || T(1) !== 0 || T(2) !== 2) continue;
+        let e = 2; while (T(e) === 2) e++;
+        if (e - 2 < 2 || T(e) !== 0 || T(e + 1) !== 0) continue;
+        if ([...Array(e + 2).keys()].some((k) => net.conn[at(k)])) continue;
+        const dir = ddx ? 0 : 2;
+        for (let k = 0; k <= e; k++) { net.connect(at(k), dir); net.tier[at(k)] = 1; }
+        net.tier[at(e + 1)] = 1; net.bumpVersion();
+        out.tunnel = { x: x + ddx, z: z + ddz, dx: ddx, dz: ddz };
+      }
+      for (let x = 6; x < N - 20 && !out.hs; x += 4) for (let z = 6; z < N - 6 && !out.hs; z += 4) {
+        const a = z * N + x, b = z * N + x + 12;
+        if (net.conn[a] || net.conn[b]) continue;
+        C.tier = 3; C.drag = { a, b }; C.previewTrack();
+        if (C.plan && C.plan.ok && !C.plan.bridges && !C.plan.tunnels) { C.buildTrack(); out.hs = { x: x + 6, z }; }
+        C.drag = null; C.clearPreview();
+      }
+      g.railView.markAll();
+      return out;
+    });
+    const shots = [['bridge', 'rail-bridge', 7], ['tunnel', 'rail-tunnel', 7], ['hs', 'rail-highspeed', 8]];
+    for (const [k, file, zoom] of shots) {
+      const at = found[k];
+      if (!at) { lines.push(`FAIL rail: no ${k} site found`); ok = false; continue; }
+      await page.evaluate(([at, zoom, k]) => {
+        const g = window.__tracklands.game, cam = g.camera, N = 64;
+        let x = at.x, z = at.z;
+        // centre on the structure itself
+        if (k !== 'hs') for (let d = 0; d <= 14; d++) { const xx = at.x + d * (at.dx || 0), zz = at.z + d * (at.dz || 0); const i = zz * N + xx; const kd = g.net.kind(i); if (kd && g.net.conn[i]) { x = xx; z = zz; break; } }
+        cam.focusGoal = null; cam.target.x = (x + 0.5) * 2; cam.target.z = (z + 0.5) * 2; cam.zoomGoal = cam.viewSize = zoom;
+        g.world.view.clouds.visible = false; g.env.timeOfDay = 0.42; g.speed = 0;
+      }, [at, zoom, k]);
+      await page.waitForTimeout(1500);
+      await page.screenshot({ path: path.join(dir, `${file}.png`) });
+    }
+    lines.push(`ok   rail structures: ${Object.keys(found).join(', ')}`);
+  }
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   lines.push(`sheets: ${path.relative(process.cwd(), dir)}`);
   await ctx.close();

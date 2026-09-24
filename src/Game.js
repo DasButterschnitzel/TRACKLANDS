@@ -3,7 +3,7 @@
 // gameplay events, and handles saving plus offline progress.
 import * as THREE from 'three';
 import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp } from './util.js';
-import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE } from './config.js';
+import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION } from './config.js';
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
 import { RailNetwork } from './rail/RailNetwork.js';
@@ -29,6 +29,7 @@ import { Tutorial } from './ui/Tutorial.js';
 import { RailTests } from './debug/RailTests.js';
 import { RailFuzz } from './debug/RailFuzz.js';
 import { EconomySim } from './debug/EconomySim.js';
+import { log } from './core/Log.js';
 
 const STEP = 1 / 30;
 
@@ -53,7 +54,7 @@ export class Game {
     this.difficultyId = save ? (DIFFICULTY[save.difficulty] ? save.difficulty : 'standard') : opts.difficulty || 'standard';
     this.difficulty = DIFFICULTY[this.difficultyId];
 
-    this.world = generateWorld(seed);
+    this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION);
     this.occupancy = { blocked: new Uint8Array(N * N), owner: new Int32Array(N * N) };
     this.stats = new Stats(this);
     this.progression = new Progression(this);
@@ -131,7 +132,7 @@ export class Game {
 
   serialize() {
     return {
-      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, difficulty: this.difficultyId,
+      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
       trains: this.trains.serialize(), economy: this.economy.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
@@ -355,6 +356,7 @@ export class Game {
     E.on('stationEdited', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
     E.on('stationBuilt', (s) => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); if (s) this.towns.onStationGrew(s); });
     E.on('stationUpgraded', (s) => this.towns.onStationGrew(s));
+    E.on('deadlockResolved', (v, how, trains) => log.info('rail', 'deadlock resolved', { victim: v && v.name, how, trains: (trains || []).map((t) => t.name) }));
     E.on('stationsRelinked', () => { this.industries.onStationsChanged(); this.towns.onStationsChanged(); });
   }
 

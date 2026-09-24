@@ -189,6 +189,30 @@ export class RailRenderer {
       return;
     }
     const bridge = kind === K_BRIDGE;
+    if (bridge) for (let d = 0; d < 8; d++) {
+      if (!net.hasDir(i, d)) continue;
+      const j = step(i, d);
+      if (j < 0 || net.kind(j) === K_BRIDGE) continue;
+      const e = edge(net, i, d);
+      this.abutment(gb, e, d, e[1] - 0.24, Math.min(net.railH(j), e[1]) - 0.9, Math.atan2(-DZ[d], DX[d]), delay);
+    }
+    // lineside details on plain straight track: relay cabinets, distance
+    // posts and (old lines) telegraph poles, placed by a hash of the tile
+    if (!bridge && !sp0 && pairs.length === 1 && stubs.length === 0 && pairs[0][1] === ((pairs[0][0] + 4) & 7) && curves.length) {
+      const hsh = ((i * 2654435761) >>> 0) % 97;
+      const m = curves[0][Math.floor(curves[0].length / 2)];
+      const yaw = Math.atan2(-m.tz, m.tx);
+      const side = hsh & 1 ? 1 : -1;
+      const off = single ? 0.62 : 1.02;
+      const at = (a) => [m.x + m.nx * a * side, m.z + m.nz * a * side];
+      if (hsh % 11 === 0) { const [cx, cz] = at(off); gb.box(cx, m.y + 0.13, cz, 0.08, 0.13, 0.1, yaw, 0x8c939a, delay); gb.box(cx, m.y + 0.27, cz, 0.09, 0.015, 0.11, yaw, 0x5a6068, delay); }
+      else if (hsh % 17 === 0) { const [cx, cz] = at(off - 0.05); gb.box(cx, m.y + 0.2, cz, 0.02, 0.2, 0.02, yaw, 0xe8e4dc, delay); gb.box(cx, m.y + 0.38, cz, 0.012, 0.06, 0.07, yaw, 0xf2efe8, delay); }
+      if (tier <= 1 && (i % 3 === 0)) {
+        const [cx, cz] = at(-(off + 0.12));
+        gb.box(cx, m.y + 0.62, cz, 0.022, 0.62, 0.022, yaw, 0x6b4a33, delay);
+        gb.box(cx, m.y + 1.12, cz, 0.02, 0.018, 0.16, yaw, 0x6b4a33, delay);
+      }
+    }
     for (const cv of curves) {
       // ballast or bridge deck
       for (let k = 0; k < cv.length - 1; k++) {
@@ -320,13 +344,33 @@ export class RailRenderer {
     }
   }
 
+  // Stone tunnel portal: facade across the track with a dark arched opening
+  // (stepped crown), a lighter voussoir band, a cornice and two wing walls
+  // splaying out along the cutting. Local x = along the track, pointing out.
   portal(gb, x, y, z, yaw, delay) {
-    const stone = 0x8a8178, dark = 0x121316;
-    const cs = Math.cos(yaw), sn = Math.sin(yaw);
-    // facade perpendicular to track direction; local x = along track
-    gb.box(x, y + 0.75, z, 0.12, 0.85, 1.0, yaw, stone, delay);
-    gb.box(x - cs * 0.02, y + 0.55, z + sn * 0.02, 0.13, 0.55, 0.72, yaw, dark, delay);
-    gb.box(x, y + 1.62, z, 0.16, 0.08, 1.08, yaw, shadeHex(stone, 0.85), delay);
+    const stone = 0x9a9086, trim = 0xb8ae9f, dark = 0x121316;
+    const fx = Math.cos(yaw), fz = -Math.sin(yaw);   // outward
+    const px = Math.sin(yaw), pz = Math.cos(yaw);    // across
+    const o = (a, b) => [x + fx * a + px * b, z + fz * a + pz * b];
+    gb.box(x, y + 0.8, z, 0.14, 0.9, 1.05, yaw, stone, delay);
+    let [ax, az] = o(0.03, 0);
+    gb.box(ax, y + 0.48, az, 0.13, 0.52, 0.64, yaw, dark, delay);
+    gb.box(ax, y + 1.06, az, 0.13, 0.09, 0.5, yaw, dark, delay);
+    gb.box(ax, y + 1.19, az, 0.13, 0.05, 0.32, yaw, dark, delay);
+    [ax, az] = o(0.02, 0);
+    gb.box(ax, y + 1.3, az, 0.14, 0.06, 0.56, yaw, trim, delay);
+    for (const sgn of [1, -1]) { const [qx, qz] = o(0.02, sgn * 0.7); gb.box(qx, y + 0.55, qz, 0.14, 0.62, 0.07, yaw, trim, delay); }
+    gb.box(x, y + 1.74, z, 0.2, 0.07, 1.13, yaw, shadeHex(stone, 0.8), delay);
+    for (const sgn of [1, -1]) {
+      const [wx, wz] = o(0.42, sgn * 1.12);
+      gb.box(wx, y + 0.5, wz, 0.42, 0.55, 0.08, yaw - sgn * 0.42, shadeHex(stone, 0.9), delay);
+    }
+  }
+  // stone abutment where a bridge deck meets the bank
+  abutment(gb, e, d, top, bottom, yaw, delay) {
+    const h = Math.max(0.2, top - bottom);
+    gb.box(e[0] - DX[d] * 0.12, bottom + h / 2, e[2] - DZ[d] * 0.12, 0.2, h / 2, 0.92, yaw, 0x8a8178, delay);
+    gb.box(e[0] - DX[d] * 0.12, top + 0.02, e[2] - DZ[d] * 0.12, 0.24, 0.04, 0.98, yaw, 0x9a9086, delay);
   }
 
   // ---------- heatmap ----------

@@ -1,21 +1,21 @@
 // Deterministic world generation: terrain heights, water, mountains, regions,
 // biomes, tree cover and placement of towns and industries.
 import { N, RNG, Noise2D, idx, tx, tz, inMap, clamp, lerp, smoothstep, hashStr } from '../util.js';
-import { REGIONS, BIOMES } from '../config.js';
+import { REGIONS, BIOMES, WORLDGEN_VERSION } from '../config.js';
 
 export const T_LAND = 0, T_WATER = 1, T_MOUNTAIN = 2;
 
 const PREFIX = ['Green', 'Oak', 'Pine', 'River', 'Stone', 'Meadow', 'Iron', 'West', 'High', 'Ash', 'Elm', 'Fox', 'Clear', 'Silver', 'Red', 'Cold', 'Sun', 'Mill', 'Bright', 'Rose', 'Hazel', 'Birch', 'Maple', 'Crow', 'Deer', 'Wolf', 'Lake', 'Glen', 'Amber', 'Copper', 'Frost', 'Gold', 'Hollow', 'Kings', 'Long', 'North', 'East', 'South', 'Thorn', 'Willow', 'Brook', 'Falcon', 'Harbor', 'Salt', 'Sand', 'Ember', 'Cliff', 'Moss'];
 const SUFFIX = ['field', 'ridge', 'haven', 'ford', 'bridge', 'brook', 'vale', 'mere', 'ton', 'wick', 'stead', 'burn', 'holm', 'dale', 'gate', 'mouth', 'port', 'crest', 'wood', 'hill', 'moor', 'well', 'bury', 'side', 'hollow', 'watch', 'fall', 'cross'];
 
-export function generateWorld(seed) {
+export function generateWorld(seed, version = WORLDGEN_VERSION) {
   const seedNum = typeof seed === 'number' ? seed : hashStr(String(seed));
   const nBase = new Noise2D(seedNum + 1), nMtn = new Noise2D(seedNum + 2), nLake = new Noise2D(seedNum + 3);
   const nTree = new Noise2D(seedNum + 4), nWarp = new Noise2D(seedNum + 5), nMisc = new Noise2D(seedNum + 6);
   const rng = new RNG(seedNum + 7);
 
   const W = {
-    seed: seedNum,
+    seed: seedNum, genVersion: version,
     type: new Uint8Array(N * N),
     region: new Uint8Array(N * N),
     h0: new Float32Array(N * N),
@@ -78,7 +78,7 @@ export function generateWorld(seed) {
     if (W.type[i] === T_MOUNTAIN && W.mtn[i] > 0.7) W.trees[i] = Math.min(W.trees[i], 1);
   }
 
-  placeSites(W, rng);
+  placeSites(W, rng, version);
   computeHeights(W);
   return W;
 }
@@ -125,14 +125,15 @@ function regionInterior(W, x, z, r, rad) {
   return true;
 }
 
-function placeSites(W, rng) {
+function placeSites(W, rng, version) {
   const used = new Set(['Greenfield']);
   const sites = [];
   const farEnough = (x, z, d) => sites.every((s) => Math.max(Math.abs(s.x - x), Math.abs(s.z - z)) >= d);
 
   const findSpot = (r, pred, minDist, rad, near) => {
     for (let pass = 0; pass < 3; pass++) {
-      const md = minDist - pass * 2;
+      // v2: relaxing the spacing never goes below 3 tiles (v1 allowed 2: ports on town edges)
+      const md = version >= 2 ? Math.max(3, minDist - pass * 2) : minDist - pass * 2;
       for (let a = 0; a < 400; a++) {
         let x, z;
         if (near) { x = Math.round(near[0] + rng.range(-near[2], near[2])); z = Math.round(near[1] + rng.range(-near[2], near[2])); }
