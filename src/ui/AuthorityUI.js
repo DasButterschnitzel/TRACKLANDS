@@ -2,7 +2,7 @@
 // confirmation of station projects that buy property. Every figure the rules
 // use is shown: rating and band, recent changes with reasons, permits with
 // their thresholds, compensation, people affected, relationship impact.
-import { fmt, escapeHtml as esc } from '../util.js';
+import { fmt, escapeHtml as esc, tileCX, tileCZ } from '../util.js';
 import { icon } from './icons.js';
 import { PERMITS, BANDS } from '../world/Authority.js';
 import { MONTH_S } from '../economy/Ledger.js';
@@ -64,7 +64,7 @@ export const AuthorityUIMixin = {
       const r = A.demolish(tile);
       if (r.error) { this.error(r.error); return; }
       g.audio.play('bulldoze');
-      g.particles.emit('dust', ((tile % 64) + 0.5) * 2, 0.6, (Math.floor(tile / 64) + 0.5) * 2, 14);
+      g.particles.emit('dust', tileCX(tile), 0.6, tileCZ(tile), 14);
       this.toast(this.tr('dem_done', { what: this.tr('bld_' + d.arch), town: d.town.name }), 'info', 'bulldoze');
     };
   },

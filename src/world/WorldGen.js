@@ -27,15 +27,18 @@ export function generateWorld(seed, version = WORLDGEN_VERSION) {
     towns: [], industries: [],
   };
 
-  // Region centers jittered by seed
+  // Region centers jittered by seed (laid out for 64 tiles; larger maps
+  // scale the layout, s = 1 on the classic map keeps it exactly)
+  const s = N / 64;
   const centers = REGIONS.map((r, i) => {
-    if (i === 0) return [r.center[0], r.center[1]];
-    return [r.center[0] + rng.range(-2, 2), r.center[1] + rng.range(-2, 2)];
+    if (i === 0) return [r.center[0] * s, r.center[1] * s];
+    return [r.center[0] * s + rng.range(-2, 2) * s, r.center[1] * s + rng.range(-2, 2) * s];
   });
+  W.scale = s;
   W.centers = centers;
 
-  const riverA = { phase: rng.range(0, 6.28), z: 20 + rng.range(-1.5, 1.5) };
-  const riverB = { phase: rng.range(0, 6.28), x: 42 + rng.range(-1.5, 1.5) };
+  const riverA = { phase: rng.range(0, 6.28), z: 20 * s + rng.range(-1.5, 1.5) };
+  const riverB = { phase: rng.range(0, 6.28), x: 42 * s + rng.range(-1.5, 1.5) };
 
   for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
     const i = idx(x, z);
@@ -61,15 +64,15 @@ export function generateWorld(seed, version = WORLDGEN_VERSION) {
     const ln = nLake.fbm(x * 0.09 + 100, z * 0.09, 3);
     if (ln < -0.46 + lakes * 1.0) water = true;
     // coastal ocean along the west edge
-    if (REGIONS[r1].biome === 'coast' || (x < 8 && z > 18 && z < 48)) {
+    if (REGIONS[r1].biome === 'coast' || (x < 8 * s && z > 18 * s && z < 48 * s)) {
       const coastX = 4.5 + nMisc.noise(z * 0.12, 3.3) * 3;
       if (x < coastX) water = true;
     }
     // rivers
     const rz = riverA.z + 3 * Math.sin(x * 0.16 + riverA.phase) + 1.5 * Math.sin(x * 0.41 + 1.3);
-    if (x > 10 && Math.abs(z - rz) < 0.75) water = true;
+    if (x > 10 * s && Math.abs(z - rz) < 0.75) water = true;
     const rx = riverB.x + 3 * Math.sin(z * 0.14 + riverB.phase) + 1.2 * Math.sin(z * 0.37);
-    if (z > 22 && Math.abs(x - rx) < 0.7) water = true;
+    if (z > 22 * s && Math.abs(x - rx) < 0.7) water = true;
     if (water) { W.type[i] = T_WATER; W.mtn[i] = 0; } else if (W.mtn[i] > 0.35) W.type[i] = T_MOUNTAIN;
 
     const tn = nTree.fbm(x * 0.13 + 200, z * 0.13, 3) * 0.5 + 0.5;
@@ -149,10 +152,14 @@ function placeSites(W, rng, version) {
     return null;
   };
 
+  // larger maps: more towns and industries per region (same on 64 tiles)
+  const area = (W.scale || 1) ** 2;
   REGIONS.forEach((reg, r) => {
     const c = W.centers[r];
+    const nTowns = area > 1 ? Math.round(reg.towns * area * 0.75) : reg.towns;
+    const inds = area > 1 ? Array.from({ length: Math.round(reg.industries.length * area * 0.75) }, (_, k) => reg.industries[k % reg.industries.length]) : reg.industries;
     // towns
-    for (let t = 0; t < reg.towns; t++) {
+    for (let t = 0; t < nTowns; t++) {
       let spot;
       if (r === 0 && t === 0) spot = [Math.round(c[0]), Math.round(c[1])];
       else spot = findSpot(r, (x, z) => W.type[idx(x, z)] !== 1 || true, 9, 2, t === 0 ? [c[0], c[1], 5] : null) || findSpot(r, null, 6, 1, null);
@@ -164,7 +171,7 @@ function placeSites(W, rng, version) {
       sites.push(town);
     }
     // industries
-    reg.industries.forEach((type, k) => {
+    inds.forEach((type, k) => {
       let spot = null;
       if (r === 0 && k === 0) {
         // tutorial forest: 9..12 tiles from Greenfield with a clear land corridor

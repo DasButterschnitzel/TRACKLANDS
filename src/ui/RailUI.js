@@ -3,7 +3,7 @@
 // editor with per-stop options, station editor (tracks, platforms, roles,
 // facilities, statistics) and the overlay menu.
 import * as THREE from 'three';
-import { TILE, fmt, escapeHtml, clamp } from '../util.js';
+import { TILE, fmt, escapeHtml, clamp, tileCX, tileCZ } from '../util.js';
 import {
   CARGO, CARGO_IDS, LOCOS, WAGONS, WAGON_IDS, STATION, FACILITIES, PLATFORM_ROLES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, KMH_PER_TILE_S, CONSIST, wagonsFor, locoLen,
 } from '../config.js';
@@ -416,7 +416,7 @@ export const RailUIMixin = {
     w.querySelector('[data-mbtn=build]').onclick = () => { w.remove(); g.select(null); g.construction.setTool('depot'); };
     // show where the nearest depot is, if there is one
     const d = g.stations.depots[0];
-    if (d && r.reason === 'no_depot_route') g.camera.focus(((d.tile % 64) + 0.5) * TILE, (Math.floor(d.tile / 64) + 0.5) * TILE);
+    if (d && r.reason === 'no_depot_route') g.camera.focus(tileCX(d.tile), tileCZ(d.tile));
   },
   // Building where a train is: offer a pending construction that starts as
   // soon as the section is clear (Works). Cancel = nothing happens.
@@ -715,7 +715,7 @@ export const RailUIMixin = {
         re();
       },
       jumpTile: (a, el) => {
-        const tile = +a; g().camera.focus((tile % 64 + 0.5) * TILE, (Math.floor(tile / 64) + 0.5) * TILE, 18);
+        const tile = +a; g().camera.focus(tileCX(tile), tileCZ(tile), 18);
         // advisor suggestions with a location: highlight it (e.g. where a passing loop fits)
         const pv = el && el.closest && el.closest('[data-preview]');
         if (pv) g().construction.showTiles(String(pv.dataset.preview).split(',').filter((x) => x !== '').map(Number), true);

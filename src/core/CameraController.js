@@ -9,7 +9,7 @@ export class CameraController {
     this.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 900);
     this.target = new THREE.Vector3(N * TILE / 2, 0, N * TILE / 2);
     this.viewSize = 22; this.zoomGoal = 22;
-    this.minZoom = 7; this.maxZoom = 80;
+    this.minZoom = 7; this.maxZoom = 80 * Math.max(1, N / 64);   // larger maps zoom out further
     this.azimuth = Math.PI / 4; this.azGoal = this.azimuth;
     this.elev = 0.64;
     this.vel = new THREE.Vector2();

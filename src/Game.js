@@ -2,7 +2,7 @@
 // simulation separately from rendering, wires feedback (audio/VFX/UI) to
 // gameplay events, and handles saving plus offline progress.
 import * as THREE from 'three';
-import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp } from './util.js';
+import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp, setMapSize } from './util.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION } from './config.js';
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
@@ -63,6 +63,8 @@ export class Game {
     this.difficultyId = save ? (DIFFICULTY[save.difficulty] ? save.difficulty : 'standard') : opts.difficulty || 'standard';
     this.difficulty = DIFFICULTY[this.difficultyId];
 
+    // map size: a save keeps its own; a new game picks one (64 before this existed)
+    this.mapSize = setMapSize(save ? (save.mapSize | 0) || 64 : (opts.mapSize | 0) || 64);
     this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION);
     this.occupancy = { blocked: new Uint8Array(N * N), owner: new Int32Array(N * N) };
     this.stats = new Stats(this);
@@ -159,7 +161,7 @@ export class Game {
 
   serialize() {
     return {
-      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
+      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
       trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),

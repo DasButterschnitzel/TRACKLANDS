@@ -5,7 +5,7 @@
 //  log       – the transaction log; tapping a line shows the object
 //  value     – how the company value is made up; the loan
 //  stats     – the long-running company statistics
-import { fmt, escapeHtml as esc } from '../util.js';
+import { fmt, escapeHtml as esc, tileCX, tileCZ } from '../util.js';
 import { icon, cargoIcon } from './icons.js';
 import { LOCOS } from '../config.js';
 import { locoModel } from '../trains/Consist.js';
@@ -274,11 +274,11 @@ export const FinanceUIMixin = {
         const G = g();
         if (type === 'train' && G.trains.byId(+id)) { this.closePanel(); G.select({ type: 'train', id: +id }); }
         else if (type === 'station' && G.stations.byId(+id)) { this.closePanel(); G.select({ type: 'station', id: +id }); }
-        else if (type === 'depot') { const d = G.stations.depotById(+id); if (d) { this.closePanel(); G.camera.focus(((d.tile % 64) + 0.5) * 2, (Math.floor(d.tile / 64) + 0.5) * 2); } }
+        else if (type === 'depot') { const d = G.stations.depotById(+id); if (d) { this.closePanel(); G.camera.focus(tileCX(d.tile), tileCZ(d.tile)); } }
         else if (type === 'industry' && G.industries.byId(+id)) { this.closePanel(); G.select({ type: 'industry', id: +id }); }
         else if (type === 'road' && G.roads.byId(+id)) { this.closePanel(); G.select({ type: 'roadveh', id: +id }); }
         else if (type === 'roadstop' && G.roads.stopById(+id)) { this.closePanel(); G.select({ type: 'roadstop', id: +id }); }
-        else if (type === 'tile') { this.closePanel(); G.camera.focus(((+id % 64) + 0.5) * 2, (Math.floor(+id / 64) + 0.5) * 2); }
+        else if (type === 'tile') { this.closePanel(); G.camera.focus(tileCX(+id), tileCZ(+id)); }
       },
     };
   },

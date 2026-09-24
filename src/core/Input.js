@@ -82,8 +82,8 @@ export class Input {
       let best = null;
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
         const x2 = tx0 + dx, z2 = tz0 + dz;
-        if (x2 < 0 || z2 < 0 || x2 >= 64 || z2 >= 64) continue;
-        const c = z2 * 64 + x2;
+        if (x2 < 0 || z2 < 0 || x2 >= N || z2 >= N) continue;
+        const c = z2 * N + x2;
         if (!net.conn[c]) continue;
         const t = (net.railH(c) + 0.1 - o.y) / d.y;
         const q = new THREE.Vector3(o.x + d.x * t, net.railH(c) + 0.1, o.z + d.z * t);

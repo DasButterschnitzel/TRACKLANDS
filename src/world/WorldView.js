@@ -56,13 +56,27 @@ export class WorldView {
     return _c;
   }
 
+  // Terrain is built chunk by chunk (32x32 tiles on maps larger than 64;
+  // one chunk on the classic map, in the original tile order). Every chunk
+  // is its own mesh so the renderer skips chunks outside the view; their
+  // attributes are views into one buffer, so recolouring stays one pass.
+  chunkSize() { return N > 64 ? 32 : N; }
+  tileOrder() {
+    if (this._order) return this._order;
+    const C = this.chunkSize(), out = [];
+    for (let cz = 0; cz < N; cz += C) for (let cx = 0; cx < N; cx += C) for (let z = cz; z < Math.min(N, cz + C); z++) for (let x = cx; x < Math.min(N, cx + C); x++) out.push(x, z);
+    this._order = out;
+    return out;
+  }
   buildTerrain() {
     const W = this.W, H = W.heights, S = N + 1;
     const pos = new Float32Array(N * N * 6 * 3);
     const col = new Float32Array(N * N * 6 * 3);
     const cold = new Float32Array(N * N * 6);
     let o = 0, oc = 0;
-    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const order = this.tileOrder();
+    for (let q = 0; q < order.length; q += 2) {
+      const x = order[q], z = order[q + 1];
       const a = [x * TILE, H[z * S + x], z * TILE], b = [(x + 1) * TILE, H[z * S + x + 1], z * TILE];
       const c = [x * TILE, H[(z + 1) * S + x], (z + 1) * TILE], d = [(x + 1) * TILE, H[(z + 1) * S + x + 1], (z + 1) * TILE];
       for (const v of [a, c, b, b, c, d]) { pos[o++] = v[0]; pos[o++] = v[1]; pos[o++] = v[2]; }
@@ -80,10 +94,34 @@ export class WorldView {
     this.recolorTerrain();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     this.snowShader(mat, true);
-    this.terrain = new THREE.Mesh(g, mat);
-    this.terrain.receiveShadow = true;
-    this.terrain.name = 'terrain';
-    this.group.add(this.terrain);
+    const C = this.chunkSize(), per = C * C * 6;
+    if (C === N) {
+      this.terrain = new THREE.Mesh(g, mat);
+      this.terrain.receiveShadow = true;
+      this.terrain.name = 'terrain';
+      this.group.add(this.terrain);
+      this.chunks = [this.terrain];
+    } else {
+      // chunk meshes over views of the same arrays
+      this.chunks = [];
+      this.terrain = new THREE.Group();
+      this.terrain.name = 'terrain';
+      const nor = g.attributes.normal.array;
+      for (let v0 = 0; v0 < N * N * 6; v0 += per) {
+        const v1 = Math.min(N * N * 6, v0 + per);
+        const cg = new THREE.BufferGeometry();
+        cg.setAttribute('position', new THREE.BufferAttribute(pos.subarray(v0 * 3, v1 * 3), 3));
+        cg.setAttribute('normal', new THREE.BufferAttribute(nor.subarray(v0 * 3, v1 * 3), 3));
+        cg.setAttribute('color', new THREE.BufferAttribute(col.subarray(v0 * 3, v1 * 3), 3));
+        cg.setAttribute('aCold', new THREE.BufferAttribute(cold.subarray(v0, v1), 1));
+        cg.computeBoundingSphere();
+        const m = new THREE.Mesh(cg, mat);
+        m.receiveShadow = true;
+        this.chunks.push(m);
+        this.terrain.add(m);
+      }
+      this.group.add(this.terrain);
+    }
     // diorama skirt
     const sp = [], sc = [];
     const earthTop = new THREE.Color(0x6b4f3a), earthBot = new THREE.Color(0x9a7a5a), water = new THREE.Color(0x3f8fb0);
@@ -118,7 +156,9 @@ export class WorldView {
     const W = this.W, g = this.terrainGeo;
     const col = g.attributes.color.array, pos = g.attributes.position.array;
     let o = 0;
-    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    const order = this.tileOrder();
+    for (let q = 0; q < order.length; q += 2) {
+      const x = order[q], z = order[q + 1];
       const i = idx(x, z);
       for (let tri = 0; tri < 2; tri++) {
         const base = (o / 3) | 0;
@@ -130,6 +170,7 @@ export class WorldView {
       }
     }
     g.attributes.color.needsUpdate = true;
+    if (this.chunks && this.chunks.length > 1) for (const m of this.chunks) m.geometry.attributes.color.needsUpdate = true;
   }
 
   buildWater() {

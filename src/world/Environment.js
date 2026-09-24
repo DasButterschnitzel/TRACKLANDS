@@ -143,7 +143,7 @@ export class Environment {
     this.birds.frustumCulled = false;
     this.game.scene.add(this.birds);
     const rng = new RNG(77);
-    this.flocks = [0, 1, 2].map(() => ({ cx: rng.range(30, 90), cz: rng.range(30, 90), r: rng.range(10, 22), sp: rng.range(0.08, 0.14), ph: rng.range(0, 6.28), y: rng.range(9, 13) }));
+    this.flocks = [0, 1, 2].map(() => ({ cx: rng.range(30, 90) * N / 64, cz: rng.range(30, 90) * N / 64, r: rng.range(10, 22), sp: rng.range(0.08, 0.14), ph: rng.range(0, 6.28), y: rng.range(9, 13) }));
   }
 
   update(dt, gameDt, time) {
