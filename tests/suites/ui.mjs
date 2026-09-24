@@ -26,8 +26,12 @@ const SCREENS = [
     if (px.length >= 3 && !g._uiPax) {
       g._uiPax = true;
       const mk = (t, a, b) => { t.mode = 'manual'; t.route = [a, b].map((s) => ({ st: s.id, act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null })); t.routeIdx = 0; };
-      const [a, b, c] = px;
-      mk(g.trains.trains[0], a, b); mk(g.trains.trains[2], b, c);
+      // only stations the network actually connects (the save has separate networks)
+      const reach = (a, b) => !!g.net.findRoute({ tile: a.tile, heading: null, fromCenter: true }, b.tile, { allowReverse: true });
+      let pair = null;
+      for (const a of px) for (const b of px) if (!pair && a !== b && reach(a, b) && reach(b, a)) pair = [a, b];
+      const [a, b] = pair || px;
+      mk(g.trains.trains[2], a, b); mk(g.trains.trains[1], b, a); g.trains.trains[1].spacing = -1; g.trains.trains[2].spacing = -1;
       for (let i = 0; i < 30 * 240; i++) g.tick(1 / 30);
       g._uiPaxStn = b.id;
     }

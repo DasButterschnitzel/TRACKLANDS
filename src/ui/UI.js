@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
 import {
   CARGO, CARGO_IDS, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
-  TRACK_TIERS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
+  TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
 import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
@@ -542,23 +542,59 @@ export class UI {
       <h3>${this.tr('more')}</h3><button class="btn ghost" data-act="panel" data-arg="credits">${this.tr('credits')}</button> <button class="btn ghost" data-act="saveQuit">${this.tr('save_quit')}</button>`;
   }
 
+  // what a research node unlocks: locomotives, wagons, track types, signals
+  researchUnlocks(id) {
+    const out = [];
+    for (const m of LOCOS) if (ERA_RESEARCH[m.era] === id) out.push({ ic: 'train', t: m.name });
+    for (const w in WAGONS) if (WAGONS[w].research === id) out.push({ ic: 'builder', t: this.tr('wag_' + w) });
+    for (const tt of TRACK_TIERS) if (tt.research === id) out.push({ ic: 'track', t: this.tr('tier_' + tt.id) });
+    const sig = { block_signals: 'block', path_signals: 'path', one_way_signals: 'oneway' }[id];
+    if (sig) out.push({ ic: 'signal', t: this.tr('sig_' + sig) });
+    return out;
+  }
+  // one or two sensible next steps for this network (advisor-driven)
+  researchRecommended() {
+    const g = this.game, P = g.progression;
+    const avail = (id) => P.researchState(id) === 'available';
+    const want = [];
+    const adv = g.advisor();
+    const has = (k) => adv.some((a) => a.key === k);
+    if (has('adv_passing_loop') || has('adv_single_short') || has('adv_single_track')) want.push('block_signals', 'path_signals');
+    if (has('adv_platform_short')) want.push('platform_extension');
+    if (has('adv_add_track') || has('adv_slow_ahead')) want.push('station_expansion');
+    if (has('adv_storage')) want.push('station_storage');
+    const pax = g.stats.data.passengers || 0, cargo = (g.stats.data.cargoUnits || 0) - pax;
+    want.push(pax > cargo ? 'passenger_economy' : 'cargo_optimization', 'fast_loading', 'smart_finance', 'better_boilers');
+    const out = [];
+    for (const id of want) if (avail(id) && !out.includes(id)) out.push(id);
+    if (!out.length) { const cheap = RESEARCH.filter((r) => avail(r.id)).sort((a, b) => a.cost - b.cost)[0]; if (cheap) out.push(cheap.id); }
+    return out.slice(0, 2);
+  }
   pResearch() {
     const g = this.game, P = g.progression;
     if (!P.researchAvailable()) return `<div class="empty">${icon('lock')}<p>${this.tr('research_locked', { n: 3 })}</p></div>`;
     const depth = {};
     const d = (id) => { if (depth[id] != null) return depth[id]; const r = RESEARCH.find((x) => x.id === id); depth[id] = r.req.length ? Math.max(...r.req.map(d)) + 1 : 0; return depth[id]; };
     RESEARCH.forEach((r) => d(r.id));
-    const cols = RESEARCH_CATS.map((cat) => {
+    const rec = this.researchRecommended();
+    // phones: one category at a time (the recommended one first) instead of eight columns
+    const filt = this.researchCat || (window.innerWidth < 760 ? (RESEARCH.find((r) => r.id === rec[0]) || { cat: 'rail' }).cat : 'all');
+    const prog = (cat) => { const all = RESEARCH.filter((r) => r.cat === cat); return `${all.filter((r) => P.research.has(r.id)).length}/${all.length}`; };
+    const chips = `<div class="chips wrap rcats" role="tablist">${['all', ...RESEARCH_CATS].map((c) => `<button role="tab" aria-selected="${filt === c}" class="chip ${filt === c ? 'on' : ''}" data-act="researchCat" data-arg="${c}"><b>${c === 'all' ? this.tr('all') : this.tr('cat_' + c)}</b>${c === 'all' ? '' : `<small>${prog(c)}</small>`}</button>`).join('')}</div>`;
+    const cols = RESEARCH_CATS.filter((cat) => filt === 'all' || filt === cat).map((cat) => {
       const nodes = RESEARCH.filter((r) => r.cat === cat).sort((a, b) => depth[a.id] - depth[b.id]);
-      return `<div class="rcol"><h4>${this.tr('cat_' + cat)}</h4>${nodes.map((r) => {
+      return `<div class="rcol"><h4>${this.tr('cat_' + cat)} <small class="muted">${prog(cat)}</small></h4>${nodes.map((r) => {
         const st = P.researchState(r.id);
-        return `<button class="rnode ${st}" id="rn-${r.id}" data-req="${r.req.join(',')}" data-act="research" data-arg="${r.id}" ${st === 'done' || st === 'locked' ? 'disabled' : ''}>
+        const un = this.researchUnlocks(r.id);
+        return `<button class="rnode ${st} ${rec.includes(r.id) ? 'rec' : ''}" id="rn-${r.id}" data-req="${r.req.join(',')}" data-act="research" data-arg="${r.id}" ${st === 'done' || st === 'locked' ? 'disabled' : ''}>
+          ${rec.includes(r.id) ? `<span class="rrec">${icon('advisor', 'mini')} ${this.tr('recommended')}</span>` : ''}
           <b>${this.tr('res_' + r.id)}</b><small>${this.tr('res_' + r.id + '_desc')}</small>
+          ${un.length ? `<span class="runl">${un.slice(0, 4).map((u) => `<i>${icon(u.ic, 'mini')}${esc(u.t)}</i>`).join('')}${un.length > 4 ? `<i>+${un.length - 4}</i>` : ''}</span>` : ''}
           <span class="rcost">${st === 'done' ? icon('check') : `${icon('rp')}${r.cost}`}</span>
           ${r.req.length && st === 'locked' ? `<em>${this.tr('requires')}: ${r.req.map((q) => this.tr('res_' + q)).join(', ')}</em>` : ''}</button>`;
       }).join('')}</div>`;
     }).join('');
-    return `<p class="muted">${icon('rp')} ${this.tr('rp_have', { n: P.rp })} · ${this.tr('rp_sources')}</p><div class="rtree"><svg class="rlines"></svg>${cols}</div>`;
+    return `<p class="muted">${icon('rp')} ${this.tr('rp_have', { n: P.rp })} · ${this.tr('rp_sources')}</p>${chips}<div class="rtree ${filt === 'all' ? '' : 'one'}"><svg class="rlines"></svg>${cols}</div>`;
   }
   drawResearchLines() {
     const tree = $('.rtree'); if (!tree) return;
@@ -625,7 +661,7 @@ export class UI {
   }
 
   contractText(k) {
-    const p = { n: fmt(k.amount), cargo: k.cargo ? this.cargoName(k.cargo) : '', town: k.townName || '', count: k.count };
+    const p = { n: fmt(k.amount), cargo: k.cargo ? this.cargoName(k.cargo) : '', town: k.townName || '', from: k.fromName || '', count: k.count };
     return this.tr('con_' + k.type, p);
   }
 
@@ -636,8 +672,8 @@ export class UI {
       const pct = k.progress / k.amount;
       const timer = k.type === 'timed_deliver' && !k.done ? `<span class="timer">${fmtTime(k.left)}</span>` : '';
       return `<div class="card contract ${k.done ? 'done' : ''}">
-        <div class="con-top">${k.cargo ? cargoIcon(k.cargo) : icon(k.type === 'passengers' ? 'town' : 'contracts')}<b>${this.contractText(k)}</b>${timer}</div>
-        ${this.bar(pct)}<div class="con-bottom"><small>${k.type === 'freight_income' ? fmt(k.progress) : k.type === 'trains_running' ? fmtTime(k.progress) : fmt(Math.floor(k.progress))} / ${k.type === 'trains_running' ? fmtTime(k.amount) : fmt(k.amount)}</small>
+        <div class="con-top">${k.cargo ? cargoIcon(k.cargo) : icon(k.type === 'passengers' || k.type === 'town_link' || k.type === 'pax_transfers' ? 'town' : k.type === 'timetable' ? 'route' : 'contracts')}<b>${this.contractText(k)}</b>${timer}</div>
+        ${this.bar(pct)}<div class="con-bottom"><small>${k.type === 'freight_income' ? fmt(k.progress) : k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.progress) : fmt(Math.floor(k.progress))} / ${k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.amount) : fmt(k.amount)}</small>
         <span class="reward">${icon('coin')}${fmt(k.coins)} · ${fmt(k.xp)} XP${k.rp ? ` · ${icon('rp')}${k.rp}` : ''}</span></div>
         <div class="row">${k.done ? `<button class="btn gold" data-act="claimContract" data-arg="${k.id}">${this.tr('claim')}</button>` : k.progress === 0 ? `<button class="btn ghost small" data-act="rerollContract" data-arg="${k.id}">${this.tr('reroll')}</button>` : ''}</div></div>`;
     }).join('');
@@ -1032,6 +1068,7 @@ export class UI {
       defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
       defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
       jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      researchCat: (a) => { this.researchCat = a; this.refreshPanel(); },
       mapMode: (a) => { this.mapMode = a === 'lines' ? 'lines' : 'geo'; this.refreshPanel(); },
       focusSel: () => { if (this.inspectSel) g().focusOn(this.inspectSel); },
       follow: (a) => { this.followId = +a; g().focusOn({ type: 'train', id: +a }, 12); },

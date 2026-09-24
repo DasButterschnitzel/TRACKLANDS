@@ -166,6 +166,7 @@ export class PaxFlow {
     g.economy.bucket.income += rev;
     S.noteTransfer(stn, PAX, took);
     g.stats.inc('paxTransfers', took);
+    g.economy.onTransfer(took);
     return took;
   }
 

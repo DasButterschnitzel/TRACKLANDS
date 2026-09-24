@@ -225,9 +225,10 @@ export class RailTests {
   // boarding at A pick H (direct) or C (change at H); the C-bound ones wait
   // at H for line 2 and are delivered at C. Tagged passengers never exceed a
   // station's waiting total.
-  paxTransfer() {
+  // line A–H–C built for passenger tests (H: two tracks, depot east)
+  buildPaxHub() {
     const a = this.findArea(24, 5);
-    if (!a) return { ok: false, detail: 'no area' };
+    if (!a) return null;
     const z = a.z0 + 2, x0 = a.x0 + 1;
     this.line(x0, z, x0 + 21, z);
     this.finish();
@@ -238,6 +239,14 @@ export class RailTests {
     const D = this.depot(x0 + 22, z);
     g.net.connect(idx(x0 + 21, z), E);
     this.finish();
+    return { A, H, C, D, rh };
+  }
+
+  paxTransfer() {
+    const hub = this.buildPaxHub();
+    if (!hub) return { ok: false, detail: 'no area' };
+    const g = this.g, S_ = g.stations;
+    const { A, H, C, D, rh } = hub;
     const mine = new Set([A.id, H.id, C.id]);
     const acc = S_.accepts;
     S_.accepts = function (stn, c) { return (c === 'PASSENGERS' && mine.has(stn.id)) || acc.call(this, stn, c); };
@@ -268,6 +277,45 @@ export class RailTests {
       ok: !rh.error && r.keyConflicts === 0 && r.overlaps === 0 && r.nan === 0 && got.H > 0 && transfers > 0 && got.CviaH > 0 && !got.bad && !invariant,
       detail: `delivered H ${got.H} · changed at H ${transfers} · arrived C ${got.CviaH} · A connects ${conn} · invariant ${invariant} · keys ${r.keyConflicts} overlaps ${r.overlaps} ${this.states(tr)}`,
     };
+  }
+
+  // Network contracts: changing trains at H, a timetabled line and a
+  // town-to-town journey (A's town to C's town, with a change) all progress.
+  networkContracts() {
+    const hub = this.buildPaxHub();
+    if (!hub) return { ok: false, detail: 'no area' };
+    const g = this.g, S_ = g.stations, E = g.economy;
+    const { A, H, C, D } = hub;
+    const [ta, tc] = g.towns.list;
+    const mine = new Set([A.id, H.id, C.id]);
+    const acc = S_.accepts;
+    S_.accepts = function (stn, c) { return (c === 'PASSENGERS' && mine.has(stn.id)) || acc.call(this, stn, c); };
+    const links = (s, t) => { s.links = { ...(s.links || {}), towns: t ? [t.id] : [], industries: [] }; };
+    links(A, ta); links(C, tc); links(H, null);
+    const k0 = E.contractSeq;
+    const ks = [
+      { id: k0, type: 'pax_transfers', amount: 20 },
+      { id: k0 + 1, type: 'timetable', amount: 120 },
+      { id: k0 + 2, type: 'town_link', from: ta.id, fromName: ta.name, town: tc.id, townName: tc.name, amount: 10 },
+    ].map((k) => ({ ...k, progress: 0, done: false, claimed: false, coins: 1, xp: 1, rp: 0 }));
+    E.contractSeq += 3;
+    E.contracts.push(...ks);
+    const tr = [
+      this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, H], { act: 'auto' }),
+      this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, H], { act: 'auto' }),
+      this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [H, C], { act: 'auto' }),
+      // town-to-town contracts count direct journeys (origin station in the target town)
+      this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, C], { act: 'auto' }),
+    ];
+    tr[0].spacing = tr[1].spacing = 60;
+    A.stock.PASSENGERS = 150;
+    const r = this.run(480, 1 / 30, tr);
+    S_.accepts = acc;
+    const res = ks.map((k) => `${k.type} ${Math.floor(k.progress)}/${k.amount}`);
+    const ok = ks.every((k) => k.progress > 0) && r.keyConflicts === 0 && r.overlaps === 0;
+    E.contracts = E.contracts.filter((k) => !ks.includes(k));
+    this.cleanup(tr);
+    return { ok, detail: `${res.join(' · ')} · keys ${r.keyConflicts} overlaps ${r.overlaps}` };
   }
 
   // Timetable: a train with a 3-minute departure interval waits at its first
@@ -398,7 +446,7 @@ export class RailTests {
     if (only === 'pax') { this.check('pax', () => this.paxTransfer()); return this.log; }
     if (only === 'timetable') { this.check('timetable', () => this.timetable()); return this.log; }
     if (only === 'overtake') { this.check('overtaking at a station', () => this.overtaking()); return this.log; }
-    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); return this.log; }
+    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));

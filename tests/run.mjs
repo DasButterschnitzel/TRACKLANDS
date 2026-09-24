@@ -7,7 +7,7 @@
 //   node tests/run.mjs fuzz --from=1 --to=60
 //   node tests/run.mjs monkey --steps=800 --seeds=1,2 --modes=phone
 //
-// Suites: unit rail seeds fuzz prodsave persist import tutorial savefuzz monkey ui perf gallery
+// Suites: unit rail seeds fuzz prodsave economy persist import tutorial savefuzz monkey ui perf gallery
 // Needs Playwright's Chromium (npx playwright install chromium) or CHROMIUM_PATH.
 import { startServer, launchBrowser } from './lib.mjs';
 import * as unit from './suites/unit.mjs';
@@ -22,8 +22,9 @@ import * as monkey from './suites/monkey.mjs';
 import * as ui from './suites/ui.mjs';
 import * as perf from './suites/perf.mjs';
 import * as gallery from './suites/gallery.mjs';
+import * as economy from './suites/economy.mjs';
 
-const ALL = [unit, rail, seeds, fuzz, prodsave, persist, importexport, tutorial, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, rail, seeds, fuzz, prodsave, economy, persist, importexport, tutorial, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

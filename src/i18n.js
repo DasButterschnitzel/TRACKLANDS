@@ -188,6 +188,7 @@ const EN = {
   contracts: 'Contracts', claim: 'Claim', claimed: 'Claimed', reroll: 'Swap', daily_challenges: 'Daily challenges', resets_in: 'new in {t}',
   con_deliver_town: 'Deliver {n} {cargo} to {town}', con_timed_deliver: 'Deliver {n} {cargo} in 10 minutes', con_passengers: 'Transport {n} passengers',
   con_freight_income: 'Earn {n} coins from freight', con_deliveries: 'Make {n} deliveries', con_trains_running: 'Keep {count} trains working',
+  con_pax_transfers: 'Let {n} passengers change trains', con_timetable: 'Run a line with a departure interval', con_town_link: 'Bring {n} passengers from {from} to {town}',
   daily_d_deliveries: 'Make {n} deliveries', daily_d_passengers: 'Transport {n} passengers', daily_d_track: 'Build {n} track pieces', daily_d_upgrades: 'Upgrade trains {n} times',
   daily_d_income: 'Earn {n} coins', daily_d_contracts: 'Complete {n} contracts',
   // events
@@ -403,6 +404,7 @@ const DE = {
   contracts: 'Aufträge', claim: 'Abholen', claimed: 'Abgeholt', reroll: 'Tauschen', daily_challenges: 'Tägliche Herausforderungen', resets_in: 'neu in {t}',
   con_deliver_town: 'Liefere {n} {cargo} nach {town}', con_timed_deliver: 'Liefere {n} {cargo} in 10 Minuten', con_passengers: 'Befördere {n} Fahrgäste',
   con_freight_income: 'Verdiene {n} Münzen mit Fracht', con_deliveries: 'Führe {n} Lieferungen durch', con_trains_running: 'Halte {count} Züge in Betrieb',
+  con_pax_transfers: 'Lass {n} Fahrgäste umsteigen', con_timetable: 'Betreibe eine Linie im Takt', con_town_link: 'Bringe {n} Fahrgäste von {from} nach {town}',
   daily_d_deliveries: 'Führe {n} Lieferungen durch', daily_d_passengers: 'Befördere {n} Fahrgäste', daily_d_track: 'Baue {n} Gleisstücke', daily_d_upgrades: 'Verbessere Züge {n}-mal',
   daily_d_income: 'Verdiene {n} Münzen', daily_d_contracts: 'Erfülle {n} Aufträge',
   ev_tourist_weekend: 'Touristenwochenende', ev_tourist_weekend_desc: 'Mehr Fahrgäste unterwegs!',

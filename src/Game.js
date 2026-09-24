@@ -28,6 +28,7 @@ import { Input } from './core/Input.js';
 import { Tutorial } from './ui/Tutorial.js';
 import { RailTests } from './debug/RailTests.js';
 import { RailFuzz } from './debug/RailFuzz.js';
+import { EconomySim } from './debug/EconomySim.js';
 
 const STEP = 1 / 30;
 
@@ -222,6 +223,7 @@ export class Game {
   }
   focusOn(sel, zoom) { const p = this.entityPos(sel); if (p) this.camera.focus(p.x, p.z, zoom); }
 
+  runEconomySim(minutes, seed, opts) { return new EconomySim(this, seed).run(minutes, opts); }
   runRailFuzz(seed, minutes, trace) { return new RailFuzz(this, seed).run(minutes, 1 / 30, trace); }
 
   runRailTests(only) { const r = new RailTests(this).runAll(only); console.table(r); return r; }
@@ -242,6 +244,14 @@ export class Game {
       const mid = Math.floor(tiles.length / 2);
       if (tiles.length >= need + 4) out.push({ key: 'adv_passing_loop', tile: tiles[mid], preview: tiles.slice(Math.max(0, mid - Math.floor(need / 2)), mid - Math.floor(need / 2) + need), p: { n: Math.round(h), len: need } });
       else out.push({ key: 'adv_single_short', tile: tiles[mid] ?? -1, preview: tiles, p: { n: Math.round(h) } });
+    }
+    // a line with more trains than travellers: extra trains there earn little
+    for (const l of this.lines.list()) {
+      if (l.trains.length < 2) continue;
+      const cap = l.trains.reduce((a, t) => a + (t._st.caps.PASSENGERS || 0), 0);
+      if (cap < 20 || l.trains.some((t) => (t.trips || 0) < 6)) continue;
+      const waiting = l.stops.reduce((a, id) => { const s = this.stations.byId(id); return a + (s ? s.stock.PASSENGERS || 0 : 0); }, 0);
+      if (waiting < cap * 0.25) out.push({ key: 'adv_line_saturated', train: l.trains[0].id, p: { name: this.lines.name(l), n: l.trains.length } });
     }
     for (const t of this.trains.trains) if (t.slowT > 40) { const o = this.trains.byId(t.slowAhead); if (o) out.push({ key: 'adv_slow_ahead', train: t.id, p: { name: t.name, other: o.name } }); }
     for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, p: { n: inc.trains.length } });

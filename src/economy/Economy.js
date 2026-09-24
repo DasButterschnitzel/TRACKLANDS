@@ -125,6 +125,7 @@ export class Economy {
       if (k.type === 'deliver_town' && lot.c === k.cargo && res.town && res.town.id === k.town) k.progress += lot.n;
       else if (k.type === 'timed_deliver' && lot.c === k.cargo) k.progress += lot.n;
       else if (k.type === 'passengers' && lot.c === 'PASSENGERS') k.progress += lot.n;
+      else if (k.type === 'town_link' && lot.c === 'PASSENGERS' && res.town && res.town.id === k.town && from && from.links && from.links.towns.includes(k.from)) k.progress += lot.n;
       else if (k.type === 'freight_income' && lot.c !== 'PASSENGERS') k.progress += rev;
       else if (k.type === 'deliveries') k.progress += 1;
       if (k.progress >= k.amount) this.completeContract(k);
@@ -160,6 +161,11 @@ export class Economy {
     if (served.length && townCargo.length) types.push('deliver_town', 'deliver_town');
     if (cargo.length) types.push('timed_deliver');
     if (g.trains.trains.length >= 2) types.push('trains_running');
+    // network play: lines, changes between lines, town-to-town journeys
+    const lines = g.lines ? g.lines.list() : [];
+    if (lines.length >= 2) types.push('pax_transfers');
+    if (lines.some((l) => l.trains.length >= 2)) types.push('timetable');
+    if (served.length >= 2) types.push('town_link');
     const used = new Set(this.contracts.map((k) => k.type));
     let type = rng.pick(types);
     for (let i = 0; i < 4 && used.has(type); i++) type = rng.pick(types);
@@ -196,6 +202,21 @@ export class Economy {
         k.amount = 90;
         k.coins = Math.round(300 * scale * 1.3);
         break;
+      case 'pax_transfers':
+        k.amount = Math.round((20 + lvl * 6) / 5) * 5;
+        k.coins = Math.round(k.amount * 22 * (1 + lvl * 0.12));
+        break;
+      case 'timetable':
+        k.amount = 300;
+        k.coins = Math.round(320 * scale * 1.3);
+        break;
+      case 'town_link': {
+        const [a, b] = rng.shuffle(served.slice()).slice(0, 2);
+        k.town = b.id; k.townName = b.name; k.from = a.id; k.fromName = a.name;
+        k.amount = Math.round((20 + lvl * 8) / 5) * 5;
+        k.coins = Math.round(k.amount * 18 * (1 + lvl * 0.12));
+        break;
+      }
     }
     k.coins = Math.round(k.coins * (1 + g.progression.fx.contractReward));
     k.xp = Math.round(k.coins * 0.6);
@@ -209,6 +230,11 @@ export class Economy {
       this.contracts.push(this.makeContract(rng));
     }
     this.contracts = this.contracts.filter((k) => !k.claimed);
+  }
+
+  // passengers changing trains (PaxFlow)
+  onTransfer(n) {
+    for (const k of this.contracts) if (!k.done && k.type === 'pax_transfers') { k.progress += n; if (k.progress >= k.amount) this.completeContract(k); }
   }
 
   completeContract(k) {
@@ -295,6 +321,10 @@ export class Economy {
       if (k.type === 'trains_running') {
         const running = g.trains.trains.filter((t) => t.state === 'run' || t.state === 'load').length;
         if (running >= k.count) { k.progress += dt; if (k.progress >= k.amount) this.completeContract(k); }
+      }
+      if (k.type === 'timetable' && g.lines) {
+        const timed = g.lines.list().some((l) => l.trains.length >= 2 && l.trains.every((t) => t.spacing));
+        if (timed) { k.progress += dt; if (k.progress >= k.amount) this.completeContract(k); }
       }
     }
     if (changed) this.fillContracts();

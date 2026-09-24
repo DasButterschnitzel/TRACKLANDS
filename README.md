@@ -66,10 +66,11 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | Suite | What it protects |
 |---|---|
 | `unit` | Save pipeline without a browser: migration idempotency, sanitizer repairs, rejection of non-saves |
-| `rail` | The 7 in-game railway scenarios (`index.html?railtest`) |
+| `rail` | The in-game railway scenarios (`index.html?railtest`): single track, loops, multi-track stations, crossings, signals, passenger transfers, timetables, overtaking, signal rows, network contracts |
 | `seeds` | Permanent fuzzer regression seeds (`tests/regression-seeds.json`), including the critical seeds 2, 20, 23 and 46 |
 | `fuzz` | A range of random fuzzer seeds |
 | `prodsave` | The real production save (`tests/fixtures/production-save.trkl1.txt`): every train, station, industry, town, research node and statistic survives; 20 simulated minutes without conflicts; income stays in band; lossless round trip |
+| `economy` | Scripted early game with real money on five worlds: first line affordable, break-even, first-train payback, operating share, level pacing; extra trains on a saturated line add little |
 | `persist` | Save/reload with live edits; offline progress is capped, never negative, and claimable once |
 | `import` | UI import of the TRKL1 export (v2 → v3 with a `pre_v3` backup), malformed input, cancel, export → import |
 | `tutorial` | The full tutorial with real mouse input |

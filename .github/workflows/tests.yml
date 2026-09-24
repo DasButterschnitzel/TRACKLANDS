@@ -22,8 +22,8 @@ jobs:
         run: node tests/run.mjs unit
       - name: Railway scenarios + regression seeds
         run: node tests/run.mjs rail seeds
-      - name: Production save, persistence, import, tutorial
-        run: node tests/run.mjs prodsave persist import tutorial
+      - name: Production save, economy balance, persistence, import, tutorial
+        run: node tests/run.mjs prodsave economy persist import tutorial
       - name: Save fuzz, monkey, UI layout (quick)
         run: node tests/run.mjs savefuzz monkey ui --quick
       - name: Upload screenshots
