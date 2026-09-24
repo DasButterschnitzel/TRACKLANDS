@@ -127,7 +127,13 @@ export class Construction {
       const err = has ? null : this.waypointError(tile);
       ok = !err; info = err ? g.ui.tr(err) : has ? g.ui.tr('hint_waypoint_remove') : `${fmt(g.economy.costs.waypoint())} ●`;
     } else if (this.tool === 'bulldoze') {
-      ok = this.bulldozeTarget(tile) != null;
+      const what = this.bulldozeTarget(tile);
+      ok = what != null;
+      if (what === 'building') {
+        const d = g.authority.demolishInfo(tile);
+        ok = d.allowed;
+        info = `${g.ui.tr('bld_' + d.arch)} · ${fmt(d.cost)} ● · ${g.ui.tr('auth_short', { d: d.impact })}${d.allowed ? '' : ' · ' + g.ui.tr('err_permit_denied')}`;
+      }
     } else if (this.tool === 'track') {
       const r = g.net.tileBlockedReason(tile);
       ok = !r; info = r ? g.ui.tr(r) : g.ui.tr('hint_drag_track');
@@ -334,8 +340,10 @@ export class Construction {
         break;
       }
     }
+    const wooded = plan.tiles.filter((t) => g.world.view.hasTrees(t));
     g.world.view.clearTreesMany(plan.tiles);
     g.world.view.clearCorridorMany(plan.tiles);
+    if (wooded.length) g.authority.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length);
     net.bumpVersion();
     g.stats.inc('trackBuilt', plan.newTiles);
     g.stats.inc('bridgesBuilt', plan.bridges);
@@ -360,7 +368,8 @@ export class Construction {
     if (!plan || !plan.tiles || !plan.tiles.length) return ui.tr((plan && plan.error) || 'err_unknown');
     const head = plan.mode === 'extend' ? ui.tr('st_drag_extend', { name: plan.stn.name }) : ui.tr(plan.side.length ? 'st_drag_new_n' : 'st_drag_new', { n: plan.side.length + 1 });
     const fit = ui.tr('st_drag_fit', { m: plan.fit.metres, n: plan.fit.cars, loco: plan.fit.loco });
-    return `${head} · ${ui.tr('st_drag_len', { n: plan.len })} · ${fit} · ${fmt(plan.cost)} ●${plan.error ? ' · ' + ui.tr(plan.error === 'err_train_on_track' ? 'works_will_wait' : plan.error) : plan.clipped ? ' · ' + ui.tr(plan.clipped) : ''}`;
+    const buy = plan.acquire && plan.acquire.length ? ` · ${ui.tr('acq_short', { n: plan.acquire.length, c: fmt(plan.compensation) })}` : '';
+    return `${head} · ${ui.tr('st_drag_len', { n: plan.len })} · ${fit}${buy} · ${fmt(plan.cost)} ●${plan.error ? ' · ' + ui.tr(plan.error === 'err_train_on_track' ? 'works_will_wait' : plan.error) : plan.clipped ? ' · ' + ui.tr(plan.clipped) : ''}`;
   }
   previewStation(a, b) {
     const g = this.game;
@@ -371,6 +380,7 @@ export class Construction {
     const tiles = plan.tiles || [];
     for (const t of tiles) if (k < 400) this.putQuad(this.ghost, k++, t, ok ? 0xfff0b0 : 0xe0a33a, 0.45);
     for (const sd of plan.side || []) for (const t of sd.tiles) if (k < 400) this.putQuad(this.ghost, k++, t, ok ? 0xf2dc8a : 0xe0a33a, 0.45);
+    for (const a of plan.acquire || []) if (k < 400) this.putQuad(this.ghost, k++, a.b.tile, 0xf08a24, 1.6);
     if (plan.bad != null && plan.bad >= 0 && k < 400) this.putQuad(this.ghost, k++, plan.bad, 0xd0503f);
     if (!tiles.length && a >= 0 && k < 400) this.putQuad(this.ghost, k++, a, 0xd0503f);
     this.ghost.count = k; this.flush(this.ghost);
@@ -385,13 +395,15 @@ export class Construction {
     else if (r.error) g.ui.error(r.error);
   }
   // drag a station a→b (new or extension) as one call (pending construction)
-  stationOp(a, b, tracks, dry) {
+  stationOp(a, b, tracks, dry, confirmed) {
     const g = this.game;
     const plan = g.stations.planDrag(a, b, tracks);
     const all = [...(plan.tiles || []), ...(plan.side || []).flatMap((sd) => sd.tiles)];
     if (plan.error && !(plan.tiles && plan.tiles.length && plan.error !== 'err_no_money' && plan.error !== 'err_train_on_track' && plan.mode === 'extend')) return { error: plan.error, cost: plan.cost, tiles: all };
     if (dry) return { error: null, cost: plan.cost, tiles: all };
     if (plan.error) plan.error = null;   // (extend as far as possible)
+    // buildings to buy: the player sees the whole project first
+    if (plan.acquire && plan.acquire.length && !confirmed) { g.ui.confirmProject(plan, () => this.stationOp(a, b, tracks, false, true)); return { ok: true, pending: true }; }
     const prevConn = this.areaConn(all, 3);
     const r = g.stations.buildDrag(plan);
     if (r.error) return r;
@@ -575,6 +587,7 @@ export class Construction {
     const sp = g.net.special.get(tile);
     if (sp) return sp.type;
     if (g.net.conn[tile]) return 'track';
+    if (g.occupancy.blocked[tile] === 1 && g.authority && g.authority.buildingAt(tile)) return 'building';
     if (g.world.view.hasTrees(tile) && !g.occupancy.blocked[tile]) return 'trees';
     return null;
   }
@@ -618,10 +631,12 @@ export class Construction {
         this.removeTrackOp(tile);
         break;
       }
+      case 'building': g.ui.offerDemolish(tile); return;
       case 'trees': {
         const cost = COSTS.treeClear;
         if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
         g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_trees:1');
+        g.authority.onTreesCleared(tile);
         g.world.view.clearTrees(tile);
         break;
       }

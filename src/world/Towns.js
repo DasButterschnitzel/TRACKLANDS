@@ -323,6 +323,8 @@ export class TownSystem {
     if (occ.blocked[i] && occ.owner[i] !== t.id) return false;
     if (occ.owner[i] && occ.owner[i] !== t.id && occ.owner[i] < 1000) return false;
     if (g.decor && g.decor.at(i)) return false;
+    // demolished by the company: the site stays empty for a while
+    if (t.cleared && t.cleared[i] > g.time) return false;
     return true;
   }
 
@@ -582,7 +584,12 @@ export class TownSystem {
   largest() { let b = null; for (const t of this.list) if (!b || t.pop > b.pop) b = t; return b; }
 
   serialize() {
-    return this.list.map((t) => ({ id: t.id, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received }));
+    const now = this.game.time;
+    return this.list.map((t) => {
+      const cl = {};
+      for (const k in t.cleared || {}) if (t.cleared[k] > now) cl[k] = Math.round(t.cleared[k]);
+      return { id: t.id, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
+    });
   }
   deserialize(arr) {
     if (!Array.isArray(arr)) return;
@@ -595,6 +602,9 @@ export class TownSystem {
       t.pop = Math.max(TOWN_POP[t.stage], +d.pop || 0);
       t.delivered = +d.delivered || 0;
       t.received = d.received && typeof d.received === 'object' ? d.received : {};
+      if (this.game.authority) this.game.authority.deserializeTown(t, d.auth);
+      t.cleared = {};
+      if (d.cleared && typeof d.cleared === 'object') for (const k in d.cleared) { const i = +k, v = +d.cleared[k]; if (Number.isInteger(i) && i >= 0 && i < N * N && isFinite(v)) t.cleared[i] = v; }
     }
   }
 }

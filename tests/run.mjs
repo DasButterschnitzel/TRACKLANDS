@@ -27,8 +27,9 @@ import * as pwa from './suites/pwa.mjs';
 import * as worldgen from './suites/worldgen.mjs';
 import * as build from './suites/build.mjs';
 import * as finance from './suites/finance.mjs';
+import * as authority from './suites/authority.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

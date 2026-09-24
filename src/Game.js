@@ -23,6 +23,7 @@ import { TrainSystem, locoModel } from './trains/Trains.js';
 import { Economy } from './economy/Economy.js';
 import { Ledger } from './economy/Ledger.js';
 import { Maintenance } from './trains/Maintenance.js';
+import { Authority } from './world/Authority.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
 import { Particles } from './vfx/Particles.js';
@@ -74,6 +75,7 @@ export class Game {
     this.industries = new IndustrySystem(this);
     this.industries.init(this.world);
     this.towns = new TownSystem(this);
+    this.authority = new Authority(this);
     this.towns.init(this.world);
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
@@ -386,6 +388,7 @@ export class Game {
     this.pax.tick(dt);
     this.trains.tick(dt);
     this.maint.tick(dt);
+    this.authority.tick(dt);
     this.works.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);

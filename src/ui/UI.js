@@ -18,6 +18,7 @@ import { RailUIMixin } from './RailUI.js';
 import { HandbookMixin } from './Handbook.js';
 import { LiveryEditorMixin } from './LiveryEditor.js';
 import { FinanceUIMixin } from './FinanceUI.js';
+import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -1043,7 +1044,8 @@ export class UI {
       <h4>${this.tr('accepts')}</h4><div class="icons">${TOWN_ACCEPTS.map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('')}</div>
       <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('town_no_station')}</p>`}
-      <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>`;
+      <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
+      ${this.authBlock(t)}`;
   }
 
   // ---------- modals ----------
@@ -1212,4 +1214,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin);

@@ -143,11 +143,11 @@ export class StationSystem {
   }
 
   // ---------- validation ----------
-  placeError(tile, kind) {
+  placeError(tile, kind, acq) {
     const g = this.game, net = g.net;
     if (tile < 0) return 'err_out_of_map';
     const r = net.tileBlockedReason(tile);
-    if (r) return r;
+    if (r && !(acq && r === 'err_town_building' && acq(tile))) return r;
     if (net.kind(tile) !== K_NORMAL) return 'err_bad_terrain';
     if (net.special.has(tile) || net.waypoints.has(tile)) return 'err_occupied';
     if (kind === 'depot' && net.degree(tile) > 1) return 'err_depot_on_line';
@@ -234,6 +234,18 @@ export class StationSystem {
   planDrag(a, b, tracks = 1) {
     const g = this.game, net = g.net;
     if (a < 0) return { error: 'err_out_of_map' };
+    // town buildings in the way are bought and demolished as part of the
+    // project (compensation, permit, relationship), not "space occupied"
+    const acquire = [];
+    let permitBad = null;
+    const acq = (t) => {
+      if (!g.authority || g.occupancy.blocked[t] !== 1) return false;
+      const info = g.authority.demolishInfo(t);
+      if (!info) return false;
+      if (!info.allowed) { permitBad = permitBad || t; return false; }
+      if (!acquire.some((x) => x.b === info.b)) acquire.push(info);
+      return true;
+    };
     if (b < 0) b = a;
     const dx = tx(b) - tx(a), dz = tz(b) - tz(a);
     const dir = Math.abs(dx) >= Math.abs(dz) ? (dx >= 0 ? 0 : 4) : (dz >= 0 ? 2 : 6);
@@ -267,7 +279,7 @@ export class StationSystem {
       if (t < 0) return 'err_out_of_map';
       if (net.special.has(t) || net.waypoints.has(t)) return 'err_occupied';
       const r = net.tileBlockedReason(t);
-      if (r) return r;
+      if (r && !(r === 'err_town_building' && acq(t))) return r === 'err_town_building' && permitBad === t ? 'err_permit_denied' : r;
       if (net.kind(t) !== K_NORMAL) return 'err_bad_terrain';
       if (g.decor.at(t)) return 'err_occupied';
       if (net.conn[t]) {
@@ -292,7 +304,9 @@ export class StationSystem {
         p = t;
       }
       const len = tk.tiles.length + tiles.length;
-      return { mode: 'extend', stn: ext.stn, k: ext.k, end: ext.end, dir: ext.dir, tiles, cost, error: error || (!tiles.length ? 'err_drag_to_extend' : null), bad, len, fit: this.fitText(len), side: [], clipped };
+      const comp = this.acquireCost(acquire, tiles);
+      cost += comp.cost;
+      return { acquire: comp.list, compensation: comp.cost, mode: 'extend', stn: ext.stn, k: ext.k, end: ext.end, dir: ext.dir, tiles, cost, error: error || (!tiles.length ? 'err_drag_to_extend' : null), bad, len, fit: this.fitText(len), side: [], clipped };
     }
     // a new station
     const clipped = n > this.maxLength();
@@ -300,7 +314,7 @@ export class StationSystem {
     let p = a;
     for (let i = 0; i < n; i++) {
       const t = i === 0 ? a : step(p, dir);
-      const e = i === 0 ? this.placeError(t, 'station') : check(t, dir);
+      const e = i === 0 ? this.placeError(t, 'station', acq) : check(t, dir);
       if (e && !(i === 0 && e === 'err_no_money')) { error = e; bad = t; break; }
       if (net.conn[t]) for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (dir & 3)) { error = 'err_extend_blocked'; bad = t; }
       if (error) break;
@@ -327,8 +341,19 @@ export class StationSystem {
       side.push({ off, tiles: row });
       cost += Math.round(row.length * COSTS.stationTrackTile * mul) + 2 * Math.abs(off) * g.economy.costs.trackTile(0, K_NORMAL);
     }
+    const comp = this.acquireCost(acquire, [...tiles, ...side.flatMap((sd) => sd.tiles)]);
+    cost += comp.cost;
+    // a new station on town land needs the town's consent
+    const town = tiles.length && g.authority ? g.authority.townAt(tiles[0]) : null;
+    if (!error && town && !g.authority.allowed(town, 'station_in_town')) { error = 'err_permit_station'; bad = tiles[0]; }
     if (!error && !g.economy.canAfford(cost)) error = 'err_no_money';
-    return { mode: 'new', dir, tiles, side, cost, error, bad, len: tiles.length, fit: this.fitText(tiles.length), clipped: clipped ? (this.maxLength() < STATION.maxLengthExt ? 'err_length_research' : 'err_max_length') : null };
+    return { acquire: comp.list, compensation: comp.cost, town: town ? town.id : null, mode: 'new', dir, tiles, side, cost, error, bad, len: tiles.length, fit: this.fitText(tiles.length), clipped: clipped ? (this.maxLength() < STATION.maxLengthExt ? 'err_length_research' : 'err_max_length') : null };
+  }
+  // buildings actually on the chosen tiles (a clipped drag drops the rest)
+  acquireCost(acquire, tiles) {
+    const set = new Set(tiles);
+    const list = acquire.filter((x) => set.has(x.b.tile));
+    return { list, cost: list.reduce((a, x) => a + x.cost, 0) };
   }
   // How long a platform of n tiles is, and what fits: '75 m · loco + 4 coaches'
   fitText(n) {
@@ -345,7 +370,15 @@ export class StationSystem {
     const g = this.game;
     if (!plan || plan.error) return { error: plan ? plan.error : 'err_unknown' };
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    let spent = 0;
+    let spent = 0, comp = 0;
+    // property first: compensation is booked per building (undo refunds the
+    // construction only; demolished buildings stay demolished)
+    for (const a of plan.acquire || []) {
+      const r = g.authority.demolish(a.b.tile, true);
+      if (r.error) return r;
+      comp += r.info.cost;
+    }
+    if ((plan.acquire || []).length) g.events.emit('propertyAcquired', plan.acquire.length);
     if (plan.mode === 'extend') {
       const stn = plan.stn;
       const ax = this.axisOf(stn);
@@ -356,7 +389,7 @@ export class StationSystem {
         if (r.error) break;
         spent += r.cost; added++;
       }
-      return added ? { ok: true, stn, cost: spent, added, end } : { error: 'err_extend_blocked' };
+      return added ? { ok: true, stn, cost: spent, compensation: comp, added, end } : { error: 'err_extend_blocked' };
     }
     const r = this.build(plan.tiles[0], plan.dir & 3);
     if (r.error) return r;
@@ -375,7 +408,7 @@ export class StationSystem {
       if (e.error) break;
       spent += e.cost; tracks++;
     }
-    return { ok: true, stn, cost: spent, tracks };
+    return { ok: true, stn, cost: spent, compensation: comp, tracks };
   }
   // undo of a platform extension: the end tiles become plain track again
   shrinkPlatform(stn, k, end, n) {
@@ -406,6 +439,7 @@ export class StationSystem {
     stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station();
     g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
+    if (g.authority) g.authority.onStationBuilt(stn);
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
     for (let d = 0; d < 8; d++) net.signals.delete(tile * 8 + d);
     const auto = this.autoConnect(tile, 2);

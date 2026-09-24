@@ -32,7 +32,7 @@ export class Works {
     switch (kind) {
       case 'track': return C.trackOp(a.a, a.b, a.tier | 0, a.mode === 'single' ? 'single' : 'double', dry);
       case 'bulldoze': return C.removeTrackOp(a.tile, dry);
-      case 'station': return C.stationOp(a.a, a.b, a.tracks || 1, dry);
+      case 'station': return C.stationOp(a.a, a.b, a.tracks || 1, dry, true);
       case 'addTrack': { const s = g.stations.byId(a.stn); return s ? g.stations.addTrack(s, a.side, dry) : { error: 'err_unknown' }; }
     }
     return { error: 'err_unknown' };
