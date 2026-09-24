@@ -368,6 +368,18 @@ export const RailUIMixin = {
       <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
   },
 
+  stationActions(s, up) {
+    const b = (act, arg, ic, label, dis = false, tip = '') => `<button class="tact" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''} ${tip ? `data-tip="${esc(tip)}"` : ''}>${icon(ic)}<span>${label}</span></button>`;
+    return `<div class="tactions st" role="toolbar" aria-label="${this.tr('station_actions')}">
+      ${b('stExtendTool', s.id, 'right', this.tr('act_extend'), false, this.tr('act_extend_tip'))}
+      ${b('scrollTo', '#st-plats', 'plus', this.tr('act_add_track'))}
+      ${b('scrollTo', '#st-up', 'up', this.tr('act_upgrade'), up.max)}
+      ${b('stRoutes', s.id, 'route', this.tr('act_routes'))}
+      ${b('scrollTo', '#st-stats', 'stats', this.tr('act_stats'))}
+      ${b('stRename', s.id, 'builder', this.tr('rename'))}
+      ${b('stDemolish', s.id, 'bulldoze', this.tr('act_demolish'))}
+    </div>`;
+  },
   // the actions a player needs most, one tap away (touch first)
   trainActions(t) {
     const g = this.game;
@@ -471,20 +483,21 @@ export const RailUIMixin = {
     const supplies = [...(s.supplies || [])];
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
     return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
+      ${this.stationActions(s, up)}
       ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}${adv}
       <h4>${this.tr('serves')}</h4><div class="links">${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('') || `<span class="muted">${this.tr('nothing_linked')}</span>`}</div>
       <h4>${this.tr('accepts')}</h4><div class="icons">${[...s.accepts].map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('') || '-'}</div>
       ${supplies.length ? `<h4>${this.tr('supplies')}</h4>${supplies.map((c) => this.cargoWagonsRow(c)).join('')}` : ''}
       <h4>${this.tr('waiting_cargo')}</h4>${stock.map((c) => this.cargoRow(c, s.stock[c], cap)).join('') || `<p class="muted">${this.tr('none_waiting')}</p>`}
       ${this.paxBlock(s)}
-      <h4>${this.tr('platforms')} · ${s.tracks.length}/${S.maxTracks()} ${this.helpBtn('stations')}</h4><div class="plats">${tracks}</div>
+      <h4 id="st-plats">${this.tr('platforms')} · ${s.tracks.length}/${S.maxTracks()} ${this.helpBtn('stations')}</h4><div class="plats">${tracks}</div>
       <div class="row wrap">${addT}</div>
       <p class="muted small">${this.tr('st_edit_help')}</p>
       <h4>${this.tr('facilities')}</h4><div class="chips wrap">${facs}</div>
-      <h4>${this.tr('station_statistics')}</h4>
+      <h4 id="st-stats">${this.tr('station_statistics')}</h4>
       <div class="kv-grid small"><div><b>${fmt(s.stats.arrivals)}</b><small>${this.tr('arrivals')}</small></div><div><b>${Math.round(avgUtil * 100)}%</b><small>${this.tr('occupancy')}</small></div><div><b>${Math.round(s.stats.waitEma * 100)}%</b><small>${this.tr('entry_waits')}</small></div><div><b>${fmt(s.stats.transfers)}</b><small>${this.tr('transfers')}</small></div></div>
       <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
-      <div class="row wrap">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>
+      <div class="row wrap" id="st-up">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>
       <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>
       <p class="muted small">${this.tr('station_stats', { d: fmt(s.delivered), p: fmt(s.picked) })}</p>`;
   },
@@ -538,6 +551,10 @@ export const RailUIMixin = {
       builder: (a) => this.openBuilder({ trainId: +a }),
       newTrain: () => this.openBuilder({}),
       bldSel: (a) => { b().sel = b().sel === +a ? -1 : +a; re(); },
+      stExtendTool: (a) => { const s = g().stations.byId(+a); if (!s) return; g().construction.setTool('station'); this.toast(this.tr('act_extend_tip'), 'info', 'station'); const tiles = g().stations.allTiles(s); g().construction.showTiles(tiles, true); },
+      stRoutes: () => { if (g().overlays.mode !== 'routes') this.actions.overlay('routes'); },
+      stRename: async (a) => { const s = g().stations.byId(+a); if (!s) return; const n = await this.prompt(this.tr('rename'), s.name); if (n) { s.name = n.slice(0, 28); this.renderInspector(); } },
+      stDemolish: async (a) => { const s = g().stations.byId(+a); if (!s) return; if (!(await this.confirm(this.tr('st_demolish_q', { name: s.name }), this.tr('act_demolish'), true))) return; const r = g().stations.remove(s); if (r.error) this.error(r.error); else { g().select(null); g().industries.onStationsChanged(); g().towns.onStationsChanged(); } },
       depotSend: (a) => { const t = g().trains.byId(+a); if (t) this.depotResult(t, g().trains.orderDepot(t, null, true)); },
       depotChoose: (a) => { const t = g().trains.byId(+a); if (t) this.depotChooser(t); },
       depotCancel: (a) => { const t = g().trains.byId(+a); if (t) { g().trains.cancelDepotOrder(t); this.renderInspector(); } },

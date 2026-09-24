@@ -646,3 +646,10 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 /* the train preview stays in view while scrolling the builder / paint options */
 #panel .pbody > .bpreview:first-child { position: sticky; top: 0; z-index: 3; box-shadow: 0 6px 12px -8px rgba(0,0,0,.25); }
 @media (max-width: 760px) { #panel .pbody > .bpreview:first-child img { max-height: 118px; object-fit: contain; } }
+#subbar .sub-num { color: #fff; font-size: 1.1em; min-width: 1.4em; text-align: center; align-self: center; font-variant-numeric: tabular-nums; }
+#subbar .icon-btn.small { width: 36px; height: 36px; background: rgba(255,255,255,.12); color: #fff; }
+@media (pointer: coarse) { #subbar .icon-btn.small { width: 44px; height: 44px; } }
+.tactions.st { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.tactions.st .tact { font-size: .72em; }
+@media (max-width: 420px) { .tactions.st { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+#cursorinfo.dock { left: 50%; top: calc(64px + var(--safe-t)); transform: translateX(-50%) !important; max-width: calc(100vw - 24px); width: max-content; text-align: center; font-size: .86em; }

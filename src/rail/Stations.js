@@ -6,7 +6,7 @@
 // roles, facilities), statistics, the bottleneck advisor and visuals.
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ } from '../util.js';
-import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES } from '../config.js';
+import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen } from '../config.js';
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
@@ -66,6 +66,7 @@ export class StationSystem {
       return a >= 0 ? a & 3 : 0;
     }
     const tile = t0.tiles[0];
+    if (stn.axis != null && !net.conn[tile]) return stn.axis & 3;
     for (let d = 0; d < 4; d++) if (net.hasDir(tile, d) && net.hasDir(tile, d + 4)) return d;
     for (const d of [0, 2, 1, 3, 4, 6, 5, 7]) if (net.hasDir(tile, d)) return d & 3;
     return 0;
@@ -223,13 +224,184 @@ export class StationSystem {
     }, extra || {});
   }
 
+  // ---------- drag construction ----------
+  // Plan a station dragged from tile a to tile b (snapped to one axis):
+  //   mode 'new'    a new station with `tracks` platform tracks of that length
+  //   mode 'extend' the drag starts on / next to a platform end: that platform
+  //                 grows (a drag running into a platform end extends it too)
+  // Returns { mode, stn, k, end, dir, tiles, side, cost, error, bad, len, fit }.
+  planDrag(a, b, tracks = 1) {
+    const g = this.game, net = g.net;
+    if (a < 0) return { error: 'err_out_of_map' };
+    if (b < 0) b = a;
+    const dx = tx(b) - tx(a), dz = tz(b) - tz(a);
+    const dir = Math.abs(dx) >= Math.abs(dz) ? (dx >= 0 ? 0 : 4) : (dz >= 0 ? 2 : 6);
+    let n = Math.max(Math.abs(dx), Math.abs(dz)) + 1;
+    const mul = g.economy.costs.mul();
+    const endOf = (stn, k, tile) => { const tk = stn.tracks[k]; return tk.tiles[tk.tiles.length - 1] === tile ? 1 : tk.tiles[0] === tile ? 0 : -1; };
+    // extending: from a platform end (on it, or the tile beyond it) outward
+    let ext = null;
+    const spA = net.special.get(a);
+    if (spA && spA.type === 'station') {
+      const stn = this.byId(spA.id), k = spA.track | 0, end = endOf(stn, k, a);
+      const ax = this.axisOf(stn), out = end === 1 ? ax : (ax + 4) & 7;
+      if (end >= 0 && (dir === out || n === 1)) ext = { stn, k, end, from: a, dir: out, count: n - 1 };
+    }
+    if (!ext) {
+      for (const [end0, from, d] of [[1, step(a, opp(dir)), dir], [0, step(b, dir), opp(dir)]]) {
+        const sp = from >= 0 ? net.special.get(from) : null;
+        if (!sp || sp.type !== 'station') continue;
+        const stn = this.byId(sp.id), k = sp.track | 0, end = endOf(stn, k, from);
+        const ax = this.axisOf(stn), out = end === 1 ? ax : (ax + 4) & 7;
+        if (end < 0 || out !== d || (stn.tracks[k].tiles.length > 1 && (ax & 3) !== (d & 3))) continue;
+        if (stn.tracks[k].tiles.length === 1 && net.conn[from] && !net.hasDir(from, opp(d)) && net.degree(from) > 0 && !net.hasDir(from, d)) continue;
+        ext = { stn, k, end, from, dir: d, count: n };
+        void end0;
+        break;
+      }
+    }
+    const tiles = [];
+    let cost = 0, error = null, bad = null;
+    const check = (t, d, first) => {
+      if (t < 0) return 'err_out_of_map';
+      if (net.special.has(t) || net.waypoints.has(t)) return 'err_occupied';
+      const r = net.tileBlockedReason(t);
+      if (r) return r;
+      if (net.kind(t) !== K_NORMAL) return 'err_bad_terrain';
+      if (g.decor.at(t)) return 'err_occupied';
+      if (net.conn[t]) {
+        for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (d & 3)) return 'err_extend_blocked';
+        if (g.trains.tileReserved(t) || g.trains.foulsTrain([t])) return 'err_train_on_track';
+      } else if (g.trains.foulsTrain([t])) return 'err_train_on_track';
+      void first;
+      return null;
+    };
+    if (ext) {
+      const tk = ext.stn.tracks[ext.k];
+      let p = ext.from;
+      n = ext.count;
+      let clipped = null;
+      if (tk.tiles.length + n > this.maxLength()) { clipped = this.maxLength() < STATION.maxLengthExt ? 'err_length_research' : 'err_max_length'; n = Math.max(0, this.maxLength() - tk.tiles.length); error = n ? null : clipped; }
+      for (let i = 0; i < n; i++) {
+        const t = step(p, ext.dir);
+        const e = check(t, ext.dir);
+        if (e) { error = e; bad = t; break; }
+        tiles.push(t);
+        cost += Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
+        p = t;
+      }
+      const len = tk.tiles.length + tiles.length;
+      return { mode: 'extend', stn: ext.stn, k: ext.k, end: ext.end, dir: ext.dir, tiles, cost, error: error || (!tiles.length ? 'err_drag_to_extend' : null), bad, len, fit: this.fitText(len), side: [], clipped };
+    }
+    // a new station
+    const clipped = n > this.maxLength();
+    n = Math.min(n, this.maxLength());
+    let p = a;
+    for (let i = 0; i < n; i++) {
+      const t = i === 0 ? a : step(p, dir);
+      const e = i === 0 ? this.placeError(t, 'station') : check(t, dir);
+      if (e && !(i === 0 && e === 'err_no_money')) { error = e; bad = t; break; }
+      if (net.conn[t]) for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (dir & 3)) { error = 'err_extend_blocked'; bad = t; }
+      if (error) break;
+      tiles.push(t);
+      cost += i === 0 ? g.economy.costs.station() : Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
+      p = t;
+    }
+    // extra platform tracks alongside (+1, -1, +2 ...), within the research limit
+    const side = [];
+    const perpA = (dir + 2) & 7, perpB = (dir + 6) & 7;
+    const want = Math.max(1, Math.min(tracks | 0, this.maxTracks()));
+    for (let k = 1; k < want && tiles.length && !error; k++) {
+      const off = k % 2 ? (k + 1) / 2 : -k / 2;
+      const pd = off > 0 ? perpA : perpB;
+      const row = [];
+      for (const t0 of tiles) {
+        let t = t0;
+        for (let i = 0; i < Math.abs(off); i++) t = t >= 0 ? step(t, pd) : -1;
+        const e = check(t, dir) || (t >= 0 && net.conn[t] ? 'err_occupied' : null);
+        if (e) { error = e; bad = t; break; }
+        row.push(t);
+      }
+      if (error) break;
+      side.push({ off, tiles: row });
+      cost += Math.round(row.length * COSTS.stationTrackTile * mul) + 2 * Math.abs(off) * g.economy.costs.trackTile(0, K_NORMAL);
+    }
+    if (!error && !g.economy.canAfford(cost)) error = 'err_no_money';
+    return { mode: 'new', dir, tiles, side, cost, error, bad, len: tiles.length, fit: this.fitText(tiles.length), clipped: clipped ? (this.maxLength() < STATION.maxLengthExt ? 'err_length_research' : 'err_max_length') : null };
+  }
+  // How long a platform of n tiles is, and what fits: '75 m · loco + 4 coaches'
+  fitText(n) {
+    const g = this.game;
+    const L = n * TILE + 0.6;   // trains stop a little past the last tile centre
+    const last = g.trains.trains[g.trains.trains.length - 1];
+    const m = LOCOS.find((x) => x.id === (last ? last.model : 'pioneer')) || LOCOS[0];
+    const coach = WAGONS.coach.len + CONSIST.gap;
+    const cars = Math.max(0, Math.floor((L - locoLen(m) - CONSIST.gap) / coach));
+    return { metres: Math.round(n * 25), cars, loco: m.name };
+  }
+  // Execute a planned drag. Returns { ok, stn, cost } or { error }.
+  buildDrag(plan) {
+    const g = this.game;
+    if (!plan || plan.error) return { error: plan ? plan.error : 'err_unknown' };
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    let spent = 0;
+    if (plan.mode === 'extend') {
+      const stn = plan.stn;
+      const ax = this.axisOf(stn);
+      const end = plan.dir === ax ? 1 : 0;
+      let added = 0;
+      for (let i = 0; i < plan.tiles.length; i++) {
+        const r = this.extendPlatform(stn, plan.k, end);
+        if (r.error) break;
+        spent += r.cost; added++;
+      }
+      return added ? { ok: true, stn, cost: spent, added, end } : { error: 'err_extend_blocked' };
+    }
+    const r = this.build(plan.tiles[0], plan.dir & 3);
+    if (r.error) return r;
+    spent += r.cost;
+    const stn = r.station;
+    const ax = this.axisOf(stn);
+    const end = plan.dir === ax ? 1 : 0;
+    for (let i = 1; i < plan.tiles.length; i++) {
+      const e = this.extendPlatform(stn, 0, end);
+      if (e.error) break;
+      spent += e.cost;
+    }
+    let tracks = 1;
+    for (const sd of plan.side) {
+      const e = this.addTrack(stn, sd.off > 0 ? (plan.dir === ax ? 1 : -1) : (plan.dir === ax ? -1 : 1));
+      if (e.error) break;
+      spent += e.cost; tracks++;
+    }
+    return { ok: true, stn, cost: spent, tracks };
+  }
+  // undo of a platform extension: the end tiles become plain track again
+  shrinkPlatform(stn, k, end, n) {
+    const g = this.game, net = g.net;
+    const tk = stn.tracks[k];
+    if (!tk || tk.tiles.length <= n) return { error: 'err_unknown' };
+    const cut = end ? tk.tiles.slice(-n) : tk.tiles.slice(0, n);
+    if (this.inUse(cut)) return { error: 'err_station_in_use' };
+    tk.tiles = end ? tk.tiles.slice(0, -n) : tk.tiles.slice(n);
+    for (const t of cut) net.special.delete(t);
+    this.markTiles(stn);
+    net.bumpVersion();
+    for (const t of cut) g.railView.markDirty(t);
+    this.relink(stn);
+    this.buildVisual(stn);
+    g.trains.onNetworkChanged(false);
+    g.events.emit('stationEdited', stn);
+    return { ok: true, tiles: cut };
+  }
+
   // ---------- building ----------
-  build(tile) {
+  build(tile, axis) {
     const g = this.game, net = g.net;
     const err = this.placeError(tile, 'station');
     if (err) return { error: err };
     const links = this.previewLinks([tile], 0);
-    const stn = this.newStation(tile);
+    const stn = this.newStation(tile, axis != null ? { axis } : null);
     stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station();
     g.economy.spend(cost, 'construction');

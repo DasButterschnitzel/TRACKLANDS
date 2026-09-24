@@ -106,6 +106,7 @@ export class Construction {
     const g = this.game;
     if (this.tool === 'select' || this.tool === 'train' || tile < 0) { this.ghost.count = 0; this.cover.count = 0; this.flush(this.ghost); return; }
     let ok = true, info = '';
+    if (this.tool === 'station') { this.previewStation(tile, tile); return; }
     if (this.tool === 'station' || this.tool === 'depot') {
       const err = g.stations.placeError(tile, this.tool);
       ok = !err;
@@ -139,12 +140,17 @@ export class Construction {
 
   showCoverage(tile) {
     const g = this.game;
-    const { radius, towns, inds } = g.stations.previewLinks(tile, 0);
+    const tiles = Array.isArray(tile) ? tile : [tile];
+    const { radius, towns, inds } = g.stations.previewLinks(tiles, 0);
     let k = 0;
-    for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) {
-      const x = tx(tile) + dx, z = tz(tile) + dz;
+    const seen = new Set();
+    for (const t0 of tiles) for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) {
+      const x = tx(t0) + dx, z = tz(t0) + dz;
       if (!inMap(x, z) || k >= 600) continue;
-      this.putQuad(this.cover, k++, idx(x, z), 0x3fc8b8, 0.25);
+      const i = idx(x, z);
+      if (seen.has(i)) continue;
+      seen.add(i);
+      this.putQuad(this.cover, k++, i, 0x3fc8b8, 0.25);
     }
     // highlight served sites
     for (const ind of inds) for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (k < 600) this.putQuad(this.cover, k++, idx(ind.x + dx, ind.z + dz), 0xffd870, 0.3);
@@ -166,7 +172,7 @@ export class Construction {
         this.drag = { tiles: new Set([tile]) };
         this.bulldoze(tile);
         break;
-      case 'station': this.placeStation(tile); break;
+      case 'station': this.drag = { a: tile, b: tile }; this.previewStation(tile, tile); break;
       case 'signal': this.drag = { a: tile, b: tile, p: p || this.hoverP }; break;
       case 'waypoint': this.toggleWaypoint(tile); break;
       case 'depot': this.placeDepot(tile); break;
@@ -185,10 +191,21 @@ export class Construction {
       this.drag.tiles.add(tile); this.placeDecor(tile, true);
     } else if (this.tool === 'signal' && tile !== this.drag.b) {
       this.drag.b = tile; this.previewSignalRow();
+    } else if (this.tool === 'station' && tile !== this.drag.b) {
+      this.drag.b = tile; this.previewStation(this.drag.a, tile);
     }
   }
   pointerUp(tile) {
     if (!this.drag) return;
+    if (this.tool === 'station') {
+      const d = this.drag;
+      this.drag = null;
+      if (tile >= 0) d.b = tile;
+      this.clearPreview();
+      this.buildStationDrag(d.a, d.b);
+      this.hover(this.hoverTile);
+      return;
+    }
     if (this.tool === 'signal') {
       const d = this.drag;
       this.drag = null;
@@ -310,6 +327,67 @@ export class Construction {
   }
 
   // ---------- stations / depots ----------
+  // Station tool: press on the first platform tile and drag along the track;
+  // the ghost shows every platform tile, the catchment, length, what fits
+  // and the full price. Starting on / next to a platform end extends it.
+  stationInfo(plan) {
+    const ui = this.game.ui;
+    if (!plan || !plan.tiles || !plan.tiles.length) return ui.tr((plan && plan.error) || 'err_unknown');
+    const head = plan.mode === 'extend' ? ui.tr('st_drag_extend', { name: plan.stn.name }) : ui.tr(plan.side.length ? 'st_drag_new_n' : 'st_drag_new', { n: plan.side.length + 1 });
+    const fit = ui.tr('st_drag_fit', { m: plan.fit.metres, n: plan.fit.cars, loco: plan.fit.loco });
+    return `${head} · ${ui.tr('st_drag_len', { n: plan.len })} · ${fit} · ${fmt(plan.cost)} ●${plan.error ? ' · ' + ui.tr(plan.error) : plan.clipped ? ' · ' + ui.tr(plan.clipped) : ''}`;
+  }
+  previewStation(a, b) {
+    const g = this.game;
+    const plan = g.stations.planDrag(a, b, this.stationTracks || 1);
+    this.stationPlan = plan;
+    let k = 0;
+    const ok = !plan.error;
+    const tiles = plan.tiles || [];
+    for (const t of tiles) if (k < 400) this.putQuad(this.ghost, k++, t, ok ? 0xfff0b0 : 0xe0a33a, 0.45);
+    for (const sd of plan.side || []) for (const t of sd.tiles) if (k < 400) this.putQuad(this.ghost, k++, t, ok ? 0xf2dc8a : 0xe0a33a, 0.45);
+    if (plan.bad != null && plan.bad >= 0 && k < 400) this.putQuad(this.ghost, k++, plan.bad, 0xd0503f);
+    if (!tiles.length && a >= 0 && k < 400) this.putQuad(this.ghost, k++, a, 0xd0503f);
+    this.ghost.count = k; this.flush(this.ghost);
+    if (tiles.length) this.showCoverage(plan.mode === 'extend' ? [...g.stations.allTiles(plan.stn), ...tiles] : [...tiles, ...(plan.side || []).flatMap((sd) => sd.tiles)]);
+    else { this.cover.count = 0; this.flush(this.cover); }
+    g.ui.cursorInfo(this.stationInfo(plan), ok);
+  }
+  buildStationDrag(a, b) {
+    const g = this.game;
+    const plan = g.stations.planDrag(a, b, this.stationTracks || 1);
+    if (plan.error && !(plan.tiles && plan.tiles.length && plan.error !== 'err_no_money' && plan.mode === 'extend')) { g.ui.error(plan.error); return; }
+    if (plan.error) plan.error = null;   // (extend as far as possible)
+    const all = [...plan.tiles, ...(plan.side || []).flatMap((sd) => sd.tiles)];
+    const prevConn = this.areaConn(all, 3);
+    const r = g.stations.buildDrag(plan);
+    if (r.error) { g.ui.error(r.error); return; }
+    if (plan.mode === 'extend') this.pushUndo({ type: 'stationExtend', id: r.stn.id, k: plan.k, end: r.end, n: r.added, cost: r.cost, prevConn });
+    else this.pushUndo({ type: 'station', id: r.stn.id, cost: r.cost, prevConn });
+    g.audio.play('construct');
+    const c = plan.tiles[Math.floor(plan.tiles.length / 2)];
+    g.particles.ring(tileCX(c), g.net.railH(c) + 0.1, tileCZ(c), 0x3fc8b8, 3 + plan.tiles.length, 1);
+    for (const t of plan.tiles) g.particles.emit('dust', tileCX(t), g.net.railH(t) + 0.3, tileCZ(t), 5);
+    g.camera.shake(0.15);
+    if (plan.mode === 'new') {
+      const links = r.stn.links;
+      if (!links.towns.length && !links.industries.length) g.ui.toast(g.ui.tr('warn_station_no_links'), 'warn');
+      if (plan.side.length && r.tracks < plan.side.length + 1) g.ui.toast(g.ui.tr('st_drag_tracks_partial', { n: r.tracks }), 'info');
+    }
+  }
+  // connection snapshot of every tile within r of the given tiles (undo)
+  areaConn(tiles, r) {
+    const net = this.game.net, seen = new Set(), out = [];
+    for (const t of tiles) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      const x = tx(t) + dx, z = tz(t) + dz;
+      if (!inMap(x, z)) continue;
+      const i = idx(x, z);
+      if (seen.has(i)) continue;
+      seen.add(i); out.push({ t: i, conn: net.conn[i], tier: net.tier[i], single: net.single[i] });
+    }
+    return out;
+  }
+  setStationTracks(n) { this.stationTracks = Math.max(1, Math.min(this.game.stations.maxTracks(), n | 0)); if (this.drag && this.tool === 'station') this.previewStation(this.drag.a, this.drag.b); else if (this.tool === 'station') this.hover(this.hoverTile); }
   placeStation(tile) {
     const g = this.game;
     const prevConn = this.neighborhoodConn(tile);
@@ -563,6 +641,15 @@ export class Construction {
         if (r.error) { g.ui.error(r.error); this.undoStack.push(e); return; }
         g.economy.earn(e.cost - r.refund, 'refund', false);
         this.restoreConn(e.prevConn);
+      }
+      g.industries.onStationsChanged(); g.towns.onStationsChanged();
+    } else if (e.type === 'stationExtend') {
+      const s = g.stations.byId(e.id);
+      if (s) {
+        const r = g.stations.shrinkPlatform(s, e.k, e.end, e.n);
+        if (r.error) { g.ui.error(r.error); this.undoStack.push(e); return; }
+        this.restoreConn(e.prevConn);
+        g.economy.earn(e.cost, 'refund', false);
       }
       g.industries.onStationsChanged(); g.towns.onStationsChanged();
     } else if (e.type === 'depot') {

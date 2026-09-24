@@ -208,7 +208,8 @@ export class UI {
         return `<button class="chip ${C.decor === d.id ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="decorType" data-arg="${d.id}" ${locked ? `data-tip="${this.tr('unlock_level', { n: d.unlock.level })}"` : ''}>${locked ? icon('lock') : ''}<b>${this.tr('dec_' + d.id)}</b><small>${fmt(g.economy.costs.decor(d))}●</small></button>`;
       }).join('');
     } else if (C.tool === 'station') {
-      sub = `<span class="sub-hint">${icon('station')} ${this.tr('hint_station', { cost: fmt(g.economy.costs.station()) })}</span>`;
+      const n = C.stationTracks || 1, mx = g.stations.maxTracks();
+      sub = `<span class="sub-label">${this.tr('st_tracks')}</span><button class="icon-btn small" data-act="stTracks" data-arg="-1" ${n <= 1 ? 'disabled' : ''} aria-label="${this.tr('st_tracks_less')}">${icon('minus')}</button><b class="sub-num" aria-live="polite">${n}</b><button class="icon-btn small" data-act="stTracks" data-arg="1" ${n >= mx ? 'disabled' : ''} aria-label="${this.tr('st_tracks_more')}" data-tip="${n >= mx ? this.tr('err_tracks_research') : ''}">${icon('plus')}</button><span class="sub-sep"></span><span class="sub-hint">${icon('station')} ${this.tr('hint_station_drag', { cost: fmt(g.economy.costs.station()) })}</span>${this.helpBtn('stations')}`;
     } else if (C.tool === 'depot') {
       sub = `<span class="sub-hint">${icon('depot')} ${this.tr('hint_depot', { cost: fmt(g.economy.costs.depot()) })}</span>`;
     } else if (C.tool === 'bulldoze') {
@@ -354,7 +355,14 @@ export class UI {
   hideCursorInfo() { $('#cursorinfo').hidden = true; }
   pointerMoved(x, y) {
     const el = $('#cursorinfo');
-    el.style.transform = `translate(${x + 18}px, ${y + 14}px)`;
+    // fingers cover the spot: dock the hint at the top; the mouse keeps it
+    // beside the pointer, always inside the screen
+    if (matchMedia('(pointer: coarse)').matches) { el.classList.add('dock'); el.style.transform = ''; return; }
+    el.classList.remove('dock');
+    const w = el.offsetWidth || 200, h = el.offsetHeight || 30;
+    const px = x + 18 + w > innerWidth - 8 ? x - 18 - w : x + 18;
+    const py = y + 14 + h > innerHeight - 8 ? y - 14 - h : y + 14;
+    el.style.transform = `translate(${Math.max(8, px)}px, ${Math.max(8, py)}px)`;
   }
 
   weatherChanged() {}
@@ -1078,6 +1086,7 @@ export class UI {
       speed: (a) => g().setSpeed(+a),
       tool: (a) => { if (a === 'train') { this.openBuilder({}); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
       tier: (a) => g().construction.setTier(+a),
+      stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
       ...this.railActions(),

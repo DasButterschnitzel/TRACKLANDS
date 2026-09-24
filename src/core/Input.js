@@ -242,8 +242,9 @@ export class Input {
       case '?': g.ui.actions.help('start'); break;
       case 'q': g.camera.rotate(-1); break;
       case 'e': g.camera.rotate(1); break;
-      case '+': case '=': g.camera.zoom(0.8); break;
-      case '-': g.camera.zoom(1.25); break;
+      // with the station tool: platform tracks; otherwise zoom
+      case '+': case '=': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) + 1); g.ui.renderToolbar(); } else g.camera.zoom(0.8); break;
+      case '-': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) - 1); g.ui.renderToolbar(); } else g.camera.zoom(1.25); break;
       case 'h': g.ui.toggleHeatmap(); break;
       case 'f3': case '`': e.preventDefault(); g.ui.toggleDebug(); break;
       default: break;
