@@ -4,6 +4,7 @@
 // stays on the same path. Movement is limited by an explicit reservation
 // frontier (block groups, junction paths, single-track direction locks) that is
 // extended ahead of the train and released behind its rear.
+import { cleanFin } from '../economy/Ledger.js';
 import * as THREE from 'three';
 import { TILE, opp, turnOf, step, cheb, worldToTile, clamp, tileCX, tileCZ, DX, DZ } from '../util.js';
 import { LOCOS, TRACK_TIERS, KMH_PER_TILE_S, CARGO, ERA_RESEARCH, WAGONS, STATION } from '../config.js';
@@ -121,7 +122,8 @@ export class TrainSystem {
     const t = this.makeTrain({ id: this.nextId++, veh: vs, name: name || `${base} ${count}`, livery: g.progression.defaultLivery, depotId: depot.id });
     this.trains.push(t);
     if (!this.spawnAtDepot(t, depot)) t.state = 'spawnwait';
-    g.economy.spend(cost, 'trains');
+    g.economy.spend(cost, 'trains', { type: 'train', id: t.id }, t.name);
+    t.bought = g.time;
     g.stats.inc('trainsBought');
     for (const v of vs) if (v.k === 'L') g.progression.ownModel(v.id);
     g.events.emit('trainBought', t);
@@ -144,7 +146,7 @@ export class TrainSystem {
       xs: [], ys: [], zs: [], ss: [], steps: [], s: 0, v: 0, stopS: Infinity, resvEnd: -1,
       lane: 1, held: new Set(), runs: new Set(), claim: null, problem: null, loadTime: 0, lastStepIdx: -1,
       visual: null, fade: 1, reroutes: 0, homeDepot: d.depotId ?? null, unreachable: new Map(), recover: 0,
-      created: d.created || Date.now(), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
+      created: d.created || Date.now(), bought: typeof d.bought === 'number' && isFinite(d.bought) ? d.bought : 0, fin: cleanFin(d.fin), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
       waitTotal: 0, pendingVeh: null, deadT: 0,
       // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
       spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '',
@@ -182,7 +184,7 @@ export class TrainSystem {
     if (onTrack && st.minTier > 0) {
       for (let k = Math.max(0, this.stepAt(t, t.s - t._st.length)); k <= this.stepAt(t, t.s); k++) if (this.net.tier[t.steps[k].tile] < st.minTier) return st.minTier === 3 ? 'err_needs_hsr' : 'err_needs_electric';
     }
-    if (cost.net > 0) g.economy.spend(cost.net, 'trains'); else if (cost.net < 0) g.economy.earn(-cost.net, 'sale', false);
+    if (cost.net > 0) g.economy.spend(cost.net, 'trains', { type: 'train', id: t.id }); else if (cost.net < 0) g.economy.earn(-cost.net, 'sale', false, { type: 'train', id: t.id });
     if (t.state === 'run' || t.state === 'reversing') { t.pendingVeh = cloneConsist(vs); return null; }
     this.setVehicles(t, cloneConsist(vs));
     return null;
@@ -1194,7 +1196,7 @@ export class TrainSystem {
         const took = S.receive(stn, lot.c, lot.n);
         if (took > 0) {
           const share = Math.round(g.economy.estimate(lot.c, took, S.byId(lot.from), stn, t) * 0.4);
-          g.economy.earn(share, 'delivery', true); t.earned += share;
+          g.economy.bookDelivery(share, lot.c, took, t, S.byId(lot.from), stn); t.earned += share;
           S.noteTransfer(stn, lot.c, took);
           moved += took;
           if (took < lot.n) keep.push({ c: lot.c, n: lot.n - took, from: lot.from });
@@ -1302,9 +1304,11 @@ export class TrainSystem {
     }
     this._deadT -= dt;
     if (this._deadT <= 0) { this._deadT = 1; this.detectDeadlocks(); this.checkInvariants(); }
-    let op = 0;
-    for (const t of this.trains) op += t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1);
-    if (op > 0) g.economy.operatingCost((op / 60) * dt);
+    // running costs, booked per train
+    for (const t of this.trains) {
+      const op = t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1);
+      if (op > 0) g.economy.operatingCost((op / 60) * dt, { type: 'train', id: t.id });
+    }
   }
 
   tickTrain(t, dt) {
@@ -1949,7 +1953,7 @@ export class TrainSystem {
     this.disposeVisual(t);
     this.trains = this.trains.filter((x) => x !== t);
     const refund = Math.round(consistCost(t.veh, g.economy.costs) * 0.5);
-    g.economy.earn(refund, 'sale', false);
+    g.economy.earn(refund, 'sale', false, null, t.name);
     g.events.emit('trainSold', t, refund);
     return refund;
   }
@@ -1961,7 +1965,7 @@ export class TrainSystem {
     if (lvl >= 5) return 'err_max_level';
     const cost = g.economy.costs.trainUpgrade(locoModel(t.model), lvl);
     if (!g.economy.canAfford(cost)) return 'err_no_money';
-    g.economy.spend(cost, 'upgrades');
+    g.economy.spend(cost, 'upgrades', { type: 'train', id: t.id }, kind);
     t.upg[kind]++;
     this.refreshStats(t);
     g.stats.inc('trainUpgrades');
@@ -2158,6 +2162,7 @@ export class TrainSystem {
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
         spacing: t.spacing || undefined, group: t.group || undefined,
         depotOrder: t.depotOrder || undefined,
+        bought: t.bought ? Math.round(t.bought) : undefined, fin: cleanFin(t.fin),
       };
     });
   }

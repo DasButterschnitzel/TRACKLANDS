@@ -8,9 +8,9 @@ export const WORLDGEN_VERSION = 2;
 export const SAVE_VERSION = 3;
 
 export const DIFFICULTY = {
-  relaxed: { money: 5000, costMul: 0.7, growthMul: 0.8, incomeMul: 1.15 },
-  standard: { money: 2500, costMul: 1.0, growthMul: 1.0, incomeMul: 1.0 },
-  builder: { money: 5000000, costMul: 1.0, growthMul: 1.0, incomeMul: 1.0 },
+  relaxed: { money: 5000, costMul: 0.7, growthMul: 0.8, incomeMul: 1.15, interest: 0.03 },
+  standard: { money: 2500, costMul: 1.0, growthMul: 1.0, incomeMul: 1.0, interest: 0.06 },
+  builder: { money: 5000000, costMul: 1.0, growthMul: 1.0, incomeMul: 1.0, interest: 0.04 },
 };
 
 // ---------- CARGO ----------

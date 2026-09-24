@@ -17,6 +17,7 @@ import { MonetizationService } from '../services/Monetization.js';
 import { RailUIMixin } from './RailUI.js';
 import { HandbookMixin } from './Handbook.js';
 import { LiveryEditorMixin } from './LiveryEditor.js';
+import { FinanceUIMixin } from './FinanceUI.js';
 import { log } from '../core/Log.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -143,7 +144,7 @@ export class UI {
         <span class="lvl-num" id="lvl-num">${P.level}</span>
         <span class="lvl-bar"><span id="xp-fill"></span></span>
       </button>
-      <div class="res coins" data-tip="${this.tr('coins')}">${icon('coin')}<span id="coins-v">${fmt(g.economy.coins)}</span></div>
+      <button class="res coins" data-act="panel" data-arg="finance" data-tip="${this.tr('menu_finance')}">${icon('coin')}<span class="cv"><span id="coins-v">${fmt(g.economy.coins)}</span><small id="date-v">${this.monthName(g.ledger.monthIndex())}</small></span></button>
       <button class="res rp" data-act="panel" data-arg="research" data-tip="${this.tr('research_points')}">${icon('rp')}<span id="rp-v">${P.rp}</span></button>
       <div class="spacer"></div>
       <div class="speeds" role="group" aria-label="${this.tr('game_speed')}">${sp}</div>
@@ -159,6 +160,7 @@ export class UI {
     this._coinsShown += (c - this._coinsShown) * (force ? 1 : 0.2);
     if (Math.abs(c - this._coinsShown) < 1) this._coinsShown = c;
     const cv = $('#coins-v'); if (cv) cv.textContent = fmt(this._coinsShown);
+    const dv = $('#date-v'); if (dv) { const m = g.ledger.monthIndex(); if (dv._m !== m) { dv._m = m; dv.textContent = this.monthName(m); } }
     const rv = $('#rp-v'); if (rv) rv.textContent = P.rp;
     const ln = $('#lvl-num'); if (ln) ln.textContent = P.level;
     const xf = $('#xp-fill'); if (xf) xf.style.width = Math.min(100, (P.xp / P.xpNeeded()) * 100) + '%';
@@ -166,8 +168,8 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'stats', 'achievements', 'handbook', 'settings'];
-    $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'trains' ? 'trains' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
+    const items = ['company', 'finance', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
+    $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'finance' ? 'coin' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
   renderToolbar() {
@@ -252,7 +254,10 @@ export class UI {
     this._liveT -= dt;
     if (this._liveT <= 0) {
       this._liveT = 0.5;
-      if (this.panel && this.panelDefs[this.panel] && this.panelDefs[this.panel].live) this.refreshPanel();
+      // live panels: not while the player is pressing something in them
+      // (a rebuilt button would swallow the tap), and only when changed
+      const busy = performance.now() - (this._panelPressT || 0) < 1200;
+      if (this.panel && this.panelDefs[this.panel] && this.panelDefs[this.panel].live && !busy) this.refreshPanel(false, true);
       if (this.inspectSel) this.renderInspector();
       this.updateBadges();
       if (this.debugOn) this.renderDebug();
@@ -507,6 +512,7 @@ export class UI {
       collection: { title: 'menu_collection', render: () => this.pCollection() },
       map: { title: 'menu_map', render: () => this.pMap(), after: () => this.drawMinimap(), live: true },
       stats: { title: 'menu_stats', render: () => this.pStats(), live: true },
+      finance: { title: 'menu_finance', render: () => this.pFinance(), live: true, wide: true },
       achievements: { title: 'menu_achievements', render: () => this.pAchievements() },
       settings: { title: 'settings', render: () => this.pSettings() },
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
@@ -541,11 +547,20 @@ export class UI {
     document.querySelectorAll('.rail-btn').forEach((b) => b.classList.remove('on'));
     requestAnimationFrame(() => this._stripEdges && this._stripEdges());
   }
-  refreshPanel(first) {
+  refreshPanel(first, live) {
     if (!this.panel) return;
     const def = this.panelDefs[this.panel];
     const el = $('#panel');
+    if (!el._pressHook) { el._pressHook = true; el.addEventListener('pointerdown', () => { this._panelPressT = performance.now(); }, true); }
     const body = $('.pbody', el);
+    if (live) {
+      const html = def.render();
+      if (html === this._panelHtml && body) return;
+      this._panelHtml = html;
+      const sc = body ? body.scrollTop : 0;
+      if (body) { body.innerHTML = html; body.scrollTop = sc; if (def.after) def.after(); return; }
+    }
+    this._panelHtml = null;
     const scroll = body ? body.scrollTop : 0;
     el.classList.toggle('wide', !!def.wide);
     document.body.classList.toggle('panel-wide', !!def.wide);
@@ -1105,6 +1120,7 @@ export class UI {
       heatmap: () => this.toggleHeatmap(),
       ...this.railActions(),
       ...this.liveryActions(),
+      ...this.financeActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1191,4 +1207,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin);

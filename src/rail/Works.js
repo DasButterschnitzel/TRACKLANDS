@@ -69,7 +69,7 @@ export class Works {
     const p = this.probe(kind, a);
     if (p.error) return p;
     if (!g.economy.canAfford(p.cost)) return { error: 'err_no_money' };
-    if (p.cost) g.economy.spend(p.cost, 'construction');
+    if (p.cost) g.economy.spend(p.cost, 'deposit', { type: 'tile', id: p.tiles[0] ?? p.zone[0] });
     const w = { id: this.nextId++, kind, a, cost: p.cost, zone: p.zone, tiles: p.tiles, t0: g.time };
     this.list.push(w);
     this.rebuild();
@@ -84,7 +84,7 @@ export class Works {
     const g = this.game, w = this.byId(id);
     if (!w) return false;
     this.list.splice(this.list.indexOf(w), 1);
-    if (refund && w.cost) g.economy.earn(w.cost, 'refund', false);
+    if (refund && w.cost) g.economy.earn(w.cost, 'deposit_back', false);
     this.rebuild();
     g.events.emit('worksChanged', null);
     return true;
@@ -101,11 +101,11 @@ export class Works {
       // clear (or impossible now): hand the reserved money back, then build
       this.list.splice(this.list.indexOf(w), 1);
       this.rebuild();
-      if (w.cost) g.economy.earn(w.cost, 'refund', false);
+      if (w.cost) g.economy.earn(w.cost, 'deposit_back', false);
       const r = this.exec(w.kind, w.a, false);
       if (r.error === 'err_train_on_track' && g.economy.canAfford(w.cost)) {
         // (a train slipped in after all: keep waiting)
-        if (w.cost) g.economy.spend(w.cost, 'construction');
+        if (w.cost) g.economy.spend(w.cost, 'deposit');
         this.list.push(w); this.rebuild();
         continue;
       }

@@ -360,6 +360,7 @@ export const RailUIMixin = {
       ${t.state === 'stored' ? `<div class="card small">${icon('depot', 'mini')} ${this.tr('depot_parked_hint')}</div>` : ''}
       <button class="consist-mini" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}"><span class="mvs">${mini}</span><span>${icon('builder', 'mini')} ${this.tr('train_builder')}</span></button>
       <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
+      <h4>${this.tr('fin_heading')}</h4>${this.finBlock(t)}<p class="muted small">${this.tr('fin_train_value', { v: fmt(Math.round(g.ledger.vehicleValue(t))), age: this.ageText(g.time - (t.bought || 0)) })}</p>
       <h4>${this.tr('cargo')} · ${loadN}/${st.capFull}</h4><div class="caps">${caps || `<span class="muted small">${this.tr('bld_no_cargo')}</span>`}</div>${cargo}
       <h4 id="tr-route">${this.tr('routing')}</h4><div class="seg"><button class="${t.mode === 'auto' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:auto">${this.tr('mode_auto')} <small>(${this.tr('recommended')})</small></button><button class="${t.mode === 'manual' ? 'on' : ''}" data-act="trainMode" data-arg="${t.id}:manual">${this.tr('mode_manual')}</button></div>
       ${t.mode === 'manual' ? this.lineBlock(t) + this.scheduleEditor(t) : `<p class="muted small">${this.tr('auto_desc')}</p>`}
@@ -520,6 +521,7 @@ export const RailUIMixin = {
       <h4>${this.tr('facilities')}</h4><div class="chips wrap">${facs}</div>
       <h4 id="st-stats">${this.tr('station_statistics')}</h4>
       <div class="kv-grid small"><div><b>${fmt(s.stats.arrivals)}</b><small>${this.tr('arrivals')}</small></div><div><b>${Math.round(avgUtil * 100)}%</b><small>${this.tr('occupancy')}</small></div><div><b>${Math.round(s.stats.waitEma * 100)}%</b><small>${this.tr('entry_waits')}</small></div><div><b>${fmt(s.stats.transfers)}</b><small>${this.tr('transfers')}</small></div></div>
+      <h4>${this.tr('fin_station_heading')}</h4>${this.finBlock(s)}<p class="muted small">${this.tr('fin_station_note')}</p>
       <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
       <div class="row wrap" id="st-up">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>
       <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>

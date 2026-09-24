@@ -21,6 +21,7 @@ import { DecorSystem } from './world/Decor.js';
 import { Environment } from './world/Environment.js';
 import { TrainSystem, locoModel } from './trains/Trains.js';
 import { Economy } from './economy/Economy.js';
+import { Ledger } from './economy/Ledger.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
 import { Particles } from './vfx/Particles.js';
@@ -60,6 +61,7 @@ export class Game {
     this.stats = new Stats(this);
     this.progression = new Progression(this);
     this.economy = new Economy(this);
+    this.ledger = new Ledger(this);
     if (save) { this.progression.deserialize(save.progression); this.stats.deserialize(save.stats); }
     if (opts.legacy) { this.progression.legacy = { count: opts.legacy.count }; for (const id of opts.legacy.achievements || []) this.progression.achievements.add(id); for (const id of opts.legacy.owned || []) this.progression.owned.add(id); this.progression.recomputeFx(); }
 
@@ -103,6 +105,7 @@ export class Game {
   }
 
   fresh(opts) {
+    this.ledger.startYear = Math.min(2100, Math.max(1800, (opts && opts.startYear) | 0 || 1950));
     this.economy.coins = this.difficulty.money + (this.progression.legacy.count * 2500);
     this.progression.rp += this.progression.legacy.count * 3;
     this.towns.buildAll();
@@ -127,6 +130,8 @@ export class Game {
     this.economy.deserialize(s.economy);
     this.env.deserialize(s.env);
     this.time = +s.time || 0;
+    // the books (older saves start them now, in 1950)
+    if (s.ledger) this.ledger.deserialize(s.ledger); else this.ledger.cur.m = this.ledger.monthIndex();
     this.camera.deserialize(s.camera);
     this.trains.deserialize(s.trains);
     this.works.deserialize(s.works);
@@ -138,7 +143,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };

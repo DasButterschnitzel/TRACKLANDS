@@ -48,16 +48,20 @@ export class Economy {
   newBucket() { return { income: 0, deliveries: 0, towns: {} }; }
 
   canAfford(n) { return this.coins >= n - 1e-6; }
-  spend(n, cat) {
+  // every coin in or out is booked once in the company ledger (ref: the
+  // object it belongs to, {type, id}; note: short text for the log)
+  spend(n, cat, ref = null, note = null) {
     n = Math.max(0, Math.round(n));
     this.coins = Math.max(0, this.coins - n);
+    if (n && this.game.ledger) this.game.ledger.book(-n, cat, ref, note);
     this.game.stats.inc('coinsSpent', n);
     this.game.events.emit('coins', -n, cat);
   }
-  earn(n, cat, xp = true) {
+  earn(n, cat, xp = true, ref = null, note = null) {
     n = Math.max(0, Math.round(n));
     if (!n) return;
     this.coins += n;
+    if (this.game.ledger) this.game.ledger.book(n, cat, ref, note);
     if (cat !== 'refund' && cat !== 'sale') this.game.stats.inc('coinsEarned', n);
     if (xp) this.game.progression.addXP(n * REVENUE.xpPerCoin);
     this.game.events.emit('coins', n, cat);
@@ -105,7 +109,7 @@ export class Economy {
     const needed = town ? g.towns.needs(town, lot.c) : false;
     const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed));
     const res = g.stations.distribute(stn, lot.c, lot.n);
-    this.earn(rev, 'delivery', true);
+    this.bookDelivery(rev, lot.c, lot.n, train, from, stn);
     train.earned += rev;
     const S = g.stats;
     S.inc('deliveries');
@@ -134,9 +138,21 @@ export class Economy {
     return rev;
   }
 
-  operatingCost(amount) {
+  // revenue category of a cargo in the ledger
+  revCat(c) { return c === 'PASSENGERS' ? 'pax' : c === 'MAIL' ? 'mail' : 'freight'; }
+  // a delivery: booked on the train, credited to both stations' figures
+  bookDelivery(rev, c, n, train, fromStn, toStn) {
+    const L = this.game.ledger;
+    const cat = this.revCat(c);
+    const note = `~dlv|${c}|${n}|${fromStn ? fromStn.name : ''}|${toStn ? toStn.name : ''}`;
+    this.earn(rev, cat, true, train ? { type: 'train', id: train.id } : null, note);
+    if (L && rev > 0) { if (toStn) L.objBook({ type: 'station', id: toStn.id }, rev, cat); if (fromStn && fromStn !== toStn) L.objBook({ type: 'station', id: fromStn.id }, rev * 0.5, cat); }
+  }
+
+  operatingCost(amount, ref = null) {
     if (amount <= 0) return;
     this.coins = Math.max(0, this.coins - amount);
+    if (this.game.ledger) this.game.ledger.bookRunning(amount, 'op_trains', ref);
     this.totalOpCost += amount;
   }
 

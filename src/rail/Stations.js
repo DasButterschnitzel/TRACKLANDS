@@ -4,6 +4,7 @@
 // linking to towns/industries, cargo storage, the platform dispatcher API,
 // safe station editing (add track with switch ladders, extend platforms,
 // roles, facilities), statistics, the bottleneck advisor and visuals.
+import { cleanFin } from '../economy/Ledger.js';
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ } from '../util.js';
 import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen } from '../config.js';
@@ -404,7 +405,7 @@ export class StationSystem {
     const stn = this.newStation(tile, axis != null ? { axis } : null);
     stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station();
-    g.economy.spend(cost, 'construction');
+    g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
     for (let d = 0; d < 8; d++) net.signals.delete(tile * 8 + d);
     const auto = this.autoConnect(tile, 2);
@@ -460,7 +461,7 @@ export class StationSystem {
     const err = this.placeError(tile, 'depot');
     if (err) return { error: err };
     const cost = g.economy.costs.depot();
-    g.economy.spend(cost, 'construction');
+    g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_depot:1');
     const dep = { id: this.nextId++, tile, name: tr('depot') + ' ' + (this.depots.length + 1) };
     net.special.set(tile, { type: 'depot', id: dep.id });
     if (net.degree(tile) > 1) net.disconnectTile(tile);
@@ -540,7 +541,7 @@ export class StationSystem {
     if (g.progression.level < info.lvlReq) return 'err_level_required';
     if (info.research && !g.progression.research.has(info.research)) return 'err_research_required';
     if (!g.economy.canAfford(info.cost)) return 'err_no_money';
-    g.economy.spend(info.cost, 'construction');
+    g.economy.spend(info.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_upgrade:1');
     stn.level++;
     this.relink(stn);
     stn.build = 1;
@@ -623,7 +624,7 @@ export class StationSystem {
     if (dry) return { error: occ, cost: plan.cost, tiles: all };
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
     if (occ) return { error: occ };
-    g.economy.spend(plan.cost, 'construction');
+    g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_addtrack:1');
     const a = this.axisOf(stn);
     for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);
     const built = [...plan.tiles];
@@ -684,7 +685,7 @@ export class StationSystem {
     const plan = this.planExtend(stn, k, end);
     if (plan.error) return plan;
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    g.economy.spend(plan.cost, 'construction');
+    g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_platform:1');
     const tk = stn.tracks[k];
     const a = this.axisOf(stn);
     const E = end ? tk.tiles[tk.tiles.length - 1] : tk.tiles[0];
@@ -761,7 +762,7 @@ export class StationSystem {
   buildFacility(stn, id) {
     const err = this.facilityError(stn, id);
     if (err) return err;
-    this.game.economy.spend(this.facilityCost(), 'construction');
+    this.game.economy.spend(this.facilityCost(), 'construction', { type: 'station', id: stn.id }, '~fin_n_facility:1');
     stn.facilities.push(id);
     stn.build = 1;
     this.buildVisual(stn);
@@ -1009,7 +1010,7 @@ export class StationSystem {
       stations: this.list.map((s) => ({
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities,
-        stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers },
+        stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin),
         ...(s.paxTo && Object.keys(s.paxTo).length ? { paxTo: s.paxTo } : {}),
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
@@ -1027,6 +1028,7 @@ export class StationSystem {
       stn.style = s.style || 'classic';
       stn.name = String(s.name || 'Station');
       stn.delivered = s.delivered || 0; stn.picked = s.picked || 0;
+      if (s.fin) stn.fin = cleanFin(s.fin);
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
       // passengers waiting for a connection (PaxFlow); ids are checked once all stations exist
       if (s.paxTo && typeof s.paxTo === 'object') {

@@ -655,3 +655,40 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 #cursorinfo.dock { left: 50%; top: calc(64px + var(--safe-t)); transform: translateX(-50%) !important; max-width: calc(100vw - 24px); width: max-content; text-align: center; font-size: .86em; }
 .wlabel.works { flex-direction: row; gap: 4px; background: rgba(214,120,30,.94); color: #fff; padding: 2px 8px; font-size: .75em; font-weight: 600; }
 .wlabel.works .ic { width: 1.1em; height: 1.1em; }
+/* ---------- finance ---------- */
+.res.coins { cursor: pointer; }
+.res.coins .cv { display: flex; flex-direction: column; line-height: 1.05; align-items: flex-start; }
+.res.coins .cv small { font-size: .62em; opacity: .75; font-weight: 500; letter-spacing: .02em; }
+.fin-tabs { flex-wrap: wrap; margin-bottom: 10px; }
+.kv-grid.fin { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.kv-grid.fin b { font-variant-numeric: tabular-nums; }
+.pos { color: #12796a; } .neg { color: #b04d24; }
+.fin-loan { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 10px 0; }
+.fin-loan > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 200px; flex: 1; }
+.fin-loan small { color: var(--ink2); }
+.fchart { width: 100%; height: auto; display: block; margin: 4px 0 2px; touch-action: pan-y; }
+.fchart .fgrid { stroke: var(--line); stroke-width: 1; }
+.fchart .fzero { stroke: rgba(31,42,58,.45); stroke-width: 1; }
+.fchart .flab { font-size: 11px; fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.fchart .fbar:hover path, .fchart .fbar:focus path { filter: brightness(1.12); }
+.fin-table-wrap { overflow-x: auto; margin: 6px 0; }
+.fin-table { width: 100%; border-collapse: collapse; font-size: .9em; font-variant-numeric: tabular-nums; }
+.fin-table th, .fin-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.fin-table th[scope=row], .fin-table thead th:first-child { text-align: left; font-weight: 500; white-space: normal; }
+.fin-table thead th { font-size: .82em; color: var(--ink2); font-weight: 600; }
+.fin-table tr.sec th { text-align: left; font-weight: 700; padding-top: 10px; color: var(--ink); }
+.fin-table tr.sum th, .fin-table tr.sum td { font-weight: 700; border-bottom: 2px solid var(--line); }
+.fin-table tr.big th, .fin-table tr.big td { font-size: 1.05em; }
+.fin-table tr.muted { color: var(--ink2); }
+.fin-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.fin-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; background: rgba(31,42,58,.05); border: 0; border-radius: var(--r-s); padding: 7px 10px; text-align: left; font: inherit; color: inherit; min-height: 40px; }
+button.fin-row { cursor: pointer; } button.fin-row:hover { background: rgba(31,42,58,.1); }
+.fin-row.log { grid-template-columns: auto 1fr auto; }
+.fin-row .fl-when { font-size: .78em; color: var(--ink2); min-width: 64px; }
+.fin-row .fl-what { display: flex; flex-direction: column; min-width: 0; }
+.fin-row .fl-what small { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-row b { font-variant-numeric: tabular-nums; }
+.fin-mini { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.fin-mini > div { background: rgba(31,42,58,.05); border-radius: var(--r-s); padding: 6px 8px; display: flex; flex-direction: column; }
+.fin-mini small { color: var(--ink2); font-size: .75em; }
+.seg.wrap { flex-wrap: wrap; }

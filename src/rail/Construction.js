@@ -320,7 +320,7 @@ export class Construction {
     }
     for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, tier);
     for (const p of prev) if (p.conn && p.tier > tier) net.tier[p.t] = p.tier;
-    g.economy.spend(plan.cost, 'construction');
+    g.economy.spend(plan.cost, 'construction', { type: 'tile', id: plan.tiles[Math.floor(plan.tiles.length / 2)] }, `~fin_n_track:${plan.tiles.length}`);
     // near-miss drags: join a path end to an adjacent station/depot that has no track yet
     for (const end of [plan.tiles[0], plan.tiles[plan.tiles.length - 1]]) {
       if (net.special.has(end)) continue;
@@ -476,7 +476,7 @@ export class Construction {
       if (!this.signalUnlocked(this.signalType === 'oneway' ? 'oneway' : this.signalType)) { g.ui.error('err_signal_locked'); return; }
       const cost = g.economy.costs.signal();
       if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
-      g.economy.spend(cost, 'construction');
+      g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_signal:1');
       const type = this.signalType === 'oneway' ? 'block' : this.signalType;
       net.signals.set(key, { type, oneway: this.signalType === 'oneway' });
     } else if (!cur.oneway && this.signalUnlocked('oneway')) cur.oneway = true;
@@ -529,7 +529,7 @@ export class Construction {
     const n = Math.min(plan.keys.length, Math.floor(g.economy.coins / unit));
     if (n <= 0) { g.ui.error('err_no_money'); return; }
     const placed = plan.keys.slice(0, n);
-    g.economy.spend(n * unit, 'construction');
+    g.economy.spend(n * unit, 'construction', null, `~fin_n_signal:${n}`);
     const type = this.signalType === 'oneway' ? 'block' : this.signalType;
     for (const k of placed) net.signals.set(k, { type, oneway: this.signalType === 'oneway' });
     net.bumpVersion();
@@ -558,7 +558,7 @@ export class Construction {
     }
     const err = this.waypointError(tile);
     if (err) { g.ui.error(err); return; }
-    g.economy.spend(g.economy.costs.waypoint(), 'construction');
+    g.economy.spend(g.economy.costs.waypoint(), 'construction', { type: 'tile', id: tile }, '~fin_n_waypoint:1');
     const id = net.nextWp++;
     net.waypoints.set(tile, { id, name: g.ui.tr('waypoint') + ' ' + id });
     g.audio.play('construct');
@@ -621,7 +621,7 @@ export class Construction {
       case 'trees': {
         const cost = COSTS.treeClear;
         if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
-        g.economy.spend(cost, 'construction');
+        g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_trees:1');
         g.world.view.clearTrees(tile);
         break;
       }
