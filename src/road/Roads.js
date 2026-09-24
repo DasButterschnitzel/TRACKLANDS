@@ -152,7 +152,7 @@ export class Roads {
     if (wooded.length && g.authority) g.authority.onTreesCleared(wooded[0], wooded.length);
     this.changed();
     g.construction.pushUndo({ type: 'road', prev, cost: plan.cost });
-    g.audio.play('construct');
+    g.audio.play('road');
     return { ok: true };
   }
   undo(e) {
@@ -208,7 +208,7 @@ export class Roads {
     g.towns.onStationsChanged(); g.industries.onStationsChanged();
     this.rebuildStopMesh();
     g.construction.pushUndo({ type: 'roadstop', id: s.id, cost: this.stopCost() });
-    g.audio.play('construct');
+    g.audio.play('station');
     return { ok: true, stop: s };
   }
   removeStop(s, refund = 0.5) {

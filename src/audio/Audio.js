@@ -1,13 +1,17 @@
-// Fully synthesized audio: UI and world sound effects, ambience layers and a
-// soft generative music system. Nothing is loaded from files.
+// Synthesized sound effects (UI and world), ambience layers, a voice budget so
+// big networks never turn into noise, a continuous sound for the nearest
+// trains, and background music from creator-supplied files (MusicManager).
+import { MusicManager } from './MusicManager.js';
+
 export class AudioEngine {
   constructor(game) {
     this.game = game;
     this.ctx = null;
     this.ready = false;
     this.lastPlay = {};
-    this.musicNext = 0;
-    this.chordIdx = 0;
+    this.musicMgr = new MusicManager(this);
+    this.voices = [];          // end times of sounds playing (voice budget)
+    this.trainVoice = null;    // continuous sound of the nearest train
   }
 
   // must be called from a user gesture
@@ -31,6 +35,7 @@ export class AudioEngine {
     this.noise = this.noiseBuffer();
     this.applyVolumes();
     this.startAmbience();
+    this.musicMgr.load();
     this.ready = true;
   }
 
@@ -94,6 +99,12 @@ export class AudioEngine {
     const now = performance.now();
     const minGap = { coin: 70, click: 40, chuff: 60 }[name] || 90;
     if (this.lastPlay[name] && now - this.lastPlay[name] < minGap) return;
+    // voice budget: world sounds give way when many are playing at once
+    const tNow = this.ctx.currentTime;
+    this.voices = this.voices.filter((e) => e > tNow);
+    const limit = opts.world ? 8 : 16;
+    if (this.voices.length >= limit) return;
+    this.voices.push(tNow + (opts.dur || 0.6));
     this.lastPlay[name] = now;
     const v = opts.vol ?? 1;
     switch (name) {
@@ -146,6 +157,31 @@ export class AudioEngine {
         }
         break;
       }
+      case 'confirm': this.tone(660, 0.08, { gain: 0.045 * v }); this.tone(990, 0.12, { gain: 0.04 * v, when: 0.07 }); break;
+      case 'cancel': this.tone(520, 0.08, { type: 'triangle', gain: 0.035 * v, glide: 390 }); break;
+      case 'purchase': [784, 988, 1175].forEach((f, k) => this.tone(f, 0.16, { gain: 0.04 * v, when: k * 0.06 })); this.noiseHit(0.08, { freq: 6000, q: 2, gain: 0.02 * v, when: 0.12 }); break;
+      case 'loan': this.tone(392, 0.25, { type: 'triangle', gain: 0.04 * v }); this.tone(523, 0.3, { type: 'triangle', gain: 0.04 * v, when: 0.12 }); break;
+      case 'demolish': this.noiseHit(0.5, { freq: 300, q: 0.6, type: 'lowpass', gain: 0.14 * v }); for (let k = 0; k < 4; k++) this.noiseHit(0.12, { freq: 1400 + k * 300, q: 1.5, gain: 0.04 * v, when: 0.08 + k * 0.07 }); break;
+      case 'road': this.noiseHit(0.25, { freq: 700, q: 0.8, gain: 0.06 * v }); this.noiseHit(0.2, { freq: 400, q: 0.6, gain: 0.05 * v, when: 0.15 }); break;
+      case 'station': this.play('construct', { vol: v }); this.tone(880, 0.3, { gain: 0.02 * v, when: 0.25, rev: 0.3 }); break;
+      case 'barrier': this.tone(180, 0.35, { type: 'square', gain: 0.012 * v, glide: 140 }); break;
+      case 'blade': this.noiseHit(0.05, { freq: 4200, q: 8, gain: 0.04 * v }); this.noiseHit(0.05, { freq: 3100, q: 8, gain: 0.03 * v, when: 0.12 }); break;
+      case 'hornDiesel': for (const f of [311, 370]) this.tone(f, 0.9, { type: 'sawtooth', gain: 0.018 * v, attack: 0.05, rev: 0.3 }); break;
+      case 'hornElectric': for (const f of [466, 587]) this.tone(f, 0.6, { type: 'square', gain: 0.012 * v, attack: 0.03, rev: 0.2 }); break;
+      case 'brake': this.noiseHit(0.9, { freq: 5200, q: 12, gain: 0.025 * v, attack: 0.1 }); break;
+      case 'coupler': this.noiseHit(0.06, { freq: 900, q: 3, gain: 0.1 * v }); this.noiseHit(0.08, { freq: 500, q: 2, gain: 0.07 * v, when: 0.05 }); break;
+      case 'doors': this.noiseHit(0.35, { freq: 2200, q: 1.5, gain: 0.025 * v, attack: 0.05 }); this.tone(1320, 0.12, { gain: 0.015 * v, when: 0.35 }); break;
+      case 'announce': [659, 523, 784].forEach((f, k) => this.tone(f, 0.45, { gain: 0.03 * v, when: k * 0.28, rev: 0.5 })); break;
+      case 'busEngine': case 'truckEngine': this.tone(name === 'truckEngine' ? 58 : 72, 0.8, { type: 'sawtooth', gain: 0.02 * v, attack: 0.1, glide: name === 'truckEngine' ? 90 : 110 }); this.noiseHit(0.6, { freq: 200, q: 0.8, type: 'lowpass', gain: 0.04 * v }); break;
+      case 'tramBell': for (let k = 0; k < 2; k++) this.tone(1760, 0.3, { type: 'triangle', gain: 0.03 * v, when: k * 0.22, rev: 0.3 }); break;
+      case 'shipHorn': this.tone(98, 1.8, { type: 'sawtooth', gain: 0.03 * v, attack: 0.2, rev: 0.6 }); break;
+      case 'takeoff': case 'landing': this.noiseHit(2.4, { freq: name === 'takeoff' ? 900 : 600, q: 0.7, gain: 0.05 * v, attack: 0.6 }); break;
+      case 'cityGrow': this.tone(523, 0.3, { type: 'triangle', gain: 0.02 * v, rev: 0.4 }); this.tone(784, 0.4, { type: 'triangle', gain: 0.02 * v, when: 0.1, rev: 0.4 }); break;
+      case 'industryUp': [220, 277, 330, 440].forEach((f, k) => this.tone(f, 0.35, { type: 'square', gain: 0.018 * v, when: k * 0.09 })); break;
+      case 'contract': [523, 659, 784, 1046].forEach((f, k) => this.tone(f, 0.3, { gain: 0.035 * v, when: k * 0.07, rev: 0.3 })); break;
+      case 'approve': this.tone(587, 0.2, { gain: 0.035 * v }); this.tone(880, 0.35, { gain: 0.035 * v, when: 0.12 }); break;
+      case 'reject': this.tone(392, 0.2, { type: 'triangle', gain: 0.04 * v }); this.tone(294, 0.35, { type: 'triangle', gain: 0.04 * v, when: 0.15 }); break;
+      case 'thunder': this.noiseHit(2.6, { freq: 120, q: 0.5, type: 'lowpass', gain: 0.22 * v, attack: 0.03 }); this.noiseHit(1.2, { freq: 400, q: 0.6, type: 'lowpass', gain: 0.06 * v, when: 0.3 }); break;
       case 'crossing':
         // level crossing bell: a few bright strikes
         for (let k = 0; k < 4; k++) { this.tone(1480, 0.18, { type: 'triangle', gain: 0.035 * v, when: k * 0.36, rev: 0.2 }); this.tone(2960, 0.08, { gain: 0.01 * v, when: k * 0.36 }); }
@@ -219,52 +255,87 @@ export class AudioEngine {
         for (let k = 0; k < n; k++) this.tone(base, 0.08, { gain: 0.012, when: k * 0.11, glide: base * (1.2 + Math.random() * 0.3), dest: this.amb });
       }
     }
+    this.updateTrainSound(dt);
     this.updateMusic();
   }
 
-  // ---------- generative music ----------
+  // The nearest moving train (only one: a big network stays calm): steam
+  // exhaust beats with the wheels and louder under power, a diesel engine
+  // note that rises with power, an electric motor whine with speed, and the
+  // rail joints clicking with speed. Volume follows distance and zoom.
+  updateTrainSound(dt) {
+    const g = this.game.g;
+    if (!g || !g.trains || !g.near || this.game.settings.volSfx <= 0) return;
+    let best = null, bv = 0.25;
+    for (const t of g.trains.trains) {
+      if (t.state !== 'run' || t.v < 0.3 || !t.visual) continue;
+      const p = t.visual.cars[0].mesh.position;
+      const n = g.near(p) * (1 - Math.min(0.6, g.camera.viewSize / 60));
+      if (n > bv) { bv = n; best = t; }
+    }
+    const V = this.trainVoice;
+    if (!best) { if (V) this.stopTrainVoice(); return; }
+    const kind = best._st.model.kind;
+    const spd = best.v;                         // world units / s
+    const pull = Math.max(0, Math.min(1, (best.v - (best._lastV ?? best.v)) / Math.max(dt, 1e-3) * 2));
+    best._lastV = best.v;
+    const c = this.ctx, t = c.currentTime;
+    if (kind.startsWith('steam')) {
+      if (V) this.stopTrainVoice();
+      // four beats per wheel turn; driving wheel ~1.4 m → beat interval
+      this.chuffT = (this.chuffT || 0) - dt;
+      if (this.chuffT <= 0) {
+        this.chuffT = Math.max(0.09, 0.55 / (0.3 + spd));
+        this.noiseHit(0.12, { freq: 800 + spd * 60, q: 0.9, gain: (0.02 + pull * 0.05) * bv, dest: this.sfx });
+      }
+    } else {
+      if (!V || V.kind !== kind) {
+        if (V) this.stopTrainVoice();
+        const o = c.createOscillator(), f = c.createBiquadFilter(), gn = c.createGain();
+        o.type = kind === 'electric' || kind === 'hst' || kind === 'maglev' ? 'sine' : 'sawtooth';
+        f.type = 'lowpass'; f.frequency.value = 400;
+        gn.gain.value = 0.0001;
+        o.connect(f).connect(gn).connect(this.sfx);
+        o.start();
+        this.trainVoice = { kind, o, f, gn };
+      }
+      const E = this.trainVoice;
+      const electric = E.o.type === 'sine';
+      E.o.frequency.setTargetAtTime(electric ? 220 + spd * 90 : 48 + pull * 30 + spd * 4, t, 0.3);
+      E.f.frequency.setTargetAtTime(electric ? 1800 : 300 + pull * 500, t, 0.3);
+      E.gn.gain.setTargetAtTime((electric ? 0.006 : 0.012 + pull * 0.012) * bv, t, 0.3);
+    }
+    // rail joints: two clicks every rail length
+    this.jointT = (this.jointT || 0) - dt * spd;
+    if (this.jointT <= 0) {
+      this.jointT = 1.8;
+      this.noiseHit(0.03, { freq: 2600, q: 3, gain: 0.02 * bv, dest: this.sfx });
+      this.noiseHit(0.03, { freq: 2300, q: 3, gain: 0.018 * bv, when: 0.09, dest: this.sfx });
+    }
+  }
+  stopTrainVoice() {
+    const V = this.trainVoice;
+    this.trainVoice = null;
+    if (!V) return;
+    const t = this.ctx.currentTime;
+    V.gn.gain.setTargetAtTime(0.0001, t, 0.2);
+    V.o.stop(t + 0.8);
+  }
+
+  // ---------- music: creator-supplied tracks (MusicManager) ----------
   updateMusic() {
-    const c = this.ctx;
-    if (!this.game.settings.music) return;
-    const now = c.currentTime;
-    if (now + 0.5 < this.musicNext) return;
-    const start = Math.max(now + 0.05, this.musicNext);
-    const CHORDS = [
-      [261.6, 329.6, 392.0, 493.9], [220.0, 261.6, 329.6, 392.0], [174.6, 220.0, 261.6, 329.6], [196.0, 246.9, 293.7, 392.0],
-      [261.6, 329.6, 392.0, 440.0], [220.0, 277.2, 329.6, 440.0], [174.6, 220.0, 261.6, 349.2], [196.0, 246.9, 293.7, 349.2],
-    ];
-    const lvl = this.game.progression ? this.game.progression.level : 1;
-    const variant = lvl >= 12 ? 4 : 0;
-    const chord = CHORDS[variant + (this.chordIdx % 4)];
-    this.chordIdx++;
-    const dur = 8;
-    // pad
-    for (const f of chord) {
-      const o = c.createOscillator(), o2 = c.createOscillator(), g = c.createGain(), fl = c.createBiquadFilter();
-      o.type = 'triangle'; o2.type = 'sine';
-      o.frequency.value = f / 2; o2.frequency.value = f / 2 * 1.004;
-      fl.type = 'lowpass'; fl.frequency.value = 900;
-      g.gain.setValueAtTime(0.0001, start);
-      g.gain.linearRampToValueAtTime(0.018, start + 2.5);
-      g.gain.linearRampToValueAtTime(0.014, start + dur - 1);
-      g.gain.linearRampToValueAtTime(0.0001, start + dur + 1.5);
-      o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(this.music);
-      const r = c.createGain(); r.gain.value = 0.8; g.connect(r).connect(this.reverb);
-      o.start(start); o2.start(start); o.stop(start + dur + 2); o2.stop(start + dur + 2);
+    const M = this.musicMgr;
+    if (!M) return;
+    const g = this.game.g;
+    // mood from what is happening
+    let ctx = 'menu';
+    if (g) {
+      const env = g.env, T = g.trains ? g.trains.trains.length : 0;
+      const big = g.towns ? g.towns.list.some((t) => t.stage >= 4) : false;
+      ctx = env && env.night > 0.5 ? 'night' : env && env.snow > 0.3 ? 'winter' : T >= 12 ? 'busy' : big ? 'city' : 'peaceful';
     }
-    // gentle plucked melody, density grows with the network
-    const scale = [523.3, 587.3, 659.3, 784.0, 880.0, 1046.5];
-    const trains = this.game.trains ? this.game.trains.trains.length : 0;
-    const notes = 2 + Math.min(4, Math.floor(trains / 2) + Math.floor(lvl / 10));
-    for (let k = 0; k < notes; k++) {
-      if (Math.random() < 0.35) continue;
-      const when = start - now + 0.5 + Math.random() * (dur - 1);
-      const f = scale[Math.floor(Math.random() * scale.length)] * (Math.random() < 0.3 ? 0.5 : 1);
-      this.tone(f, 1.4, { gain: 0.02, when, dest: this.music, rev: 0.7 });
-    }
-    // soft bass
-    this.tone(chord[0] / 4, dur, { type: 'sine', gain: 0.03, when: start - now, attack: 1.2, dest: this.music });
-    this.musicNext = start + dur;
+    M.setContext(ctx);
+    M.update();
   }
 
   suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {}); }

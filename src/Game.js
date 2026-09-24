@@ -318,7 +318,13 @@ export class Game {
       if (!stn) return;
       const p = { x: tileCX(stn.tile), z: tileCZ(stn.tile) };
       const v = this.near(p);
-      if (v > 0.2) { A.play('arrive', { vol: v * 0.6 }); if (moved) A.play('unload', { vol: v }); }
+      if (v > 0.2) {
+        A.play('brake', { vol: v * 0.7, world: true, dur: 0.9 });
+        A.play('arrive', { vol: v * 0.6, world: true });
+        if (moved) A.play('unload', { vol: v, world: true });
+        if (t._st.caps && t._st.caps.PASSENGERS) A.play('doors', { vol: v * 0.8, world: true });
+        if ((stn.level | 0) >= 3 && t.trips % 4 === 0) A.play('announce', { vol: v * 0.7, world: true, dur: 1.2 });
+      }
       stn.pulse = Math.max(stn.pulse || 0, 0.5);
     });
     E.on('trainLoaded', (t, stn) => { const v = this.near({ x: tileCX(stn.tile), z: tileCZ(stn.tile) }); if (v > 0.2) A.play('load', { vol: v }); });
@@ -329,7 +335,14 @@ export class Game {
       A.play('whistle', { kind: locoModel(t.model).kind });
       this.camera.focus(x, z);
     });
-    E.on('trainBought', (t) => ui.toast(ui.tr('toast_train_bought', { name: t.name }), 'good', 'train'));
+    E.on('trainBought', (t) => { ui.toast(ui.tr('toast_train_bought', { name: t.name }), 'good', 'train'); A.play('purchase'); });
+    E.on('contractClaimed', () => A.play('contract'));
+    E.on('buildingDemolished', (town, info) => { const v = this.near({ x: tileCX(info.b.tile), z: tileCZ(info.b.tile) }); A.play('demolish', { vol: Math.max(0.4, v) }); });
+    E.on('roadDelivery', (d) => {
+      const x = tileCX(d.stop.tile), z = tileCZ(d.stop.tile), v = this.near({ x, z });
+      if (v > 0.1) { ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin'); A.play(d.stop.kind === 'bus' ? 'doors' : 'truckEngine', { vol: v * 0.7, world: true }); }
+    });
+    E.on('townGrew', (t) => { const v = this.near({ x: (t.x + 0.5) * TILE, z: (t.z + 0.5) * TILE }); if (v > 0.3) A.play('cityGrow', { vol: v * 0.6, world: true }); });
     E.on('townLevel', (t) => {
       const x = (t.x + 0.5) * TILE, z = (t.z + 0.5) * TILE, y = this.world.tileH[t.z * N + t.x];
       P.burst(x, y + 1.5, z, true);
@@ -363,6 +376,7 @@ export class Game {
     E.on('eventStart', (ev) => ui.banner(ui.tr('ev_' + ev.id), ui.tr('ev_' + ev.id + '_desc')));
     E.on('eventEnd', () => ui.banner(null));
     E.on('industryLevel', (ind) => {
+      A.play('industryUp');
       const x = (ind.x + 1) * TILE, z = (ind.z + 1) * TILE;
       P.burst(x, this.industries.baseHeight(ind) + 1, z);
       A.play('levelUp', { vol: 0.6 });

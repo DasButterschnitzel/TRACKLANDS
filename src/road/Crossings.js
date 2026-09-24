@@ -177,7 +177,7 @@ export class Crossings {
     if (anyClosing && g.audio && !force) {
       const cam = g.camera.target, d = Math.hypot(tileCX(anyClosing.tile) - cam.x, tileCZ(anyClosing.tile) - cam.z);
       const vol = Math.max(0, 1 - d / (g.camera.viewSize * 0.9));
-      if (vol > 0.05) g.audio.play('crossing', { vol });
+      if (vol > 0.05) { g.audio.play('crossing', { vol, world: true, dur: 1.4 }); g.audio.play('barrier', { vol: vol * 0.8, world: true }); }
     }
   }
   closedCount() { let n = 0; for (const c of this.map.values()) if (c.closed) n++; return n; }

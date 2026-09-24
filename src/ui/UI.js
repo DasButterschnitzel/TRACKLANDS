@@ -295,7 +295,7 @@ export class UI {
     while (box.children.length > 3) box.firstChild.remove();
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'error' ? 2600 : 3600);
   }
-  error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error'); this.app.audio.play('error'); }
+  error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error'); this.app.audio.play(key && key.startsWith('err_permit') ? 'reject' : 'error'); }
   hint(text) { this.toast(text, 'hint', 'info'); }
 
   // a new release is installed and waiting: offer to switch (never automatic mid-game)
@@ -919,6 +919,16 @@ export class UI {
     }).join('')}</div>`;
   }
 
+  // now playing + playlist controls (tracks come from assets/music/music.json)
+  musicBlock() {
+    const M = this.app.audio.musicMgr;
+    if (!M || !M.has()) return `<p class="muted small">${this.tr('music_none')}</p>`;
+    const t = M.nowPlaying();
+    return `<div class="card music-now">${icon('play', 'mini')}<div><b>${t ? escapeHtml(t.title) : this.tr('music_stopped')}</b>${t && t.artist ? `<small>${escapeHtml(t.artist)}</small>` : ''}</div>
+      <div class="row"><button class="icon-btn small" data-act="musicPrev" aria-label="${this.tr('music_prev')}">${icon('left')}</button><button class="icon-btn small" data-act="musicToggle" aria-label="${this.tr('music_toggle')}">${icon(M.paused || !t ? 'play' : 'pause')}</button><button class="icon-btn small" data-act="musicNext" aria-label="${this.tr('music_next')}">${icon('right')}</button>
+      <button class="chip mini ${M.shuffle ? 'on' : ''}" data-act="musicShuffle"><b>${this.tr('music_shuffle')}</b></button></div></div>
+      <p class="muted small">${this.tr('music_count', { n: M.tracks.length })}</p>`;
+  }
   pSettings() {
     const s = this.app.settings;
     const range = (k, label) => `<label class="set"><span>${this.tr(label)}</span><input type="range" min="0" max="1" step="0.05" value="${s[k]}" data-input="setting" data-key="${k}"/></label>`;
@@ -926,7 +936,7 @@ export class UI {
     const sel = (k, label, opts) => `<label class="set"><span>${this.tr(label)}</span><select data-change="settingSel" data-key="${k}">${opts.map((o) => `<option value="${o}" ${s[k] === o ? 'selected' : ''}>${this.tr('opt_' + o)}</option>`).join('')}</select></label>`;
     const lang = `<label class="set"><span>${this.tr('language')}</span><select data-change="lang">${LANGS.map((l) => `<option value="${l.id}" ${getLang() === l.id ? 'selected' : ''}>${l.name}</option>`).join('')}</select></label>`;
     const inGame = !!this.game;
-    return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
+    return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}${this.musicBlock()}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
       ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p>` : ''}
@@ -1133,6 +1143,10 @@ export class UI {
       speed: (a) => g().setSpeed(+a),
       tool: (a) => { if (a === 'train') { this.openBuilder({}); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
       tier: (a) => g().construction.setTier(+a),
+      musicPrev: () => { this.app.audio.musicMgr.prev(); this.refreshPanel(); },
+      musicNext: () => { this.app.audio.musicMgr.next(); this.refreshPanel(); },
+      musicToggle: () => { this.app.audio.musicMgr.toggle(); this.refreshPanel(); },
+      musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.refreshPanel(); },
       stopKind: (a) => { g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },

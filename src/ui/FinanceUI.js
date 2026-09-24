@@ -262,7 +262,7 @@ export const FinanceUIMixin = {
       finTab: (a) => { this.finTab = a; re(); },
       finMetric: (a) => { this.finMetric = a; re(); },
       finFilter: (a) => { this.finFilter = a; re(); },
-      finBorrow: () => { const r = g().ledger.borrow(LOAN_STEP); if (r.error) this.error(r.error); else { this.app.audio.play('coin'); this.toast(this.tr('fin_borrowed', { n: fmt(r.n) }), 'info', 'coin'); } re(); },
+      finBorrow: () => { const r = g().ledger.borrow(LOAN_STEP); if (r.error) this.error(r.error); else { this.app.audio.play('loan'); this.toast(this.tr('fin_borrowed', { n: fmt(r.n) }), 'info', 'coin'); } re(); },
       finRepay: () => { const r = g().ledger.repay(LOAN_STEP); if (r.error) this.error(r.error); else { this.app.audio.play('click'); this.toast(this.tr('fin_repaid', { n: fmt(r.n) }), 'good', 'coin'); } re(); },
       finFocus: (a) => {
         const [type, id] = a.split(':');

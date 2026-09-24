@@ -204,6 +204,8 @@ export class TownSystem {
   }
 
   byId(id) { return this.list.find((t) => t.id === id); }
+  // street traffic uses its own seeded generator (reproducible tests)
+  rand() { this._r = (Math.imul(this._r ?? 0x2f6b4a1, 1103515245) + 12345) >>> 0; return (this._r >>> 8) / 16777216; }
   // population class (nine steps, from the head count)
   classOf(t) { const L = [0, 150, 500, 1200, 3000, 7000, 15000, 35000, 80000]; let k = 0; for (let i = 0; i < L.length; i++) if (t.pop >= L[i]) k = i; return CLASSES[k]; }
   // districts: what the buildings of the town are used for, by area
@@ -304,7 +306,7 @@ export class TownSystem {
       const r = A ? A.rating(t) : 50;
       let budget = sts.length ? 1 + (r >= 60 ? 1 : 0) + (r >= 80 ? 1 : 0) + Math.min(2, sts.length - 1) : ((t.idleMonths = (t.idleMonths || 0) + 1) % 4 === 0 ? 1 : 0);
       if (r < 20) budget = Math.min(budget, 1);
-      if (budget > 0) this.layout(t, true, budget);
+      if (budget > 0) { const n0 = t.buildings.length; this.layout(t, true, budget); if (t.buildings.length !== n0 || t.renewed) g.events.emit('townGrew', t); }
     }
   }
 
@@ -589,7 +591,7 @@ export class TownSystem {
     const mine = this.carList.filter((c) => c.town === t.id);
     const roadArr = [...tiles];
     for (let k = mine.length; k < want && roadArr.length > 1; k++) {
-      const c = { town: t.id, slot: -1, from: roadArr[k % roadArr.length], to: -1, f: 0, speed: 0.6 + Math.random() * 0.5, color: [0xc94f4f, 0x3f6e9a, 0xe0a33a, 0xe8e2d4, 0x5aa66a, 0x2b2b2b][k % 6] };
+      const c = { town: t.id, slot: -1, from: roadArr[k % roadArr.length], to: -1, f: 0, speed: 0.6 + this.rand() * 0.5, color: [0xc94f4f, 0x3f6e9a, 0xe0a33a, 0xe8e2d4, 0x5aa66a, 0x2b2b2b][k % 6] };
       c.slot = this.cars.add(c);
       if (c.slot < 0) break;
       this.cars.mesh.setColorAt(c.slot, new THREE.Color(c.color));
@@ -681,7 +683,7 @@ export class TownSystem {
       opts.push(i);
     }
     if (!opts.length) return prev >= 0 ? prev : from;
-    return opts[Math.floor(Math.random() * opts.length)];
+    return opts[Math.floor(this.rand() * opts.length)];
   }
 
   largest() { let b = null; for (const t of this.list) if (!b || t.pop > b.pop) b = t; return b; }

@@ -724,3 +724,6 @@ details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
 .rv-stop { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; background: rgba(31,42,58,.05); border-radius: var(--r-s); padding: 4px 8px; }
 .rv-stop > b { text-align: center; }
 .rv-buy { justify-content: flex-start; text-align: left; flex-wrap: wrap; gap: 6px; }
+.music-now { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.music-now > div:first-of-type { display: flex; flex-direction: column; flex: 1; min-width: 120px; }
+.music-now small { color: var(--ink2); }

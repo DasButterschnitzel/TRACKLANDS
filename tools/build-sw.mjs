@@ -12,7 +12,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIRS = ['src', 'styles', 'vendor/three', 'icons'];
+const DIRS = ['src', 'styles', 'vendor/three', 'icons', 'assets'];
 const FILES = ['index.html', 'manifest.json'];
 
 function walk(dir) {

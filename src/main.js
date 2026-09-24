@@ -40,7 +40,7 @@ class App {
     this.game = null;
     this.title = null;
     this.store = new SaveStore();
-    this.audio = new AudioEngine({ get settings() { return app.settings; }, get env() { return app.game && app.game.env; }, get trains() { return app.game && app.game.trains; }, get progression() { return app.game && app.game.progression; } });
+    this.audio = new AudioEngine({ get g() { return app.game; }, get settings() { return app.settings; }, get env() { return app.game && app.game.env; }, get trains() { return app.game && app.game.trains; }, get progression() { return app.game && app.game.progression; } });
   }
 
   async boot() {
