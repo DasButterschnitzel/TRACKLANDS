@@ -1045,6 +1045,7 @@ export class UI {
       <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('town_no_station')}</p>`}
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
+      ${this.townGrowthBlock(t)}
       ${this.authBlock(t)}`;
   }
 

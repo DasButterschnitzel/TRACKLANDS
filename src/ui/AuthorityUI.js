@@ -27,6 +27,20 @@ export const AuthorityUIMixin = {
       <p class="muted small">${this.tr('auth_help')}</p>`;
   },
 
+  // town panel: class, districts, metropolitan area, growth pace
+  townGrowthBlock(town) {
+    const T = this.game.towns;
+    const d = T.districts(town);
+    const chips = Object.entries(d).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="pill small">${this.tr('dist_' + k)} · ${n}</span>`).join(' ');
+    const metro = T.metroWith(town);
+    return `<h4>${this.tr('town_structure')}</h4>
+      <div class="kv-list"><div><span>${this.tr('town_class')}</span><b>${this.tr('cls_' + T.classOf(town))}</b></div>
+        <div><span>${this.tr('town_buildings')}</span><b>${town.buildings.length} / ${T.buildTarget(town)}${town.growing ? ' · ' + this.tr('town_growing') : ''}</b></div>
+        ${town.renewed ? `<div><span>${this.tr('town_renewed')}</span><b>${town.renewed}</b></div>` : ''}</div>
+      <div class="chips wrap">${chips}</div>
+      ${metro.length ? `<p class="small">${icon('town', 'mini')} ${this.tr('town_metro', { names: metro.map((o) => esc(o.name)).join(', ') })}</p>` : ''}
+      <p class="muted small">${this.tr('town_growth_pace')}</p>`;
+  },
   // bulldozer on a town building
   offerDemolish(tile) {
     const g = this.game, A = g.authority;

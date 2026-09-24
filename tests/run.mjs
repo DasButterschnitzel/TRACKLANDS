@@ -28,8 +28,9 @@ import * as worldgen from './suites/worldgen.mjs';
 import * as build from './suites/build.mjs';
 import * as finance from './suites/finance.mjs';
 import * as authority from './suites/authority.mjs';
+import * as towns from './suites/towns.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

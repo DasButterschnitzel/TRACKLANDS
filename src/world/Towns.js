@@ -6,6 +6,7 @@ import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOME
 import { ModelBuilder, MATS, shade } from '../core/ModelBuilder.js';
 import { heightAt } from './WorldGen.js';
 
+const CLASSES = ['hamlet', 'village', 'small_town', 'town', 'large_town', 'city', 'large_city', 'metropolis', 'megalopolis'];
 const ARCH = ['cottage', 'house', 'house2', 'townhouse', 'shop', 'apartment', 'block', 'office', 'tower', 'skyscraper', 'civic', 'warehouse', 'plaza'];
 const WALL = 0xf4efe6, GL = 0x34465a, TRIM = 0xd8d2c8;
 
@@ -203,6 +204,29 @@ export class TownSystem {
   }
 
   byId(id) { return this.list.find((t) => t.id === id); }
+  // population class (nine steps, from the head count)
+  classOf(t) { const L = [0, 150, 500, 1200, 3000, 7000, 15000, 35000, 80000]; let k = 0; for (let i = 0; i < L.length; i++) if (t.pop >= L[i]) k = i; return CLASSES[k]; }
+  // districts: what the buildings of the town are used for, by area
+  districts(t) {
+    const S = this.game.stations, out = {};
+    const quarter = new Set();
+    for (const s of S.list) if (s.links && s.links.towns.includes(t.id)) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) quarter.add(idx(tx(s.tile) + dx, tz(s.tile) + dz));
+    for (const b of t.buildings) {
+      const d = Math.max(Math.abs(tx(b.tile) - t.x), Math.abs(tz(b.tile) - t.z));
+      const k = b.arch === 'civic' || b.arch === 'plaza' || (d <= 1 && (b.arch === 'townhouse' || b.arch === 'shop')) ? 'core'
+        : quarter.has(b.tile) && b.arch !== 'warehouse' ? 'station'
+          : b.arch === 'warehouse' ? 'logistics'
+            : b.arch === 'office' || b.arch === 'shop' ? 'business'
+              : b.arch === 'apartment' || b.arch === 'block' || b.arch === 'tower' || b.arch === 'skyscraper' ? 'dense'
+                : 'residential';
+      out[k] = (out[k] || 0) + 1;
+    }
+    return out;
+  }
+  // towns whose built-up areas touch this one (metropolitan area)
+  metroWith(t) {
+    return this.list.filter((o) => o !== t && Math.max(Math.abs(o.x - t.x), Math.abs(o.z - t.z)) <= TOWN_RADIUS[t.stage] + TOWN_RADIUS[o.stage] + 2 && this.game.progression.regionUnlocked(o.region));
+  }
   radius(t) { return TOWN_RADIUS[t.stage]; }
   stageName(t) { return ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'][t.stage]; }
 
@@ -261,7 +285,8 @@ export class TownSystem {
     t.stage++;
     t.progress = {};
     t.pop = Math.max(t.pop, TOWN_POP[t.stage]);
-    this.layout(t, true);
+    // the new stage shows at once in a few buildings; the rest grows monthly
+    this.layout(t, true, 4);
     this.game.stations.relinkAll();
     this.game.industries.onStationsChanged();
     this.game.stats.max('maxTownStage', t.stage);
@@ -269,8 +294,25 @@ export class TownSystem {
     this.game.events.emit('townLevel', t);
   }
 
+  // Monthly: towns build towards their target, faster with good service
+  // and a good relationship; towns without a station grow very slowly.
+  growMonth() {
+    const g = this.game, A = g.authority;
+    for (const t of this.list) {
+      if (!g.progression.regionUnlocked(t.region)) continue;
+      const sts = t._sts || (t._sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id)));
+      const r = A ? A.rating(t) : 50;
+      let budget = sts.length ? 1 + (r >= 60 ? 1 : 0) + (r >= 80 ? 1 : 0) + Math.min(2, sts.length - 1) : ((t.idleMonths = (t.idleMonths || 0) + 1) % 4 === 0 ? 1 : 0);
+      if (r < 20) budget = Math.min(budget, 1);
+      if (budget > 0) this.layout(t, true, budget);
+    }
+  }
+
   tick(dt) {
     const g = this.game, fx = g.progression.fx, ev = g.economy.eventFx;
+    const m = g.ledger ? g.ledger.monthIndex() : 0;
+    if (this._month == null) this._month = m;
+    else if (m !== this._month) { this._month = m; this.growMonth(); }
     for (const t of this.list) {
       if (!g.progression.regionUnlocked(t.region)) continue;
       const sts = t._sts || (t._sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id)));
@@ -297,7 +339,7 @@ export class TownSystem {
   onStationsChanged() { for (const t of this.list) t._sts = null; }
   // a new or bigger station reshapes the town around it (rail influence)
   onStationGrew(stn) {
-    for (const t of this.list) if (Math.max(Math.abs(tx(stn.tile) - t.x), Math.abs(tz(stn.tile) - t.z)) <= 7) this.layout(t, true);
+    for (const t of this.list) if (Math.max(Math.abs(tx(stn.tile) - t.x), Math.abs(tz(stn.tile) - t.z)) <= 7) this.layout(t, true, 2);
   }
 
   // ---------- layout ----------
@@ -368,11 +410,20 @@ export class TownSystem {
     return { boost, goods };
   }
 
-  layout(t, animate) {
+  // how many buildings the town is heading for: its stage, plus infill while
+  // it works towards the next stage
+  buildTarget(t) {
+    const a = TOWN_BUILDINGS[t.stage], b = TOWN_BUILDINGS[Math.min(6, t.stage + 1)];
+    return a + Math.floor((b - a) * 0.6 * this.progressFrac(t));
+  }
+  // Physical growth: the town moves towards its target layout at most
+  // `budget` buildings at a time (new plots from the centre out, then
+  // replacements by denser buildings), so growth is visible month by month.
+  layout(t, animate, budget = Infinity) {
     const g = this.game;
     const occ = g.occupancy;
     const R = TOWN_RADIUS[t.stage];
-    const target = TOWN_BUILDINGS[t.stage];
+    const target = this.buildTarget(t);
     const cands = this.candidateTiles(t);
     const want = new Map();
     let civicPlaced = false, plazaPlaced = false;
@@ -392,21 +443,35 @@ export class TownSystem {
       else if (!plazaPlaced && t.stage >= 3 && c.d === 2 && c.h < 0.5) { arch = 'plaza'; plazaPlaced = true; }
       want.set(i, arch);
     }
-    // remove buildings that no longer match
-    const keep = [];
+    // keep matching buildings; the rest are changes, done within the budget
+    const keep = [], stale = [];
+    const has = new Map(t.buildings.map((b) => [b.tile, b]));
     for (const b of t.buildings) {
-      const w = want.get(b.tile);
-      if (w === b.arch) { keep.push(b); want.delete(b.tile); continue; }
-      this.removeBuilding(b);
-      if (!want.has(b.tile)) { occ.blocked[b.tile] = 0; }
+      if (want.get(b.tile) === b.arch) { keep.push(b); want.delete(b.tile); } else stale.push(b);
+    }
+    // new plots first (nearest the centre), then replacements, then clear-outs
+    const adds = [...want].filter(([tile]) => !has.has(tile));
+    const reps = [...want].filter(([tile]) => has.has(tile));
+    const outs = stale.filter((b) => !want.has(b.tile));
+    let left = budget, k = 0;
+    const place = (tile, arch) => {
+      const b = this.addBuilding(t, tile, arch, animate ? 0.15 + k * 0.06 : -1);
+      if (b) { keep.push(b); occ.blocked[tile] = 1; occ.owner[tile] = t.id; }
+      k++;
+    };
+    for (const [tile, arch] of adds) { if (left <= 0) break; place(tile, arch); left--; }
+    for (const [tile, arch] of reps) {
+      const old = has.get(tile);
+      if (left <= 0) { keep.push(old); continue; }
+      this.removeBuilding(old); place(tile, arch); left--;
+      if (old.arch !== arch) t.renewed = (t.renewed || 0) + 1;
+    }
+    for (const b of outs) {
+      if (left <= 0) { keep.push(b); continue; }
+      this.removeBuilding(b); occ.blocked[b.tile] = 0; left--;
     }
     t.buildings = keep;
-    let k = 0;
-    for (const [tile, arch] of want) {
-      const b = this.addBuilding(t, tile, arch, animate ? 0.15 + k * 0.06 : -1);
-      if (b) { t.buildings.push(b); occ.blocked[tile] = 1; occ.owner[tile] = t.id; }
-      k++;
-    }
+    t.growing = adds.length + reps.length + outs.length > budget;
     this.buildRoads(t);
     this.game.world.view && this.game.world.view.clearTreesMany(t.buildings.map((b) => b.tile).concat(this.roadTiles(t)));
   }
@@ -529,7 +594,25 @@ export class TownSystem {
   }
 
   buildAll() {
-    for (const t of this.list) this.layout(t, false);
+    for (const t of this.list) {
+      if (t.savedBld && t.savedBld.length) this.restoreBuildings(t);
+      else this.layout(t, false);
+      t.savedBld = null;
+    }
+  }
+  restoreBuildings(t) {
+    const g = this.game, occ = g.occupancy, W = g.world;
+    for (const b of t.buildings) this.removeBuilding(b);
+    t.buildings = [];
+    // road tiles within the radius belong to the town (as in layout)
+    for (const c of this.candidateTiles(t)) { if (c.d > TOWN_RADIUS[t.stage]) continue; const i = idx(c.x, c.z); if (c.road && (!occ.owner[i] || occ.owner[i] === t.id) && W.type[i] === 0) occ.owner[i] = t.id; }
+    for (const [tile, a] of t.savedBld) {
+      if (W.type[tile] !== 0 || g.net.conn[tile] || g.net.special.has(tile) || (occ.blocked[tile] && occ.owner[tile] !== t.id)) continue;
+      const b = this.addBuilding(t, tile, ARCH[a], -1);
+      if (b) { t.buildings.push(b); occ.blocked[tile] = 1; occ.owner[tile] = t.id; }
+    }
+    this.buildRoads(t);
+    g.world.view && g.world.view.clearTreesMany(t.buildings.map((b) => b.tile).concat(this.roadTiles(t)));
   }
 
   updateVisuals(dt, time) {
@@ -593,7 +676,7 @@ export class TownSystem {
     return this.list.map((t) => {
       const cl = {};
       for (const k in t.cleared || {}) if (t.cleared[k] > now) cl[k] = Math.round(t.cleared[k]);
-      return { id: t.id, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
+      return { id: t.id, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, bld: t.buildings.map((b) => [b.tile, ARCH.indexOf(b.arch)]), renewed: t.renewed || undefined, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
     });
   }
   deserialize(arr) {
@@ -608,6 +691,9 @@ export class TownSystem {
       t.delivered = +d.delivered || 0;
       t.received = d.received && typeof d.received === 'object' ? d.received : {};
       if (this.game.authority) this.game.authority.deserializeTown(t, d.auth);
+      // the buildings as they stood (older saves: rebuilt from the stage)
+      t.savedBld = Array.isArray(d.bld) ? d.bld.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && e[0] >= 0 && e[0] < N * N && ARCH[e[1]]).slice(0, 200) : null;
+      t.renewed = d.renewed | 0;
       t.cleared = {};
       if (d.cleared && typeof d.cleared === 'object') for (const k in d.cleared) { const i = +k, v = +d.cleared[k]; if (Number.isInteger(i) && i >= 0 && i < N * N && isFinite(v)) t.cleared[i] = v; }
     }
