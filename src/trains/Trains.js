@@ -5,7 +5,7 @@
 // frontier (block groups, junction paths, single-track direction locks) that is
 // extended ahead of the train and released behind its rear.
 import * as THREE from 'three';
-import { TILE, opp, turnOf, step, cheb, worldToTile, clamp, tileCX, tileCZ } from '../util.js';
+import { TILE, opp, turnOf, step, cheb, worldToTile, clamp, tileCX, tileCZ, DX, DZ } from '../util.js';
 import { LOCOS, TRACK_TIERS, KMH_PER_TILE_S, CARGO, ERA_RESEARCH, WAGONS, STATION } from '../config.js';
 import { K_TUNNEL, K_BRIDGE } from '../rail/RailNetwork.js';
 import { locoGeometry, wagonGeometry, liveryColors, couplerGeometry, retainGeometry, releaseGeometry } from './TrainModels.js';
@@ -24,6 +24,8 @@ const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = M
 const LANE = SCALE.lane;
 const DECEL = 3.2;
 const STOP_EXT = 0.6;      // stop this far past the platform-end tile center
+const XO_LEN = 1.7;        // length of the crossover a reversed train takes back to its own lane
+const XO_MIN = 0.9;        // shortest crossover kept inside the head tile
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _m4 = new THREE.Matrix4();
@@ -146,6 +148,8 @@ export class TrainSystem {
       // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
       spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '',
       servedIdx: null, ttHold: false, incomeEma: 0,
+      // player order: run to a depot and stay there (stay) or re-emerge
+      depotOrder: d.depotOrder && typeof d.depotOrder.id === 'number' ? { id: d.depotOrder.id, stay: d.depotOrder.stay !== false } : null, depotIn: null,
     };
     t._st = computeStats(t.veh, t.upg, this.game.progression.fx);
     return t;
@@ -220,7 +224,7 @@ export class TrainSystem {
     if (t.steps.length && t._st.length > oldLen + 1e-6 && t.s - t.ss[0] < t._st.length + 0.2) {
       const { st } = this.headInfo(t);
       if (st && st.inH != null) {
-        const snap = { xs: t.xs.slice(), ys: t.ys.slice(), zs: t.zs.slice(), ss: t.ss.slice(), steps: t.steps.map((o) => ({ ...o })), s: t.s, stopS: t.stopS, lane: t.lane, v: t.v };
+        const snap = { xs: t.xs.slice(), ys: t.ys.slice(), zs: t.zs.slice(), ss: t.ss.slice(), steps: t.steps.map((o) => ({ ...o })), s: t.s, stopS: t.stopS, lane: t.lane, v: t.v, xo: t.xo ? { ...t.xo } : null };
         this.placeAt(t, st.tile, st.inH); t.fade = 0.5;
         if (!this.bodyHeld(t)) {
           // the rebuilt trail runs into another train: keep the old consist (and
@@ -244,7 +248,7 @@ export class TrainSystem {
     for (let k = this.stepAt(t, t.s); k >= 0; k--) {
       const st = t.steps[k];
       if (st.s1 < t.s - L - 0.05) break;
-      if (st.keys.some((key) => !net.holds(key, t.id))) return false;
+      if (this.physKeys(t, st).some((key) => !net.holds(key, t.id))) return false;
     }
     return true;
   }
@@ -262,6 +266,7 @@ export class TrainSystem {
 
   // ---------- trail management ----------
   clearTrail(t) {
+    t.placed = (t.placed || 0) + 1;
     this.releaseAll(t);
     t.headHold = null;
     t.xs.length = 0; t.ys.length = 0; t.zs.length = 0; t.ss.length = 0; t.steps.length = 0;
@@ -278,6 +283,7 @@ export class TrainSystem {
   decorate(st) {
     const net = this.net;
     st.keys = net.laneKeys(st);
+    st._rk = null;
     // re-routed at the tile centre (kinked through the middle, not the regular
     // curve): nobody else may share this switch tile
     if (st.kink && st.inH != null && st.outH != null && net.degree(st.tile) >= 3) {
@@ -349,15 +355,64 @@ export class TrainSystem {
   }
 
   // lateral lane factor: 1 on double track, 0 on single track, blended at transitions
+  // (from the track layout, not from the route: planning further ahead must
+  // never move a train that is already on the rails)
   laneFactor(t, s) {
-    const k = this.stepAt(t, s);
-    const st = t.steps[k];
+    const st = t.steps[this.stepAt(t, s)];
     if (!st || !st.single) return 1;
     let f = 0;
-    const pv = t.steps[k - 1], nx = t.steps[k + 1];
-    if (pv && !pv.single) f = Math.max(f, 1 - (s - st.s0) / 0.7);
-    if (nx && !nx.single) f = Math.max(f, 1 - (st.s1 - s) / 0.7);
+    if (st.inH != null && this.doubleAt(st.tile, opp(st.inH))) f = Math.max(f, 1 - (s - st.s0) / 0.7);
+    if (st.outH != null && this.doubleAt(st.tile, st.outH)) f = Math.max(f, 1 - (st.s1 - s) / 0.7);
     return clamp(f, 0, 1);
+  }
+  // the neighbour of tile i in direction d carries two lanes
+  doubleAt(i, d) {
+    const net = this.net, j = step(i, d);
+    if (j < 0 || !net.conn[j]) return false;
+    const sp = net.special.get(j);
+    return !net.single[j] || (sp && sp.type === 'station') || net.isJunction(j);
+  }
+
+  // Which lane the trail uses at position s, relative to its direction of
+  // travel: +1 its own lane, -1 the lane it was on before its last reversal.
+  // A reversed train never slides sideways: every vehicle stays on its rails
+  // and changes lane only where it passes the crossover window, like a train
+  // taking a crossover. Vehicles behind the window keep the old lane.
+  laneSide(t, s) {
+    const X = t.xo;
+    if (!X) return 1;
+    if (s <= X.s0) return X.a;
+    if (s >= X.s1) return X.b;
+    const f = (s - X.s0) / Math.max(1e-6, X.s1 - X.s0);
+    return X.a + (X.b - X.a) * f * f * (3 - 2 * f);
+  }
+  // world position of the trail at s on the lane the train uses there
+  lanePoint(t, s, out) {
+    this.sampleAt(t, s, out);
+    const x = out.x, z = out.z;
+    this.sampleAt(t, s + 0.1, out);
+    const dx = out.x - x, dz = out.z - z, len = Math.hypot(dx, dz) || 1;
+    const lo = LANE * this.laneSide(t, s) * this.laneFactor(t, s);
+    this.sampleAt(t, s, out);
+    out.x -= dz / len * lo; out.z += dx / len * lo;
+    return out;
+  }
+  // keys of the step's tile on the other lane (the same legs run the other way)
+  revKeys(o) {
+    if (!o._rk) o._rk = this.net.laneKeys({ tile: o.tile, inH: o.outH == null ? null : opp(o.outH), outH: o.inH == null ? null : opp(o.inH) });
+    return o._rk;
+  }
+  // Keys a step of the trail needs. After a reversal the train runs on its
+  // own lane as always, but its vehicles stay on the rails they stood on
+  // until each passes the crossover window: up to the end of the window the
+  // train therefore also keeps the other lane (nobody may run into the part
+  // of the train still over there).
+  physKeys(t, o) {
+    const X = t.xo;
+    if (!X || o.s0 >= X.s1 - 1e-6 || (o.inH == null && o.outH == null)) return o.keys;
+    const both = o.keys.slice();
+    for (const k of this.revKeys(o)) if (!both.includes(k)) both.push(k);
+    return both;
   }
 
   trim(t) {
@@ -377,6 +432,7 @@ export class TrainSystem {
     for (const s of t.steps) { s.s0 -= off; s.s1 -= off; s.sc -= off; }
     t.s -= off;
     if (isFinite(t.stopS)) t.stopS -= off;
+    if (t.xo) { t.xo.s0 -= off; t.xo.s1 -= off; }
   }
 
   // keys the train body would need after reversing (used before committing to a flip)
@@ -398,11 +454,9 @@ export class TrainSystem {
   // becomes the head, and the vehicle list is reversed with each vehicle's
   // orientation toggled. Every vehicle keeps its world position and heading.
   flipTrain(t) {
+    t.flips = (t.flips || 0) + 1;
     t.headHold = null;
     const L = this.trainLength(t);
-    // the body stays on its old lane until the lane change finishes: keep those keys
-    const oldKeys = [];
-    for (const o of t.steps) if (o.s1 >= t.s - L - 0.05 && o.s0 < t.s - 0.01) for (const k of o.keys) if (k >= 0 && this.net.resv[k] === t.id) oldKeys.push(k);
     this.truncateAfter(t, t.s);
     const S = t.s;
     const n = t.ss.length;
@@ -418,16 +472,23 @@ export class TrainSystem {
     t.steps = steps;
     t.s = Math.min(L, ss[ss.length - 1]);
     t.veh = t.veh.slice().reverse().map((v) => ({ k: v.k, id: v.id, r: !v.r, anim: v.anim }));
-    t.lane = -t.lane;
+    // lanes are relative to the direction of travel: mirrored, the body is now
+    // on the far lane (-1) and crosses over ahead of the new head
+    if (t.xo) { const X = t.xo; t.xo = { s0: S - X.s1, s1: S - X.s0, a: -X.b, b: -X.a }; }
+    else {
+      const hs = t.steps[this.stepAt(t, t.s)];
+      const room = hs ? hs.s1 - t.s : 0;
+      t.xo = { s0: t.s, s1: t.s + (room >= XO_MIN ? Math.min(XO_LEN, room) : XO_LEN), a: -1, b: 1 };
+    }
+    t.lane = 1;
     t.visualSig = null;
+    // the body keeps its old lane until it has crossed over (see physKeys)
     this.resetReservation(t);
-    t.slideKeys = t.lane < 1 ? oldKeys.filter((k) => !this.net.resv[k] || this.net.resv[k] === t.id) : null;
-    if (t.slideKeys) { this.net.reserve(t.slideKeys, t.id); for (const k of t.slideKeys) t.held.add(k); }
   }
 
   bodyHasKey(t, key) {
     const L = this.trainLength(t);
-    for (let k = 0; k <= t.resvEnd && k < t.steps.length; k++) { const o = t.steps[k]; if (o.s1 < t.s - L - 0.05) continue; if (o.keys.includes(key)) return true; }
+    for (let k = 0; k <= t.resvEnd && k < t.steps.length; k++) { const o = t.steps[k]; if (o.s1 < t.s - L - 0.05) continue; if (this.physKeys(t, o).includes(key)) return true; }
     return false;
   }
 
@@ -442,7 +503,7 @@ export class TrainSystem {
       const st = t.steps[k];
       if (st.s1 < t.s - L - 0.05) continue;
       // never take a key another train owns (fouling keys of a re-planned head step)
-      const mine = st.keys.filter((key) => net.canReserve([key], t.id));
+      const mine = this.physKeys(t, st).filter((key) => net.canReserve([key], t.id));
       net.reserve(mine, t.id);
       for (const key of mine) t.held.add(key);
       if (st.rid >= 0) { net.runLockAdd(st.rid, net.runSense(st), t.id); t.runs.add(st.rid); }
@@ -451,11 +512,6 @@ export class TrainSystem {
     if (t.headHold) {
       t.headHold = t.headHold.filter((key) => net.canReserve([key], t.id));
       net.reserve(t.headHold, t.id); for (const key of t.headHold) t.held.add(key);
-    }
-    // still sliding over to the new lane: keep the old lane
-    if (t.slideKeys && t.lane < 1) {
-      t.slideKeys = t.slideKeys.filter((k) => !net.resv[k] || net.resv[k] === t.id);
-      net.reserve(t.slideKeys, t.id); for (const k of t.slideKeys) t.held.add(k);
     }
   }
 
@@ -491,7 +547,7 @@ export class TrainSystem {
     const head = t.steps[t.steps.length - 1];
     t.s = head.sc;
     t.v = 0;
-    t.lane = 1;
+    t.lane = 1; t.xo = null;
     t.stopS = t.s;
     this.resetReservation(t);
   }
@@ -506,7 +562,7 @@ export class TrainSystem {
     if (!net.canReserve(keys, t.id)) return false;
     this.clearTrail(t);
     this.appendStep(t, st);
-    t.s = 0; t.v = 0; t.lane = 1;
+    t.s = 0; t.v = 0; t.lane = 1; t.xo = null;
     t.homeDepot = depot.id;
     this.resetReservation(t);
     t.state = 'depart'; t.stateT = 0;
@@ -639,31 +695,6 @@ export class TrainSystem {
     return Math.min(STOP_EXT, last.s1 - last.sc - 0.05);
   }
 
-  // Terminus fallback when a consist can neither run on nor reverse out:
-  // the train re-forms at the station (fade) and departs toward the target.
-  turnaround(t, tgt) {
-    const net = this.net;
-    const { st: hs } = this.headInfo(t);
-    if (!hs) return false;
-    const h = hs.inH != null ? opp(hs.inH) : (hs.outH != null ? opp(hs.outH) : null);
-    const r = net.findRoute({ tile: hs.tile, heading: h, fromCenter: true }, tgt.tile, { minTier: t._st.minTier, allowReverse: true, targetHeading: tgt.heading });
-    if (!r || r.firstOut == null) return false;
-    const first = { tile: hs.tile, inH: null, outH: r.firstOut };
-    if (!net.canReserve(net.laneKeys(first), t.id)) return false;
-    this.clearTrail(t);
-    this.appendStep(t, first);
-    t.s = 0; t.v = 0; t.lane = 1;
-    for (const s2 of r.steps) this.appendStep(t, s2);
-    const last = t.steps[t.steps.length - 1];
-    t.stopS = last.sc + this.stopExt(last, tgt);
-    t.via = !!r.reverse;
-    t.veh = t.veh.map((v) => ({ k: v.k, id: v.id, r: v.k === 'L' ? false : v.r }));
-    t.visualSig = null;
-    t.fade = 0;
-    this.resetReservation(t);
-    return true;
-  }
-
   // reached a shunting point: reverse direction and continue to the target
   viaReverse(t) {
     t.via = false; t.v = 0;
@@ -681,53 +712,28 @@ export class TrainSystem {
     }
   }
 
-  // After a reversal: if the new front vehicle has no forward-facing cab the
-  // locomotive runs around (steam engines turn on the turntable) before leaving.
+  // After a reversal the train stays exactly where it is on the rails: it
+  // pauses briefly while the driver changes ends (lights swap, a puff of
+  // steam), then departs the other way. Units with cabs at both ends change
+  // ends quickly; a locomotive now at the rear propels the train, a steam
+  // engine at the front runs tender first. Nothing is lifted, turned or moved.
   afterReverse(t, next) {
     t.flipped = false;
-    const front = t.veh[0];
-    if (canLead(front)) { t.state = next; t.stateT = 0; return; }
-    let rear = [];
-    if (front.k === 'L') rear = [0];      // steam engine leading backwards: turn in place
-    else {
-      for (let i = t.veh.length - 1; i >= 0 && t.veh[i].k === 'L'; i--) rear.push(i);
-    }
-    if (!rear.length) { t.state = next; t.stateT = 0; return; }   // no engine at the ends: propel
-    const steam = rear.some((i) => !locoModel(t.veh[i].id).kind.startsWith('steam') ? false : true);
-    t.rev = { p: 0, dur: steam ? 2.2 : 1.8, idx: rear, swapped: false, inPlace: front.k === 'L', steam, next, hold: 0 };
+    const front = t.veh[0], rear = t.veh[t.veh.length - 1];
+    const cabs = canLead(front) && canLead({ ...rear, r: !rear.r });
+    const steam = t.veh.some((v) => v.k === 'L' && locoModel(v.id).kind.startsWith('steam'));
+    t.rev = { p: 0, dur: cabs ? 0.9 : steam ? 2.4 : 1.8, steam, next };
     t.state = 'reversing'; t.stateT = 0; t.v = 0;
+    t.visualSig = null;
     this.game.events.emit('trainRunaround', t);
   }
 
   tickReversing(t, dt) {
     const R = t.rev;
-    if (!R) { t.state = 'run'; return; }
-    if (t.lane < 1 && !R.swapped) return;
-    if (R.p < 0.5 || R.swapped) R.p = Math.min(1, R.p + dt / R.dur);
-    if (R.p >= 0.5 && !R.swapped) {
-      if (R.inPlace) {
-        t.veh[0] = { k: 'L', id: t.veh[0].id, r: false };
-        R.swapped = true; R.moved = [0];
-      } else {
-        const moving = R.idx.map((i) => t.veh[i]).reverse();
-        let Lm = 0; for (const v of moving) Lm += vehLen(v) + GAP;
-        // the engine re-couples ahead of the old front: needs reserved track there
-        this.updateReservation(t, Lm + 0.4);
-        const endS = t.steps[t.resvEnd] ? Math.min(t.steps[t.resvEnd].s1, t.ss[t.ss.length - 1]) : t.s;
-        if (endS >= t.s + Lm + 0.05) {
-          const rest = t.veh.filter((v, i) => !R.idx.includes(i));
-          t.veh = [...moving.map((v) => ({ k: 'L', id: v.id, r: false })), ...rest];
-          t.s += Lm;
-          R.swapped = true; R.moved = moving.map((v, i) => i);
-          this.updateReservation(t, 0.5);
-        } else {
-          R.hold += dt;
-          if (R.hold > 12) { R.swapped = true; R.moved = []; }   // propel instead
-        }
-      }
-      t.visualSig = null;
-    }
-    if (R.p >= 1) { t.rev = null; t.state = R.next; t.stateT = 0; t.visualSig = null; }
+    if (!R || !(R.dur > 0)) { t.rev = null; t.state = (R && R.next) || 'run'; t.stateT = 0; return; }
+    t.v = 0;
+    R.p = Math.min(1, (R.p || 0) + dt / R.dur);
+    if (R.p >= 1) { t.rev = null; t.state = R.next || 'run'; t.stateT = 0; }
   }
 
   // ---------- targets & dispatcher ----------
@@ -895,6 +901,7 @@ export class TrainSystem {
   // ---------- state machine ----------
   depart(t) {
     const g = this.game;
+    if (t.depotOrder && this.departToDepot(t)) return;
     const here = this.stationAtHead(t);
     if (t.cargo.length) g.pax.validate(t);
     const choice = this.chooseTarget(t, here);
@@ -915,10 +922,10 @@ export class TrainSystem {
       opt = this.planToStation(t, choice.stn, choice.stop && choice.stop.plat != null ? choice.stop.plat : null);
       tgt = opt ? opt.tgt : null;
     }
-    if (!opt && here && choice.stn && this.canFlip(t)) {
-      for (const tg of g.stations.targetsFor(choice.stn, t)) if (this.turnaround(t, tg)) { tgt = tg; opt = 'turned'; break; }
-    }
     const idKey = choice.stn ? choice.stn.id : -choice.wp;
+    // cannot run on or reverse out, but the rear stands in a depot door: back
+    // into the shed and come out again (a real move, the train stays on the rails)
+    if (!opt && this.shuntIntoDepot(t)) return;
     if (!opt) {
       t.unreachable.set(idKey, g.time + 45);
       this.releaseClaim(t);
@@ -927,12 +934,10 @@ export class TrainSystem {
       t.state = 'idle'; t.stateT = 0;
       return;
     }
-    if (opt !== 'turned') {
-      if (!this.applyRoute(t, opt)) {
-        t.unreachable.set(idKey, g.time + 20);
-        t.problem = 'no_route'; t.state = 'idle'; t.stateT = 0;
-        return;
-      }
+    if (!this.applyRoute(t, opt)) {
+      t.unreachable.set(idKey, g.time + 20);
+      t.problem = 'no_route'; t.state = 'idle'; t.stateT = 0;
+      return;
     }
     t.tgtKind = choice.wp != null ? 'wp' : 'station';
     t.target = choice.stn ? choice.stn.id : null;
@@ -943,6 +948,112 @@ export class TrainSystem {
     t.wait = 0; t.recover = 0; t.reroutes = 0; t.lastStepIdx = -1; t.blockedBy = 0;
     if (t.flipped) this.afterReverse(t, 'run'); else { t.state = 'run'; t.stateT = 0; }
     g.events.emit('trainDepart', t, here);
+  }
+
+  // ---------- depots: send a train in, park it, bring it out again ----------
+  depotExit(dep) { for (let d = 0; d < 8; d++) if (this.net.hasDir(dep.tile, d)) return d; return null; }
+  depotTarget(dep) { const e = this.depotExit(dep); return e == null ? null : { tile: dep.tile, heading: opp(e), depot: dep.id }; }
+  // reachable depots with the cost of the best way there, nearest first
+  depotChoices(t) {
+    const out = [];
+    for (const dep of this.game.stations.depots) {
+      const tgt = this.depotTarget(dep);
+      if (!tgt || !this.net.conn[dep.tile]) continue;
+      if (t.steps.length) {
+        const o = this.planOptions(t, tgt, true);
+        if (o.length) out.push({ dep, cost: o[0].cost, opt: o[0] });
+      }
+    }
+    return out.sort((a, b) => a.cost - b.cost);
+  }
+  // Player order. Returns { ok, reason, depot }.
+  orderDepot(t, depId = null, stay = true) {
+    if (t.state === 'stored') return { ok: true, depot: this.game.stations.depotById(t.homeDepot) };
+    if (t.state === 'spawnwait' || !t.steps.length) { t.depotOrder = null; return { ok: true, depot: this.game.stations.depotById(t.homeDepot) }; }
+    const ch = this.depotChoices(t).filter((c) => depId == null || c.dep.id === depId);
+    if (!ch.length) return { ok: false, reason: this.game.stations.depots.length ? 'no_depot_route' : 'no_depot' };
+    t.depotOrder = { id: ch[0].dep.id, stay };
+    // standing trains leave at once; a moving train turns off at the next safe point
+    if (['idle', 'lost', 'load'].includes(t.state)) { t.state = 'depart'; t.stateT = 0; }
+    else if (t.state === 'run' && !t.via && !t.depotIn) this.departToDepot(t, true);
+    return { ok: true, depot: ch[0].dep };
+  }
+  cancelDepotOrder(t) {
+    if (!t.depotOrder) return;
+    t.depotOrder = null;
+    if (t.tgtKind === 'depot' && !t.depotIn && t.state === 'run') { t.stopS = Math.min(t.stopS, t.steps[this.stepAt(t, t.s)].s1); t.pendingLost = false; t.tgtKind = 'station'; t.target = null; }
+  }
+  departToDepot(t, moving = false) {
+    const g = this.game;
+    const dep = g.stations.depotById(t.depotOrder.id);
+    const tgt = dep ? this.depotTarget(dep) : null;
+    const opts = tgt ? this.planOptions(t, tgt, !moving) : [];
+    if (!opts.length || (moving && opts[0].kind === 'reverse')) {
+      if (moving) return false;   // keep going; the order is tried again at the next stop
+      t.depotOrder = null; t.problem = 'no_depot_route';
+      g.events.emit('depotUnreachable', t);
+      t.state = 'idle'; t.stateT = 0;
+      return false;
+    }
+    this.releaseClaim(t);
+    g.stations.unclaimPlatform(t.id);
+    if (!this.applyRoute(t, opts[0])) { if (!moving) { t.state = 'idle'; t.stateT = 0; } return false; }
+    t.tgtKind = 'depot'; t.target = null; t.targetWp = null; t.curStop = null;
+    t.problem = null; t.pulled = false; t.wait = 0; t.reroutes = 0; t.lastStepIdx = -1; t.blockedBy = 0;
+    if (!moving) {
+      if (t.flipped) this.afterReverse(t, 'run'); else { t.state = 'run'; t.stateT = 0; }
+      g.events.emit('trainDepart', t, null);
+    }
+    return true;
+  }
+  // The train stands with its head at the depot tile centre, facing into the
+  // shed: run on through the door; vehicles vanish inside one by one.
+  enterDepot(t) {
+    const hs = t.steps[t.steps.length - 1];
+    const dep = hs && this.game.stations.depotAt(hs.tile);
+    if (!dep || hs.inH == null || hs.outH != null) return false;
+    const L = this.trainLength(t);
+    this.truncateAfter(t, t.s);
+    const n = t.xs.length - 1, x0 = t.xs[n], y0 = t.ys[n], z0 = t.zs[n];
+    const len = Math.hypot(DX[hs.inH], DZ[hs.inH]);
+    const ux = DX[hs.inH] / len, uz = DZ[hs.inH] / len;
+    const door = t.s + 0.25, run = L + 0.6;
+    const steps = Math.ceil(run / 0.5);
+    for (let k = 1; k <= steps; k++) { const d = (run * k) / steps; t.xs.push(x0 + ux * d); t.ys.push(y0); t.zs.push(z0 + uz * d); t.ss.push(t.ss[n] + d); }
+    hs.s1 = t.ss[t.ss.length - 1]; hs.shed = true;
+    t.depotIn = { id: dep.id, door };
+    t.stopS = hs.s1 - 0.05;
+    t.state = 'run'; t.stateT = 0;
+    return true;
+  }
+  parkInDepot(t) {
+    const g = this.game, dep = g.stations.depotById(t.depotIn.id);
+    const stay = !!(t.depotOrder && t.depotOrder.stay);
+    this.clearTrail(t);
+    t.depotIn = null; t.v = 0; t.tgtKind = 'station'; t.target = null; t.curStop = null; t.depotOrder = null;
+    if (dep) t.homeDepot = dep.id;
+    t.state = stay ? 'stored' : 'spawnwait'; t.stateT = 0;
+    g.events.emit('trainInDepot', t, dep, stay);
+  }
+  releaseFromDepot(t) {
+    if (t.state !== 'stored') return false;
+    t.state = 'spawnwait'; t.stateT = 1.2;
+    return true;
+  }
+  // Rear still in a depot door and no other way out: reverse into the shed
+  // and come out again toward the next job.
+  shuntIntoDepot(t) {
+    const first = t.steps[0];
+    if (!first || first.inH != null || !this.game.stations.depotAt(first.tile)) return false;
+    const L = this.trainLength(t);
+    if (t.s - L > first.s1) return false;
+    if (!this.canFlip(t)) return false;
+    this.flipTrain(t);
+    if (!this.enterDepot(t)) return false;
+    t.depotOrder = { id: this.game.stations.depotAt(t.steps[t.steps.length - 1].tile).id, stay: false };
+    t.tgtKind = 'depot'; t.problem = null;
+    this.afterReverse(t, 'run');
+    return true;
   }
 
   stationAtHead(t) {
@@ -1006,6 +1117,8 @@ export class TrainSystem {
 
   arrive(t) {
     const g = this.game, S = g.stations;
+    if (t.depotIn) { this.parkInDepot(t); return; }
+    if (t.tgtKind === 'depot') { if (!this.enterDepot(t)) { t.state = 'depart'; t.stateT = 0; t.v = 0; } return; }
     if (!t.pulled && t.tgtKind !== 'wp' && this.pullForward(t)) { t.pulled = true; t.state = 'run'; return; }
     t.viaCount = 0;
     if (t.tgtKind === 'wp') {
@@ -1152,7 +1265,7 @@ export class TrainSystem {
     this._deadT -= dt;
     if (this._deadT <= 0) { this._deadT = 1; this.detectDeadlocks(); this.checkInvariants(); }
     let op = 0;
-    for (const t of this.trains) op += t._st.op * (t.state === 'idle' ? 0.3 : 1);
+    for (const t of this.trains) op += t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1);
     if (op > 0) g.economy.operatingCost((op / 60) * dt);
   }
 
@@ -1164,9 +1277,9 @@ export class TrainSystem {
     if (t.state === 'lost' && t._was !== 'lost') { const now = g.time; t.lostLog = (t.lostLog || []).filter((e) => now - e.time < 120 && e.trips === t.trips); t.lostLog.push({ time: now, trips: t.trips }); }
     t._was = t.state;
     if (t.spawnFx > 0) t.spawnFx = Math.max(0, t.spawnFx - dt * 0.6);
-    if (t.lane < 1) {
-      t.lane = Math.min(1, t.lane + dt * (g.settings.reducedMotion ? 10 : 1.2));
-      if (t.lane >= 1 && t.slideKeys) { const keep = new Set(); for (const o of t.steps) for (const k of o.keys) keep.add(k); for (const k of t.slideKeys) if (!keep.has(k) || true) { if (!this.bodyHasKey(t, k)) { this.net.release([k], t.id); t.held.delete(k); } } t.slideKeys = null; }
+    // the whole train has passed the crossover: back on its own lane everywhere
+    if (t.xo && t.s - this.trainLength(t) > t.xo.s1 + 0.02) {
+      t.xo = null; t.xoDone = (t.xoDone || 0) + 1;   // the other lane is released at the next reservation update
     }
     switch (t.state) {
       case 'spawnwait': {
@@ -1183,6 +1296,7 @@ export class TrainSystem {
         return;
       }
       case 'depart': this.depart(t); return;
+      case 'stored': return;
       case 'idle': {
         if (t.stateT > 3) { t.stateT = 0; this.depart(t); }
         return;
@@ -1236,17 +1350,18 @@ export class TrainSystem {
     const head = this.stepAt(t, t.s);
     if (t.resvEnd < head) {
       // should not happen (body is always held); re-hold defensively
-      for (let k = Math.max(0, t.resvEnd + 1); k <= head; k++) if (net.canReserve(S[k].keys, t.id)) net.reserve(S[k].keys, t.id);
+      for (let k = Math.max(0, t.resvEnd + 1); k <= head; k++) { const ks = this.physKeys(t, S[k]); if (net.canReserve(ks, t.id)) net.reserve(ks, t.id); }
       t.resvEnd = head;
     }
     let limitS = Infinity, blocker = 0, kind = null;
     // the head step may have been re-planned (new exit through a junction)
     // while another train holds a conflicting path: stand still until free
     const hs = S[head];
-    if (hs && hs.keys.some((key) => !net.holds(key, t.id))) {
-      if (net.canReserve(hs.keys, t.id)) { net.reserve(hs.keys, t.id); t.headHold = null; } else {
-        blocker = net.holder(hs.keys, t.id); kind = 'train';
-        limitS = t.s; t.waitKeys = hs.keys.slice(); t.waitStamp = this.game.time;
+    const hk = hs ? this.physKeys(t, hs) : null;
+    if (hs && hk.some((key) => !net.holds(key, t.id))) {
+      if (net.canReserve(hk, t.id)) { net.reserve(hk, t.id); t.headHold = null; } else {
+        blocker = net.holder(hk, t.id); kind = 'train';
+        limitS = t.s; t.waitKeys = hk.slice(); t.waitStamp = this.game.time;
       }
     }
     while (!blocker && t.resvEnd < S.length - 1) {
@@ -1267,10 +1382,35 @@ export class TrainSystem {
     for (let k = 0; k <= t.resvEnd && k < S.length; k++) {
       const st = S[k];
       if (st.s1 < tailS - 0.05) continue;
-      for (const key of st.keys) if (net.holds(key, t.id)) need.add(key);
+      const pk = this.physKeys(t, st);
+      if (t.xo && pk !== st.keys) {
+        // both lanes through the crossover (re-taken after a track edit)
+        const miss = pk.filter((key) => !net.holds(key, t.id));
+        if (miss.length && net.canReserve(miss, t.id)) net.reserve(miss, t.id);
+        else if (miss.length && k > head) {
+          limitS = Math.min(limitS, st.s0 - 0.3);
+          if (!blocker) { const hm = miss.filter((key) => !net.canReserve([key], t.id)); blocker = net.holder(hm, t.id); kind = st.jn ? 'junction' : 'block'; t.waitKeys = hm; t.waitStamp = this.game.time; }
+        }
+      }
+      for (const key of pk) if (net.holds(key, t.id)) need.add(key);
       if (st.rid >= 0) runs.add(st.rid);
     }
-    if (t.slideKeys) { if (t.lane >= 1) t.slideKeys = null; else for (const k of t.slideKeys) if (net.resv[k] === t.id) need.add(k); }
+    // crossing back to its own lane after a reversal: start (like a departure
+    // signal clearing) only when both lanes through the window and the way just
+    // beyond it are ours
+    if (t.xo && t.s <= t.xo.s0 + 0.05) {
+      const want = [];
+      for (let k = head; k < S.length; k++) { const o = S[k]; if (o.s0 >= t.xo.s1) break; for (const key of this.physKeys(t, o)) if (!net.holds(key, t.id)) want.push(key); }
+      const front = t.resvEnd >= 0 && S[t.resvEnd] ? S[t.resvEnd].s1 : t.s;
+      const needEnd = Math.min(t.stopS, t.xo.s1 + 0.3, t.ss[t.ss.length - 1]);
+      if (want.length && net.canReserve(want, t.id)) { net.reserve(want, t.id); for (const k of want) need.add(k); }
+      else if (want.length) {
+        limitS = Math.min(limitS, t.s);
+        const hm = want.filter((k) => !net.canReserve([k], t.id));
+        if (!blocker && hm.length) { blocker = net.holder(hm, t.id); kind = 'train'; t.waitKeys = hm; t.waitStamp = this.game.time; }
+      }
+      if (front < needEnd - 0.01) limitS = Math.min(limitS, t.s);
+    }
     if (t.headHold) { if (hs && hs.keys.every((key) => net.holds(key, t.id))) t.headHold = null; else for (const k of t.headHold) if (net.holds(k, t.id)) need.add(k); }
     for (const key of t.held) if (!need.has(key)) net.release([key], t.id);
     t.held = need;
@@ -1332,8 +1472,8 @@ export class TrainSystem {
     const y = gk.length ? this.yieldsTo(t, gk) : 0;
     if (y) return { blocker: y, kind: 'yield' };
     for (let i = k; i <= e; i++) {
-      const st = S[i];
-      if (!net.canReserve(st.keys, t.id)) return { blocker: net.holder(st.keys, t.id), kind: st.jn ? 'junction' : st.station ? 'platform' : st.single ? 'single' : 'block' };
+      const st = S[i], pk = st.keys;
+      if (!net.canReserve(pk, t.id)) return { blocker: net.holder(pk, t.id), kind: st.jn ? 'junction' : st.station ? 'platform' : st.single ? 'single' : 'block' };
       if (st.rid >= 0 && !net.runLockOk(st.rid, net.runSense(st), t.id)) {
         const L = net.runLocks.get(st.rid);
         let b = 0; if (L) for (const id of L.ids) if (id !== t.id) { b = id; break; }
@@ -1350,8 +1490,6 @@ export class TrainSystem {
 
   move(t, dt) {
     const g = this.game, net = this.net;
-    // finish the lane change after a reversal before moving off
-    if (t.lane < 1) { t.v = 0; return; }
     const st = t._st;
     const weather = g.env ? g.env.effects : { speed: 1, accel: 1 };
     const perf = livePerf(st, cargoMass(t.cargo));
@@ -1359,7 +1497,9 @@ export class TrainSystem {
     const vmaxTrain = (st.speed * perf.speedMul / KMH_PER_TILE_S) * TILE * weather.speed;
     const accel = perf.accel * 1.3 * weather.accel;
     const decel = DECEL * (1 + st.brake);
-    const lookahead = (t.v * t.v) / (2 * decel) + TILE * 1.3 + t.v * dt;
+    let lookahead = (t.v * t.v) / (2 * decel) + TILE * 1.3 + t.v * dt;
+    // a reversed train starts across only once the way through the crossover is set
+    if (t.xo && t.s <= t.xo.s0 + 0.05) lookahead = Math.max(lookahead, t.xo.s1 + 0.4 - t.s);
     const res = this.updateReservation(t, lookahead);
     let limitS = res.limitS;
     // switches must be set before the train enters a junction
@@ -1408,7 +1548,9 @@ export class TrainSystem {
     if (t.v < vt) t.v = Math.min(vt, t.v + accel * dt);
     else t.v = Math.max(vt, t.v - decel * 1.5 * dt);
     if (!isFinite(t.v)) t.v = 0;
+    const sPrev = t.s;
     t.s = Math.min(t.s + t.v * dt, Math.max(t.s, stopAt));
+    t.odo = (t.odo || 0) + (t.s - sPrev);   // distance run along the track (tests: motion invariant)
     const hk = this.stepAt(t, t.s);
     if (hk !== t.lastStepIdx) { t.lastStepIdx = hk; const s = t.steps[hk]; if (s) net.traffic[s.tile] += 1; }
     const kmh = (t.v / TILE) * KMH_PER_TILE_S;
@@ -1418,7 +1560,9 @@ export class TrainSystem {
     // arrival
     if (t.s >= t.stopS - 0.02 && t.v < 0.2) {
       // never snap backwards (a run-around can leave the head past stopS)
+      const sSnap = t.s;
       t.s = Math.max(t.s, t.stopS);
+      t.odo += t.s - sSnap;
       t.wait = 0; t.blockedBy = 0; t.blockKind = null;
       if (t.pendingLost) { t.pendingLost = false; t.state = 'lost'; t.stateT = 0; t.v = 0; return; }
       if (t.via) { this.viaReverse(t); return; }
@@ -1725,7 +1869,8 @@ export class TrainSystem {
         else {
           const { st } = this.headInfo(t);
           this.truncateAfter(t, st ? st.s1 : t.s);
-          t.stopS = Math.min(t.ss[t.ss.length - 1], st ? st.s1 : t.s);
+          // (short of the tile edge: the next tile is not ours)
+          t.stopS = Math.max(t.s, Math.min(t.ss[t.ss.length - 1], st ? st.s1 : t.s) - 0.4);
           t.problem = 'no_route';
           t.v = Math.min(t.v, 1);
           t.state = 'run'; t.pendingLost = true;
@@ -1770,8 +1915,9 @@ export class TrainSystem {
     const where = stn ? stn.name : t.targetWp != null ? (this.net.waypoints.get(t.targetWp) || {}).name || '' : '';
     const plat = t.plat && t.plat.track != null ? t.plat.track + 1 : null;
     switch (t.state) {
-      case 'spawnwait': return { key: 'st_spawnwait', warn: true };
-      case 'reversing': return { key: t.rev && t.rev.steam ? 'st_turning' : 'st_runaround' };
+      case 'spawnwait': return { key: 'st_spawnwait', warn: t.stateT > 20 };
+      case 'stored': return { key: 'st_stored', p: { depot: (S.depotById(t.homeDepot) || {}).name || '' } };
+      case 'reversing': return { key: 'st_reversing' };
       case 'load': {
         const pct = Math.round(this.fillRatio(t) * 100);
         const here = this.stationAtHead(t);
@@ -1787,6 +1933,7 @@ export class TrainSystem {
           return { key: 'st_wait_' + (t.blockKind || 'block'), p: { train: other ? other.name : '', station: where }, warn: t.wait > 20 };
         }
         if (t.v < 0.05 && t.blockKind === 'switch') return { key: 'st_wait_switch' };
+        if (t.tgtKind === 'depot') { const dep = t.depotOrder ? S.depotById(t.depotOrder.id) : null; return { key: t.depotIn ? 'st_entering_depot' : 'st_to_depot', p: { depot: dep ? dep.name : '' } }; }
         const left = t.stopS - t.s;
         if (left < TILE * 3 && stn) return { key: 'st_arriving', p: { station: where, plat: plat || 1 } };
         return { key: t.tgtKind === 'wp' ? 'st_via' : 'st_running', p: { station: where } };
@@ -1865,48 +2012,41 @@ export class TrainSystem {
       const sMin = t.ss[0];
       const inDepot = t.steps[0] && t.steps[0].inH == null && t.steps[0].tile === (g.stations.depotById(t.homeDepot) || {}).tile;
       const speedF = clamp(t.v / 4, 0, 1);
-      const R = t.rev;
       for (let ci = 0; ci < V.cars.length; ci++) {
         const c = V.cars[ci];
         const sc = t.s - c.off;
         const half = c.len > 1.5 ? c.len / 2 - 0.3 : c.len * 0.36;
         this.sampleAt(t, sc + half, pf);
         this.sampleAt(t, sc - half, pr);
+        {
+          // both bogies sit on their lane: through a crossover the body turns with it
+          const ddx = pf.x - pr.x, ddz = pf.z - pr.z, dl = Math.sqrt(ddx * ddx + ddz * ddz) || 1;
+          const ox = -ddz / dl, oz = ddx / dl;
+          const lf = LANE * this.laneSide(t, sc + half) * this.laneFactor(t, sc + half), lr = LANE * this.laneSide(t, sc - half) * this.laneFactor(t, sc - half);
+          pf.x += ox * lf; pf.z += oz * lf; pr.x += ox * lr; pr.z += oz * lr;
+        }
         const dx = pf.x - pr.x, dz = pf.z - pr.z, dy = pf.y - pr.y;
         const len = Math.sqrt(dx * dx + dz * dz) || 1;
-        const nx = -dz / len, nz = dx / len;
-        const laneOff = LANE * t.lane * this.laneFactor(t, sc);
         const mesh = c.mesh;
         const bounce = Math.sin(sc * 4.1 + ci) * 0.006 * speedF;
-        mesh.position.set((pf.x + pr.x) / 2 + nx * laneOff, (pf.y + pr.y) / 2 + 0.13 + bounce, (pf.z + pr.z) / 2 + nz * laneOff);
-        let yaw = Math.atan2(-dz, dx) + (c.v.r ? Math.PI : 0);
+        mesh.position.set((pf.x + pr.x) / 2, (pf.y + pr.y) / 2 + 0.13 + bounce, (pf.z + pr.z) / 2);
+        const yaw = Math.atan2(-dz, dx) + (c.v.r ? Math.PI : 0);
         const pitch = Math.atan2(dy, len) * (c.v.r ? -1 : 1);
         const roll = Math.sin(clock * 6.3 + ci * 1.7 + t.id) * 0.012 * speedF;
-        let scale = 1, lift = 0;
-        // run-around / turntable animation of the engine
-        if (R && c.v.k === 'L') {
-          const moving = R.swapped ? (R.moved || []).includes(ci) : R.idx.includes(ci);
-          if (moving) {
-            const p = R.p;
-            scale = Math.max(0.02, Math.abs(1 - 2 * p));
-            lift = Math.sin(p * Math.PI) * 0.5;
-            if (R.swapped && R.steam) yaw += Math.PI * (1 - clamp((p - 0.5) * 2, 0, 1));
-            else if (R.inPlace && !R.swapped) yaw += 0;
-          }
-        }
-        mesh.position.y += lift;
         _e.set(0, yaw, pitch, 'YXZ');
         mesh.rotation.copy(_e);
         mesh.rotateX(roll);
         let visible = true;
         if (inDepot && sc < sMin + 0.7) visible = false;
+        // driving into a depot: gone once through the door
+        if (t.depotIn && sc - c.len * 0.3 > t.depotIn.door) visible = false;
         // vehicles not yet on the trail (re-formed / emerging trains) stay hidden
         if (sc - c.len / 2 < sMin - 0.05) visible = false;
         const tile = worldToTile(mesh.position.x, mesh.position.z);
         if (tile >= 0 && this.net.kind(tile) === K_TUNNEL && this.net.conn[tile]) visible = false;
         mesh.visible = visible;
         const sc2 = t.spawnFx > 0 ? 1 + Math.sin((1 - t.spawnFx) * Math.PI * 3) * 0.08 * t.spawnFx : 1;
-        mesh.scale.setScalar(sc2 * (0.6 + 0.4 * t.fade) * scale);
+        mesh.scale.setScalar(sc2 * (0.6 + 0.4 * t.fade));
         if (visible) this._pickList.push(mesh);
         if (!Number.isFinite(mesh.position.x)) { mesh.visible = false; this.recoverTrain(t); break; }
         // coupler to the next vehicle
@@ -1914,7 +2054,7 @@ export class TrainSystem {
           const cs = t.s - (c.off + c.len / 2 + GAP / 2);
           this.sampleAt(t, cs + 0.1, pc);
           this.sampleAt(t, cs - 0.1, pd);
-          const lo = LANE * t.lane * this.laneFactor(t, cs);
+          const lo = LANE * this.laneSide(t, cs) * this.laneFactor(t, cs);
           const ddx = pc.x - pd.x, ddz = pc.z - pd.z;
           const dl = Math.sqrt(ddx * ddx + ddz * ddz) || 1;
           _v.set((pc.x + pd.x) / 2 - ddz / dl * lo, (pc.y + pd.y) / 2 + 0.3, (pc.z + pd.z) / 2 + ddx / dl * lo);
@@ -1957,6 +2097,7 @@ export class TrainSystem {
         route: t.route, routeIdx: t.routeIdx, filter: t.filter, cargo: t.cargo, earned: t.earned, trips: t.trips, target: t.target, depotId: t.homeDepot,
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
         spacing: t.spacing || undefined, group: t.group || undefined,
+        depotOrder: t.depotOrder || undefined,
       };
     });
   }
@@ -1999,6 +2140,7 @@ export class TrainSystem {
         this.trains.push(t);
         const h = d.head;
         let placed = false;
+        if (d.state === 'stored' && g.stations.depotById(t.homeDepot)) { t.state = 'stored'; t.depotOrder = null; continue; }
         if (h && typeof h.tile === 'number' && net.conn[h.tile]) {
           if (h.inH != null && net.hasDir(h.tile, opp(h.inH))) {
             const test = { tile: h.tile, inH: h.inH, outH: null };

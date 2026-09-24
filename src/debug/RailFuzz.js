@@ -8,7 +8,7 @@
 // or open index.html?railtest=fuzz.
 import { N, idx, tx, tz, step, cheb, RNG } from '../util.js';
 import { LOCOS, CARGO_IDS, TRACK_TIERS, RESEARCH, WAGON_IDS } from '../config.js';
-import { RailTests } from './RailTests.js';
+import { RailTests, motionCheck } from './RailTests.js';
 import { autoBuild, computeStats, locoModel } from '../trains/Consist.js';
 import { migrate, validate } from '../save/Save.js';
 
@@ -216,7 +216,7 @@ export class RailFuzz extends RailTests {
       g.tick(dt);
       if (this.trace) for (const t of T.trains) {
         const h = hist.get(t.id) || []; hist.set(t.id, h);
-        const sig = this.trace === 'coarse' ? `${t.state} head=${t.steps.length ? t.steps[T.stepAt(t, t.s)].tile : -1} last=${t.steps.length ? t.steps[t.steps.length - 1].tile : -1} tgt=${t.target} blk=${t.blockedBy}/${t.blockKind} flip=${t.flipped ? 1 : 0} v=${t.v > 0.01 ? 1 : 0}` : `${t.state} lane=${t.lane.toFixed(2)} s=${t.s.toFixed(2)} head=${t.steps.length ? t.steps[T.stepAt(t, t.s)].tile : -1} slide=${t.slideKeys ? t.slideKeys.join(',') : '-'} held=${[...t.held].join(',')} tgt=${t.target} blk=${t.blockedBy}/${t.blockKind}`;
+        const sig = this.trace === 'coarse' ? `${t.state} head=${t.steps.length ? t.steps[T.stepAt(t, t.s)].tile : -1} last=${t.steps.length ? t.steps[t.steps.length - 1].tile : -1} tgt=${t.target} blk=${t.blockedBy}/${t.blockKind} flip=${t.flipped ? 1 : 0} v=${t.v > 0.01 ? 1 : 0}` : `${t.state} lane=${t.lane.toFixed(2)} s=${t.s.toFixed(2)} head=${t.steps.length ? t.steps[T.stepAt(t, t.s)].tile : -1} xo=${t.xo ? t.xo.s0.toFixed(2) + '-' + t.xo.s1.toFixed(2) : '-'} held=${[...t.held].join(',')} tgt=${t.target} blk=${t.blockedBy}/${t.blockKind}`;
         if (!h.length || h[h.length - 1].sig !== sig) { h.push({ time: g.time.toFixed(2), sig }); if (h.length > (this.trace === "coarse" ? 150 : 40)) h.shift(); }
       }
       if (i > 0 && i % mutEvery === 0) { try { this.mutate(); } catch (e) { res.errors++; this.note('mutate error ' + e.message); console.error(e); } }
@@ -226,6 +226,7 @@ export class RailFuzz extends RailTests {
         if (!t.steps.length || t.state === 'spawnwait') continue;
         // trail geometry: each step's samples must lie on its own tile
         if (!res.firstGeo) for (const o of t.steps) {
+          if (o.shed) continue;   // the stretch inside a depot shed
           for (const f of [0.25, 0.5, 0.75]) {
             T.sampleAt(t, o.s0 + (o.s1 - o.s0) * f, tmp);
             const tx = Math.floor(tmp.x / 2), tz = Math.floor(tmp.z / 2);
@@ -242,23 +243,24 @@ export class RailFuzz extends RailTests {
         for (let k = 0; k <= hd; k++) {
           const st = t.steps[k];
           if (st.s1 < t.s - L0 + 0.3) continue;
-          const miss = st.keys.filter((key) => !g.net.holds(key, t.id));
+          // (a reversed train also holds the lane it still stands on: physKeys)
+          const miss = T.physKeys(t, st).filter((key) => !g.net.holds(key, t.id));
           if (miss.length && k === hd && t.headHold && t.v === 0 && t.headHold.every((key) => g.net.holds(key, t.id))) break;
           if (miss.length) {
             res.bodyGaps = (res.bodyGaps || 0) + 1;
-            if (!res.firstGap) res.firstGap = `t=${g.time.toFixed(1)} ${t.name}#${t.id} ${t.state} s=${t.s.toFixed(2)} L=${L0.toFixed(2)} st=${st.s0.toFixed(2)}..${st.s1.toFixed(2)} veh=${t.veh.map((v) => v.id).join("+")} step ${k}/${hd} tile ${st.tile} miss ${miss.join(',')} owners ${miss.map((key) => g.net.keyHolder(key) ?? "?").join(",")} mine: ${this.events.filter((e) => e.includes(t.name)).slice(-5).join(" | ")} recent: ${this.events.slice(-6).join(' | ')}`;
+            if (!res.firstGap) res.firstGap = `t=${g.time.toFixed(1)} ${t.name}#${t.id} ${t.state} s=${t.s.toFixed(2)} L=${L0.toFixed(2)} st=${st.s0.toFixed(2)}..${st.s1.toFixed(2)} veh=${t.veh.map((v) => v.id).join("+")} step ${k}/${hd} tile ${st.tile} ${st.inH}>${st.outH} keys ${st.keys.join(',')} xo ${t.xo ? t.xo.s0.toFixed(2) + '-' + t.xo.s1.toFixed(2) : '-'} resvEnd ${t.resvEnd} miss ${miss.join(',')} owners ${miss.map((key) => g.net.keyHolder(key) ?? "?").join(",")} mine: ${this.events.filter((e) => e.includes(t.name)).slice(-5).join(" | ")} recent: ${this.events.slice(-6).join(' | ')}`;
             break;
           }
         }
         if (!isFinite(t.s) || !isFinite(t.v)) res.nan++;
         const L = T.trainLength(t);
         for (let s = t.s - 0.2; s > t.s - L + 0.2 && s > (t.ss[0] || 0) + 0.05; s -= 0.5) {
-          T.sampleAt(t, s, tmp); const ax = tmp.x, az = tmp.z;
-          T.sampleAt(t, s + 0.1, tmp);
-          const dx = tmp.x - ax, dz = tmp.z - az, len = Math.hypot(dx, dz) || 1;
-          const lo = 0.34 * t.lane * T.laneFactor(t, s);
-          pts.push({ t, s, x: ax - dz / len * lo, z: az + dx / len * lo });
+          if (t.depotIn && s > t.depotIn.door) continue;   // already inside the depot shed
+          T.lanePoint(t, s, tmp);
+          pts.push({ t, s, x: tmp.x, z: tmp.z });
         }
+        const mv = motionCheck(T, t, tmp);
+        if (mv) { res.jumps = (res.jumps || 0) + 1; if (!res.firstJump) res.firstJump = `t=${g.time.toFixed(1)} ${mv} mine: ${this.events.filter((e) => e.includes(t.name)).slice(-4).join(' | ')}`; }
       }
       for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) {
         if (pts[a].t === pts[b].t) continue;
@@ -293,9 +295,9 @@ export class RailFuzz extends RailTests {
     res.trains = T.trains.length;
     res.saveErr = this.saveRoundTrip();
     res.deadlocks = T.incidents.length;
-    res.ok = !res.geoBad && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)));
+    res.ok = !res.geoBad && !res.jumps && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)));
     if (!res.trips) res.states = T.trains.map((t) => `${t.name}:${t.state}/${t.problem}/${t.mode} tgt=${t.target} route=${(t.route || []).length}`).join(' ') + ` stations=${g.stations.list.length} sites=${this.sites.length}`;
-    res.detail = `gaps ${res.bodyGaps || 0} trains ${res.trains} trips ${res.trips} overlaps ${res.overlaps} keys ${res.keyConflicts} nan ${res.nan} errors ${res.errors} stuck ${res.stuck.join(',') || 0} deadlocks ${res.deadlocks} save ${res.saveErr || 'ok'}`;
+    res.detail = `${res.jumps ? 'JUMPS ' + res.jumps + ' (' + res.firstJump + ') ' : ''}gaps ${res.bodyGaps || 0} trains ${res.trains} trips ${res.trips} overlaps ${res.overlaps} keys ${res.keyConflicts} nan ${res.nan} errors ${res.errors} stuck ${res.stuck.join(',') || 0} deadlocks ${res.deadlocks} save ${res.saveErr || 'ok'}`;
     return res;
   }
 }

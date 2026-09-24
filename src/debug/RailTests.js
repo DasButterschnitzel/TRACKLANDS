@@ -10,6 +10,31 @@ import { parseConsist } from '../trains/Consist.js';
 
 const E = 0, S = 2, W = 4, Nn = 6;
 
+// Motion invariant: the train moves only along its own rails. A body point
+// seen at the previous check must lie, on the current lane geometry, exactly
+// where the train was `run` metres ago. Any sideways slide, jump or change of
+// the geometry under a moving or standing train breaks this.
+export function motionCheck(T, t, tmp) {
+  const L = T.trainLength(t);
+  const offs = [0.3, L / 2, Math.max(0.3, L - 0.3)];
+  const ss0 = t.ss[0] || 0;
+  // points still behind the start of the trail (emerging from a depot) are not tracked
+  const cur = offs.map((d) => { if (t.s - d < ss0 + 0.02) return null; T.lanePoint(t, t.s - d, tmp); return [tmp.x, tmp.z]; });
+  const prev = t._mv;
+  t._mv = { pts: cur, odo: t.odo || 0, flips: t.flips || 0, placed: t.placed || 0, veh: t.veh.length, xoDone: t.xoDone || 0, nv: T.net.version, L };
+  // (a network edit may reshape the track under a train: it moves with its rails)
+  if (!prev || prev.nv !== T.net.version || Math.abs(prev.L - L) > 1e-6 || prev.flips !== (t.flips || 0) || prev.placed !== (t.placed || 0) || prev.veh !== t.veh.length || prev.xoDone !== (t.xoDone || 0)) return null;
+  const run = (t.odo || 0) - prev.odo;
+  for (let i = 0; i < offs.length; i++) {
+    const was = t.s - offs[i] - run;
+    if (!prev.pts[i] || was < ss0 + 0.02) continue;
+    T.lanePoint(t, was, tmp);
+    const d = Math.hypot(tmp.x - prev.pts[i][0], tmp.z - prev.pts[i][1]);
+    if (d > 0.04) return `${t.name}#${t.id} ${t.state} point ${i} off its path by ${d.toFixed(2)} (ran ${run.toFixed(2)}) xo=${JSON.stringify(t.xo)} s=${t.s.toFixed(2)} ss0=${ss0.toFixed(2)} L=${L.toFixed(2)} head=${t.steps[T.stepAt(t, t.s)].tile}`;
+  }
+  return null;
+}
+
 export class RailTests {
   constructor(game) {
     this.g = game;
@@ -77,13 +102,14 @@ export class RailTests {
         if (!isFinite(t.s)) res.nan++;
         const L = T.trainLength(t);
         for (let s = t.s - 0.2; s > t.s - L + 0.2; s -= 0.5) {
-          T.sampleAt(t, s, tmp);
-          const a = tmp.clone();
-          T.sampleAt(t, s + 0.1, tmp);
-          const dx = tmp.x - a.x, dz = tmp.z - a.z, len = Math.hypot(dx, dz) || 1;
-          const lo = 0.34 * t.lane * T.laneFactor(t, s);
-          pts.push({ id: t.id, x: a.x - dz / len * lo, z: a.z + dx / len * lo });
+          if (t.depotIn && s > t.depotIn.door) continue;   // already inside the depot shed
+          T.lanePoint(t, s, tmp);
+          pts.push({ id: t.id, x: tmp.x, z: tmp.z });
         }
+        // motion: no point of the body may move further than the train ran
+        // along the track (a standing train never slides sideways)
+        const mv = motionCheck(T, t, tmp);
+        if (mv) { res.jumps = (res.jumps || 0) + 1; if (!res.firstJump) res.firstJump = mv; }
         res.maxWait = Math.max(res.maxWait, t.wait);
       }
       for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) {
@@ -100,6 +126,7 @@ export class RailTests {
     }
     void v;
     res.keyConflicts = T.collisions - c0;
+    if (res.jumps) { res.overlaps += res.jumps; if (!this.jumpInfo) this.jumpInfo = `${res.jumps}× ${res.firstJump}`; }
     return res;
   }
 
@@ -108,6 +135,7 @@ export class RailTests {
     let r;
     try { r = fn(); } catch (e) { r = { ok: false, detail: 'error: ' + e.message }; console.error(e); }
     r.name = name; r.ms = Math.round(performance.now() - t0);
+    if (this.jumpInfo) { r.detail += ' · JUMP ' + this.jumpInfo; this.jumpInfo = null; }
     this.log.push(r);
     return r;
   }
@@ -397,6 +425,42 @@ export class RailTests {
     };
   }
 
+  // Send to depot: the train runs to the depot, drives in (vanishing through
+  // the door, never jumping), stays parked across a save/load, is released
+  // back into service; an unreachable depot is refused with a reason.
+  depotOrders() {
+    const a = this.findArea(18, 6);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 2, x0 = a.x0 + 1, g = this.g, T = g.trains;
+    this.line(x0, z, x0 + 13, z);
+    this.finish();
+    const A = this.station(x0 + 2, z), B = this.station(x0 + 12, z);
+    const D = this.depot(x0 + 14, z);
+    g.net.connect(idx(x0 + 13, z), E);
+    const lone = this.depot(x0 + 6, z + 3);   // not connected to anything
+    this.finish();
+    const t = this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, B]);
+    const r1 = this.run(40, 1 / 30, [t]);
+    const bad = T.orderDepot(t, lone.id);
+    const ord = T.orderDepot(t, D.id, true);
+    let wasEntering = false, sec = 0;
+    while (t.state !== 'stored' && sec < 150) { const r = this.run(1, 1 / 30, [t]); r1.overlaps += r.overlaps; sec++; if (t.depotIn) wasEntering = true; }
+    const stored = t.state === 'stored';
+    const trips0 = t.trips;
+    // parked trains survive a save/load
+    T.deserialize(JSON.parse(JSON.stringify(T.serialize())));
+    const t2 = T.trains.find((x) => x.id === t.id);
+    const keptStored = !!t2 && t2.state === 'stored' && !t2.steps.length;
+    const rel = t2 ? T.releaseFromDepot(t2) : false;
+    const r2 = t2 ? this.run(90, 1 / 30, [t2]) : { overlaps: 0, keyConflicts: 0 };
+    const back = t2 ? t2.trips - trips0 : 0;
+    this.cleanup(t2 ? [t2] : []);
+    return {
+      ok: !bad.ok && bad.reason === 'no_depot_route' && ord.ok && wasEntering && stored && keptStored && rel && back >= 1 && r1.overlaps === 0 && r2.overlaps === 0 && r1.keyConflicts === 0,
+      detail: `unreachable ${bad.ok ? 'accepted!' : bad.reason} · order ${ord.ok ? 'ok' : ord.reason} · entered ${wasEntering} · stored ${stored} after ${sec}s · after load ${keptStored} · released ${rel} · trips after ${back} · overlaps ${r1.overlaps + r2.overlaps}`,
+    };
+  }
+
   // Signal row tool: dragging along a line places a signal every N tiles in
   // the drag direction plus one in front of a junction; undo removes them all
   // and refunds; the block overlay splits the line into sections at them.
@@ -446,7 +510,8 @@ export class RailTests {
     if (only === 'pax') { this.check('pax', () => this.paxTransfer()); return this.log; }
     if (only === 'timetable') { this.check('timetable', () => this.timetable()); return this.log; }
     if (only === 'overtake') { this.check('overtaking at a station', () => this.overtaking()); return this.log; }
-    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); return this.log; }
+    if (only === 'depot') { this.check('send to depot', () => this.depotOrders()); return this.log; }
+    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); this.check('send to depot', () => this.depotOrders()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));

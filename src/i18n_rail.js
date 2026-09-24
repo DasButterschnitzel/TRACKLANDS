@@ -23,7 +23,7 @@ export const EN_RAIL = {
   rating_excellent: 'Excellent', rating_good: 'Good', rating_heavy: 'Heavy', rating_overloaded: 'Overloaded',
   prio_express: 'Express', prio_passenger: 'Passenger', prio_mail: 'Mail', prio_freight: 'Freight', prio_service: 'Service',
   // statuses
-  st_spawnwait: 'Waiting for a free depot track', st_turning: 'Turning the locomotive', st_runaround: 'Locomotive running around',
+  st_spawnwait: 'Waiting for a free depot track', st_reversing: 'Changing ends to reverse', st_stored: 'Parked in {depot}', st_to_depot: 'Heading to {depot}', st_entering_depot: 'Entering {depot}',
   st_loading: 'Loading at {station} · {pct}% full', st_wait_full: 'Waiting for full load at {station} · {pct}%', st_idle: 'Waiting for work',
   st_wait_block: 'Waiting for signal (block occupied by {train})', st_wait_junction: 'Waiting at junction for {train}', st_wait_platform: 'Waiting for a free platform at {station}',
   st_wait_single: 'Waiting for single-track section ({train})', st_wait_yield: 'Letting {train} pass', st_wait_switch: 'Waiting for switch to set',
@@ -211,7 +211,7 @@ export const DE_RAIL = {
   wag_caboose: 'Caboose', wag_caboose_s: 'Caboose', wag_caboose_desc: 'Begleitwagen mit besseren Bremsen.',
   rating_excellent: 'Exzellent', rating_good: 'Gut', rating_heavy: 'Schwer', rating_overloaded: 'Überlastet',
   prio_express: 'Express', prio_passenger: 'Personen', prio_mail: 'Post', prio_freight: 'Güter', prio_service: 'Dienst',
-  st_spawnwait: 'Wartet auf freies Depotgleis', st_turning: 'Lok wird gedreht', st_runaround: 'Lok setzt um',
+  st_spawnwait: 'Wartet auf freies Depotgleis', st_reversing: 'Führerstandswechsel zum Wenden', st_stored: 'Abgestellt in {depot}', st_to_depot: 'Fährt ins {depot}', st_entering_depot: 'Fährt ein: {depot}',
   st_loading: 'Lädt in {station} · {pct} % voll', st_wait_full: 'Wartet auf volle Ladung in {station} · {pct} %', st_idle: 'Wartet auf Arbeit',
   st_wait_block: 'Wartet am Signal (Block belegt durch {train})', st_wait_junction: 'Wartet an der Weiche auf {train}', st_wait_platform: 'Wartet auf freies Gleis in {station}',
   st_wait_single: 'Wartet auf eingleisigen Abschnitt ({train})', st_wait_yield: 'Lässt {train} vor', st_wait_switch: 'Wartet auf Weichenstellung',
