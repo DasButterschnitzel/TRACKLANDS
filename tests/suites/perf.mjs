@@ -43,6 +43,7 @@ export async function run({ browser, base, quick }) {
     const snap = () => ({ heap: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0, geo: app.renderer.info.memory.geometries, tex: app.renderer.info.memory.textures, scene: (() => { let n = 0; g.scene.traverse(() => n++); return n; })(), dom: document.getElementsByTagName('*').length });
     for (let k = 0; k < 30 * 60 * 2; k++) g.tick(1 / 30);
     for (let f = 0; f < 30; f++) g.frame(1 / 60);
+    if (window.gc) window.gc();
     const a = snap();
     for (let m = 0; m < mins; m++) { for (let k = 0; k < 30 * 60; k++) g.tick(1 / 30); for (let f = 0; f < 10; f++) g.frame(1 / 60); }
     if (window.gc) window.gc();

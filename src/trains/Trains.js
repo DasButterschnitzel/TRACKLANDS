@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { TILE, opp, turnOf, step, cheb, worldToTile, clamp, tileCX, tileCZ } from '../util.js';
 import { LOCOS, TRACK_TIERS, KMH_PER_TILE_S, CARGO, ERA_RESEARCH, WAGONS, STATION } from '../config.js';
 import { K_TUNNEL, K_BRIDGE } from '../rail/RailNetwork.js';
-import { locoGeometry, wagonGeometry, liveryColors, couplerGeometry } from './TrainModels.js';
+import { locoGeometry, wagonGeometry, liveryColors, couplerGeometry, retainGeometry, releaseGeometry } from './TrainModels.js';
 import {
   locoModel, parseConsist, serializeConsist, cloneConsist, computeStats, livePerf, cargoMass, assignLoads, roomFor, canCarry,
   canLead, vehLen, inferLegacy, consistCost, vehicleCost, validateConsist, autoBuild, GAP,
@@ -1829,6 +1829,7 @@ export class TrainSystem {
         const [, cargo, fill] = parts[i].slice(1).split('.');
         geo = wagonGeometry(v.id, cargo || null, +fill, lead.kind, cols.body, cols.trim, (t.id * 7 + i * 3) & 3);
       }
+      retainGeometry(geo);
       const mesh = new THREE.Mesh(geo, MATS);
       mesh.castShadow = true;
       mesh.userData.train = t.id;
@@ -1844,6 +1845,7 @@ export class TrainSystem {
   disposeVisual(t) {
     if (!t.visual) return;
     this.group.remove(t.visual.group);
+    for (const c of t.visual.cars) releaseGeometry(c.mesh.geometry);
     t.visual = null;
   }
 
@@ -1855,7 +1857,7 @@ export class TrainSystem {
     const cm = this.couplers;
     const clock = g.clock;
     for (const t of this.trains) {
-      if (t.state === 'spawnwait' || !t.steps.length) { if (t.visual) t.visual.group.visible = false; continue; }
+      if (t.state === 'spawnwait' || !t.steps.length) { this.disposeVisual(t); continue; }
       if (!t.visual || t.visualSig !== this.consistSig(t)) this.buildVisual(t);
       const V = t.visual;
       V.group.visible = true;
@@ -1977,6 +1979,7 @@ export class TrainSystem {
   }
 
   deserialize(list) {
+    for (const t of this.trains || []) this.disposeVisual(t);
     this.trains = [];
     if (!Array.isArray(list)) return;
     const g = this.game, net = this.net;

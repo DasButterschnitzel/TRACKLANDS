@@ -31,7 +31,7 @@ export function startServer() {
 let _pw = null;
 export async function launchBrowser() {
   if (!_pw) _pw = await import('playwright');
-  const opts = { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] };
+  const opts = { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] };
   if (process.env.CHROMIUM_PATH) opts.executablePath = process.env.CHROMIUM_PATH;
   return _pw.chromium.launch(opts);
 }

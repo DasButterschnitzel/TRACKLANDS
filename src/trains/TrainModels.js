@@ -18,7 +18,49 @@ import { SCALE, PAL } from '../style.js';
 const VS = SCALE.vehicle;
 const W = VS.width, FLOOR = VS.floor, ROOF = VS.roof, BUF = VS.buffer, GZ = VS.glassInset;
 const DARK = PAL.underframe, WHEEL = PAL.wheel, STEEL = PAL.steel, GLASS = PAL.glass, BRASS = PAL.brass, LIGHT = PAL.headlight, RED_L = PAL.tailLight;
-const cache = new Map();
+// Geometry cache. Wagon keys include cargo, fill level, livery and variant, so
+// over a long session the set of combinations keeps growing: entries in use by
+// train visuals are reference counted (retainGeometry / releaseGeometry) and
+// at most IDLE_MAX unused ones are kept, the oldest being disposed.
+const cache = new Map(); // key -> geometry
+const refs = new Map(); // geometry -> count held by train visuals
+const idle = new Map(); // key -> geometry, insertion order = least recently used first
+const IDLE_MAX = 64;
+function cached(key) {
+  const g = cache.get(key);
+  if (g && idle.has(key)) { idle.delete(key); idle.set(key, g); }
+  return g;
+}
+function store(key, g) {
+  g.userData.cacheKey = key;
+  cache.set(key, g);
+  idle.set(key, g);
+  trimIdle();
+  return g;
+}
+function trimIdle() {
+  for (const [key, g] of idle) {
+    if (idle.size <= IDLE_MAX) break;
+    idle.delete(key);
+    cache.delete(key);
+    g.dispose();
+  }
+}
+export function retainGeometry(g) {
+  const key = g.userData.cacheKey;
+  if (!key || cache.get(key) !== g) return;
+  refs.set(g, (refs.get(g) || 0) + 1);
+  idle.delete(key);
+}
+export function releaseGeometry(g) {
+  const n = refs.get(g);
+  if (!n) return;
+  if (n > 1) { refs.set(g, n - 1); return; }
+  refs.delete(g);
+  idle.set(g.userData.cacheKey, g);
+  trimIdle();
+}
+export const geometryCacheStats = () => ({ total: cache.size, idle: idle.size, used: refs.size });
 
 // ---------- running gear ----------
 // wheel with a lighter hub so it reads as a wheel from a distance
@@ -334,7 +376,7 @@ export function couplerGeometry() {
 
 export function locoGeometry(modelId, liveryId, detail = 0) {
   const key = `L:${modelId}:${liveryId}:${detail}`;
-  if (cache.has(key)) return cache.get(key);
+  if (cache.has(key)) return cached(key);
   const model = LOCOS.find((m) => m.id === modelId) || LOCOS[0];
   const { body, trim } = liveryColors(model, liveryId);
   const mb = new ModelBuilder();
@@ -346,9 +388,7 @@ export function locoGeometry(modelId, liveryId, detail = 0) {
     case 'hst': hstLoco(mb, model, L, body, trim, detail); break;
     default: maglevLoco(mb, model, L, body, trim, detail);
   }
-  const g = mb.build();
-  cache.set(key, g);
-  return g;
+  return store(key, mb.build());
 }
 
 // ---------- wagons ----------
@@ -378,7 +418,7 @@ const variantTint = (c, v) => (v ? shade(c, [1, 0.92, 1.07, 0.86][v & 3]) : c);
 export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimCol, variant = 0) {
   const w = WAGONS[wagonId] ? wagonId : 'boxcar';
   const key = `W:${w}:${cargoId || ''}:${fill | 0}:${eraKind}:${liveryBody}:${trimCol}:${variant | 0}`;
-  if (cache.has(key)) return cache.get(key);
+  if (cache.has(key)) return cached(key);
   const mb = new ModelBuilder();
   const L = WAGONS[w].len;
   const modern = eraKind === 'electric' || eraKind === 'hst' || eraKind === 'maglev';
@@ -582,9 +622,7 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, liveryBody, trimC
       break;
     }
   }
-  const g = mb.build();
-  cache.set(key, g);
-  return g;
+  return store(key, mb.build());
 }
 
 export { THREE };
