@@ -1132,6 +1132,9 @@ export class TrainSystem {
     const g = this.game;
     t.stateT += dt;
     t.idleT = t.state === 'idle' || t.state === 'lost' ? (t.idleT || 0) + dt : 0;
+    // remember how often the train lost its way since its last trip (livelock guard)
+    if (t.state === 'lost' && t._was !== 'lost') { const now = g.time; t.lostLog = (t.lostLog || []).filter((e) => now - e.time < 120 && e.trips === t.trips); t.lostLog.push({ time: now, trips: t.trips }); }
+    t._was = t.state;
     if (t.spawnFx > 0) t.spawnFx = Math.max(0, t.spawnFx - dt * 0.6);
     if (t.lane < 1) {
       t.lane = Math.min(1, t.lane + dt * (g.settings.reducedMotion ? 10 : 1.2));
@@ -1474,7 +1477,15 @@ export class TrainSystem {
   // Deadlock detection chain: follow "waits for" links; a cycle means no
   // train in it can ever move. The lowest-priority train yields by rerouting,
   // reversing out, or (last resort) being re-formed at a free station.
+  // lost its way n+ times within two minutes without completing a trip
+  thrashing(t, n) {
+    const now = this.game.time;
+    return (t.lostLog || []).filter((e) => now - e.time < 120 && e.trips === t.trips).length >= n;
+  }
+
   detectDeadlocks() {
+    // a train that only shunts to and fro goes back to its depot to start over
+    for (const t of this.trains) if (t.state !== 'spawnwait' && this.thrashing(t, 6) && this.sendToDepot(t)) { t.lostLog = []; this.incidents.push({ time: this.game.time, trains: [t.id], victim: t.id, how: 'recover', tile: -1 }); if (this.incidents.length > 20) this.incidents.shift(); }
     const waits = new Map();
     for (const t of this.trains) if (t.state === 'run' && t.blockedBy && t.wait > 2) waits.set(t.id, t.blockedBy);
     const done = new Set();
@@ -1493,6 +1504,17 @@ export class TrainSystem {
         if (other && (other.state === 'lost' || other.state === 'idle') && (other.idleT || 0) > 12) {
           if (this.sendToDepot(other) || (this.recoverTrain(other), true)) {
             this.incidents.push({ time: this.game.time, trains: [...path, other.id], victim: other.id, how: 'recover', tile: other.steps[0]?.tile ?? -1 });
+            this.game.events.emit('deadlockResolved', other, 'recover', [other]);
+          }
+          continue;
+        }
+        // livelock: the train we wait on keeps shunting back and forth (lost,
+        // reverse, lost ...) without ever arriving; it only looks busy
+        if (other && this.thrashing(other, 4)) {
+          if (this.sendToDepot(other) || (this.recoverTrain(other), true)) {
+            other.lostLog = [];
+            this.incidents.push({ time: this.game.time, trains: [...path, other.id], victim: other.id, how: 'recover', tile: -1 });
+            if (this.incidents.length > 20) this.incidents.shift();
             this.game.events.emit('deadlockResolved', other, 'recover', [other]);
           }
           continue;
