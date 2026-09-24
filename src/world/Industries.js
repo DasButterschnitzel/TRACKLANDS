@@ -132,11 +132,14 @@ export class IndustrySystem {
         for (const c in ind.out) {
           let amt = Math.floor(ind.out[c]);
           if (amt < 1) continue;
-          const per = Math.ceil(amt / sts.length);
-          for (const s of sts) {
-            if (amt <= 0) break;
-            const took = g.stations.receive(s, c, Math.min(per, amt));
-            amt -= took; ind.out[c] -= took; ind.transported += took;
+          // competing stations share by cargo rating; a poorly served
+          // station gets less (the rest stays at the industry)
+          const shares = g.ratings ? g.ratings.split(sts, c, amt) : sts.map(() => Math.ceil(amt / sts.length));
+          for (let i = 0; i < sts.length; i++) {
+            const want = Math.min(shares[i], Math.floor(ind.out[c]));
+            if (want <= 0) continue;
+            const took = g.stations.receive(sts[i], c, want);
+            ind.out[c] -= took; ind.transported += took;
           }
         }
         this.checkLevel(ind);

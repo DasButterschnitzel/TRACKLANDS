@@ -160,7 +160,7 @@ export class PaxFlow {
     if (!stn.paxTo) stn.paxTo = {};
     stn.paxTo[lot.to] = (stn.paxTo[lot.to] || 0) + took;
     const from = S.byId(lot.from);
-    const rev = Math.round(g.economy.revenue(PAX, took, g.economy.distTiles(from, stn), t, false));
+    const rev = Math.round(g.economy.revenue(PAX, took, g.economy.distTiles(from, stn), t, false, lot.t0 != null ? Math.max(0, g.time - lot.t0) : 0));
     g.economy.bookDelivery(rev, PAX, took, t, from, stn);
     t.earned += rev;
     g.economy.bucket.income += rev;

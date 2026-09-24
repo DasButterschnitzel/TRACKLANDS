@@ -1044,7 +1044,7 @@ export class StationSystem {
       stations: this.list.map((s) => ({
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities,
-        stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin),
+        stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
         ...(s.paxTo && Object.keys(s.paxTo).length ? { paxTo: s.paxTo } : {}),
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
@@ -1063,6 +1063,7 @@ export class StationSystem {
       stn.name = String(s.name || 'Station');
       stn.delivered = s.delivered || 0; stn.picked = s.picked || 0;
       if (s.fin) stn.fin = cleanFin(s.fin);
+      if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stn, s.ratings);
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
       // passengers waiting for a connection (PaxFlow); ids are checked once all stations exist
       if (s.paxTo && typeof s.paxTo === 'object') {

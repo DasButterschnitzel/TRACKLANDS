@@ -57,5 +57,19 @@ export async function run() {
   const { buildServiceWorker } = await import('../../tools/build-sw.mjs');
   const fs = await import('fs');
   check(fs.readFileSync('service-worker.js', 'utf8') === buildServiceWorker(), 'service-worker.js is up to date (node tools/build-sw.mjs)');
+  // cargo ratings: competition and delivery time (src/economy/Ratings.js)
+  const { CargoRatings } = await import('../../src/economy/Ratings.js');
+  const fakeGame = { time: 600, stations: { list: [] }, maint: null };
+  const R = new CargoRatings(fakeGame);
+  const good = { id: 1, stock: { COAL: 10 }, level: 2, facilities: [], stats: { waitEma: 0 } }, poor = { id: 2, stock: { COAL: 900 }, level: 0, facilities: [], stats: { waitEma: 0.6 } };
+  R.onPickup(good, 'COAL', { _st: { speed: 120 } });
+  R.entry(poor, 'COAL').pick = 0;
+  good.ratings.COAL.r = R.target(good, 'COAL'); poor.ratings.COAL.r = R.target(poor, 'COAL');
+  const [sa, sb] = R.split([good, poor], 'COAL', 100);
+  check(good.ratings.COAL.r > 0.7 && poor.ratings.COAL.r < 0.3 && sa > sb * 3 && sa + sb <= 100, `ratings: a well served station wins the cargo (${Math.round(good.ratings.COAL.r * 100)} % vs ${Math.round(poor.ratings.COAL.r * 100)} %, split ${sa}/${sb})`);
+  check(R.split([good], 'COAL', 100)[0] === 100, 'ratings: a well served station alone gets the whole supply');
+  check(R.factors(poor, 'COAL').some(([k, v]) => k === 'rt_waiting' && v < 0) && R.factors(poor, 'COAL').some(([k]) => k === 'rt_congestion'), 'ratings: waiting cargo and congestion show as negative factors');
+  const fast = R.timeFactor('PASSENGERS', 10, 10), slow = R.timeFactor('PASSENGERS', 10, 150), coal = R.timeFactor('COAL', 10, 150), mail = R.timeFactor('MAIL', 10, 150);
+  check(fast > 1 && slow < 0.8 && coal >= 0.8 && coal > slow && mail <= slow + 0.05, `delivery time: pax fast ${fast.toFixed(2)} slow ${slow.toFixed(2)}, mail slow ${mail.toFixed(2)}, coal slow ${coal.toFixed(2)}`);
   return { ok, lines };
 }

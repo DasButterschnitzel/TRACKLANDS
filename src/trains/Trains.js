@@ -39,6 +39,7 @@ export { locoModel };
 // copy of a cargo lot, keeping a passenger destination / transfer tag when valid
 function lotFrom(l) {
   const o = { c: l.c, n: l.n, from: l.from };
+  if (typeof l.t0 === 'number' && isFinite(l.t0)) o.t0 = l.t0;   // loading time (delivery-time payment)
   if (Number.isInteger(l.to)) { o.to = l.to; if (Number.isInteger(l.via) && l.via !== l.to) o.via = l.via; }
   return o;
 }
@@ -1289,12 +1290,14 @@ export class TrainSystem {
       // passengers choose where they are going as they board (PaxFlow)
       const add = c === 'PASSENGERS' && !dry ? g.pax.board(t, stn, n) : [{ c, n, from: stn.id }];
       for (const a of add) {
+        if (a.t0 == null) a.t0 = g.time;
         const lot = lots.find((l) => l.c === a.c && l.from === a.from && l.to === a.to && l.via === a.via);
-        if (lot) lot.n += a.n; else lots.push(a);
+        if (lot) { lot.t0 = ((lot.t0 ?? a.t0) * lot.n + a.t0 * a.n) / (lot.n + a.n); lot.n += a.n; } else lots.push(a);
       }
       if (!dry) {
         stn.stock[c] -= n;
         g.stations.onPickup(stn, c, n);
+        if (g.ratings) g.ratings.onPickup(stn, c, t);
       }
     }
     if (!dry) t.cargo = lots;

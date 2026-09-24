@@ -70,7 +70,7 @@ export class Economy {
   // ---------- revenue ----------
   distTiles(from, to) { if (!from || !to) return 6; return cheb(from.tile, to.tile); }
 
-  revenue(c, n, dist, train, needed) {
+  revenue(c, n, dist, train, needed, transit = 0) {
     const g = this.game, fx = g.progression.fx, ev = this.eventFx;
     const cfg = CARGO[c];
     let f = Math.min(REVENUE.distCap, REVENUE.distBase + REVENUE.distPerTile * dist);
@@ -93,7 +93,8 @@ export class Economy {
       if (isPax && train._st.trainRev) mul += train._st.trainRev;
     }
     if (needed) mul *= REVENUE.demandBonus;
-    return v * mul * g.difficulty.incomeMul;
+    const tf = transit > 0 && g.ratings ? g.ratings.timeFactor(c, dist, transit) : 1;
+    return v * mul * tf * g.difficulty.incomeMul;
   }
 
   estimate(c, n, fromStn, toStn, train) {
@@ -107,7 +108,8 @@ export class Economy {
     const dist = this.distTiles(from, stn);
     const town = stn.links.towns.length ? g.towns.byId(stn.links.towns[0]) : null;
     const needed = town ? g.towns.needs(town, lot.c) : false;
-    const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed));
+    const transit = lot.t0 != null ? Math.max(0, g.time - lot.t0) : 0;
+    const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed, transit));
     const res = g.stations.distribute(stn, lot.c, lot.n);
     this.bookDelivery(rev, lot.c, lot.n, train, from, stn);
     train.earned += rev;

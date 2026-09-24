@@ -285,9 +285,14 @@ export class TownSystem {
       if (t.mailAcc >= 1) { const n = Math.floor(t.mailAcc); t.mailAcc -= n; this.push(sts, 'MAIL', n); }
     }
   }
+  // travellers pick the better-served station (cargo rating), all of them go
   push(sts, c, n) {
-    const per = Math.ceil(n / sts.length);
-    for (const s of sts) { if (n <= 0) break; const k = Math.min(per, n); this.game.stations.receive(s, c, k); n -= k; }
+    const R = this.game.ratings;
+    if (!R || sts.length === 1) { const per = Math.ceil(n / sts.length); for (const s of sts) { if (n <= 0) break; const k = Math.min(per, n); this.game.stations.receive(s, c, k); n -= k; } return; }
+    const w = sts.map((s) => Math.max(0.05, R.rating(s, c)));
+    const sum = w.reduce((a, b) => a + b, 0);
+    let left = n;
+    sts.forEach((s, i) => { const k = i === sts.length - 1 ? left : Math.min(left, Math.round(n * w[i] / sum)); if (k > 0) { this.game.stations.receive(s, c, k); left -= k; } });
   }
   onStationsChanged() { for (const t of this.list) t._sts = null; }
   // a new or bigger station reshapes the town around it (rail influence)

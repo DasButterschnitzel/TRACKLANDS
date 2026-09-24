@@ -522,6 +522,7 @@ export const RailUIMixin = {
       <h4>${this.tr('facilities')}</h4><div class="chips wrap">${facs}</div>
       <h4 id="st-stats">${this.tr('station_statistics')}</h4>
       <div class="kv-grid small"><div><b>${fmt(s.stats.arrivals)}</b><small>${this.tr('arrivals')}</small></div><div><b>${Math.round(avgUtil * 100)}%</b><small>${this.tr('occupancy')}</small></div><div><b>${Math.round(s.stats.waitEma * 100)}%</b><small>${this.tr('entry_waits')}</small></div><div><b>${fmt(s.stats.transfers)}</b><small>${this.tr('transfers')}</small></div></div>
+      ${this.ratingBlock(s)}
       <h4>${this.tr('fin_station_heading')}</h4>${this.finBlock(s)}<p class="muted small">${this.tr('fin_station_note')}</p>
       <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
       <div class="row wrap" id="st-up">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>

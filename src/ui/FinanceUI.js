@@ -6,7 +6,7 @@
 //  value     – how the company value is made up; the loan
 //  stats     – the long-running company statistics
 import { fmt, escapeHtml as esc } from '../util.js';
-import { icon } from './icons.js';
+import { icon, cargoIcon } from './icons.js';
 import { LOCOS } from '../config.js';
 import { locoModel } from '../trains/Consist.js';
 import { INCOME_CATS, EXPENSE_CATS, NON_PL, MONTH_S, LOAN_STEP } from '../economy/Ledger.js';
@@ -218,6 +218,22 @@ export const FinanceUIMixin = {
     return `<div class="fin-mini">${cell('fin_this_month', f.rev - f.cost, true)}${cell('fin_last_month', f.lastRev - f.lastCost, true)}${cell('fin_life_rev', f.lifeRev)}${cell('fin_life_profit', f.lifeRev - f.lifeCost, true)}</div>`;
   },
 
+  // station panel: cargo ratings with every factor
+  ratingBlock(stn) {
+    const R = this.game.ratings;
+    const cs = Object.keys(stn.ratings || {});
+    if (!cs.length) return '';
+    // the inspector re-renders twice a second: remember which lists are open
+    this.rtOpen = this.rtOpen || new Set();
+    if (!this._rtHook) { this._rtHook = true; document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.dataset && d.dataset.rt) { if (d.open) this.rtOpen.add(d.dataset.rt); else this.rtOpen.delete(d.dataset.rt); } }, true); }
+    const rows = cs.map((c) => {
+      const r = Math.round(R.rating(stn, c) * 100), tgt = Math.round(R.target(stn, c) * 100);
+      const f = R.factors(stn, c).map(([k, v]) => `<div><span>${this.tr(k)}</span><b class="${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${v > 0 ? '+' : ''}${Math.round(v * 100)}</b></div>`).join('');
+      const key = stn.id + ':' + c;
+      return `<details class="crating" data-rt="${key}" ${this.rtOpen.has(key) ? 'open' : ''}><summary>${cargoIcon(c)}<span>${this.cargoName(c)}</span><i class="rbar"><em style="width:${r}%"></em></i><b>${r} %</b>${tgt !== r ? `<small>${tgt > r ? '↑' : '↓'} ${tgt} %</small>` : ''}</summary><div class="kv-list">${f}</div></details>`;
+    }).join('');
+    return `<h4>${this.tr('rt_heading')}</h4>${rows}<p class="muted small">${this.tr('rt_help')}</p>`;
+  },
   // train inspector: condition, servicing, replacement rule
   condBlock(t) {
     const g = this.game, M = g.maint;

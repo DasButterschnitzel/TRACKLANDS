@@ -713,3 +713,10 @@ h5 { margin: 10px 0 4px; font-size: .82em; text-transform: uppercase; letter-spa
 .kv-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
 .kv-list > div { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .kv-list > div.sum { font-weight: 700; border-bottom: 2px solid var(--line); }
+details.crating { border-bottom: 1px solid var(--line); }
+details.crating summary { display: grid; grid-template-columns: auto 1fr 90px auto auto; gap: 8px; align-items: center; padding: 6px 0; cursor: pointer; list-style: none; min-height: 36px; }
+details.crating summary::-webkit-details-marker { display: none; }
+details.crating .rbar { height: 8px; border-radius: 4px; background: rgba(31,42,58,.1); position: relative; overflow: hidden; }
+details.crating .rbar em { position: absolute; left: 0; top: 0; bottom: 0; background: #12927f; border-radius: 4px; }
+details.crating small { color: var(--ink2); }
+details.crating .kv-list { padding: 0 0 6px 30px; font-size: .88em; }
