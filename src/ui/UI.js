@@ -21,7 +21,7 @@ import { FinanceUIMixin } from './FinanceUI.js';
 import { RoadUIMixin } from './RoadUI.js';
 import { IndustryUIMixin } from './IndustryUI.js';
 import { NewsUIMixin } from './NewsUI.js';
-import { roadModel } from '../road/Roads.js';
+import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
@@ -236,9 +236,13 @@ export class UI {
         return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
       }).join('') + `<span class="sub-sep"></span><span class="sub-label">${this.tr('sig_row')}</span>${[2, 3, 4, 6].map((n) => `<button class="chip mini ${C.signalSpacing === n ? 'on' : ''}" data-act="signalSpacing" data-arg="${n}" data-tip="${this.tr('sig_row_tip', { n })}"><b>${n}</b></button>`).join('')}<span class="sub-hint">${this.tr('hint_signal')}</span>${this.helpBtn('signals')}`;
     } else if (C.tool === 'road') {
-      sub = `<span class="sub-hint">${icon('road')} ${this.tr('hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
+      const tramOk = g.roads.kindUnlocked('tram'), rm = C.roadMode === 'tram' && tramOk ? 'tram' : 'road';
+      sub = `<button class="chip ${rm === 'road' ? 'on' : ''}" data-act="roadMode" data-arg="road"><b>${icon('road', 'mini')} ${this.tr('road_mode_road')}</b><small>${fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul()))}●</small></button>`
+        + `<button class="chip ${rm === 'tram' ? 'on' : ''} ${tramOk ? '' : 'locked'}" data-act="roadMode" data-arg="tram" ${tramOk ? '' : `data-tip="${this.tr('unlock_level', { n: 4 })}"`}>${tramOk ? '' : icon('lock')}<b>${icon('tram', 'mini')} ${this.tr('road_mode_tram')}</b><small>${fmt(Math.round(ROAD_COSTS.tram * g.economy.costs.mul()))}●</small></button>`
+        + `<span class="sub-hint">${this.tr(rm === 'tram' ? 'hint_tram' : 'hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
     } else if (C.tool === 'roadstop') {
-      sub = ['bus', 'truck'].map((k) => `<button class="chip ${(C.stopKind || 'bus') === k ? 'on' : ''}" data-act="stopKind" data-arg="${k}"><b>${icon(k, 'mini')} ${this.tr('tool_roadstop_' + k)}</b><small>${fmt(g.roads.stopCost())}●</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_roadstop')}</span>`;
+      const LV = { bus: 1, truck: 1, tram: 4, dock: 6, airport: 12 };
+      sub = STOP_KINDS.map((k) => { const on = g.roads.kindUnlocked(k); return `<button class="chip ${(C.stopKind || 'bus') === k ? 'on' : ''} ${on ? '' : 'locked'}" data-act="stopKind" data-arg="${k}" ${on ? `data-tip="${this.tr('stop_tip_' + k)}"` : `data-tip="${this.tr('unlock_level', { n: LV[k] })}"`}>${on ? '' : icon('lock')}<b>${icon(k, 'mini')} ${this.tr('tool_roadstop_' + k)}</b><small>${fmt(g.roads.stopCost(k))}●</small></button>`; }).join('') + `<span class="sub-hint">${this.tr('hint_stop_' + (C.stopKind || 'bus'))}</span>`;
     } else if (C.tool === 'industry') {
       const types = g.industries.foundTypes();
       if (!types.includes(C.fundType)) C.fundType = types[0];
@@ -1176,7 +1180,8 @@ export class UI {
       musicNext: () => { this.app.audio.musicMgr.next(); this.refreshPanel(); },
       musicToggle: () => { this.app.audio.musicMgr.toggle(); this.refreshPanel(); },
       musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.refreshPanel(); },
-      stopKind: (a) => { g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
+      roadMode: (a) => { if (a === 'tram' && !g().roads.kindUnlocked('tram')) { this.error('err_locked'); return; } g().construction.roadMode = a; this.renderToolbar(); },
+      stopKind: (a) => { if (!g().roads.kindUnlocked(a)) { this.error('err_locked'); return; } g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),

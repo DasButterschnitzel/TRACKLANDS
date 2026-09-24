@@ -23,13 +23,13 @@ export const RoadUIMixin = {
     return `<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
       <h4>${this.tr('stop_serves')}</h4>
       ${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('')}
-      ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'bus' ? 'stop_no_town' : 'stop_no_industry')}</p>` : ''}
+      ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'truck' ? 'stop_no_industry' : 'stop_no_town')}</p>` : ''}
       <h4>${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}
       ${this.ratingBlock(s)}
       <h4>${this.tr('stop_vehicles', { n: vehs.length })}</h4>
       ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
       <h4>${this.tr('stop_buy')}</h4><div class="col">${buy}</div>
-      <p class="muted small">${this.tr(s.kind === 'bus' ? 'stop_help_bus' : 'stop_help_truck')}</p>
+      <p class="muted small">${this.tr('stop_help_' + s.kind)}</p>
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(s)}
       <div class="row wrap"><button class="btn ghost danger" data-act="rvStopRemove" data-arg="${s.id}">${icon('bulldoze', 'mini')} ${this.tr('stop_remove')}</button></div>`;
   },

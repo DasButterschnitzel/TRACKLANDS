@@ -60,6 +60,15 @@ export async function run({ browser, base }) {
   const back = await page.evaluate(() => { const g = window.__tracklands.game; return JSON.stringify({ items: g.news.items.map((it) => [it.key, it.kind]), cycle: g.economy.cycle.state }); });
   check(back === r.sig, 'news and the cycle are saved');
 
+  // every menu entry is visible without scrolling the rail (1280×800), and at 1366×768
+  const railFit = async () => page.evaluate(() => { const r = document.querySelector('#menu-rail'); const tb = document.querySelector('#toolbar').getBoundingClientRect(); const last = [...r.querySelectorAll('.rail-btn')].filter((b) => b.offsetParent).pop().getBoundingClientRect(); return { scroll: r.scrollHeight - r.clientHeight, lastBottom: Math.round(last.bottom), h: innerHeight, toolbarTop: Math.round(tb.top), toolbarLeft: Math.round(tb.left), railRight: Math.round(last.right) }; });
+  const f1 = await railFit();
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.waitForTimeout(300);
+  const f2 = await railFit();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const railOk = (f) => f.scroll <= 1 && f.lastBottom <= f.h && (f.lastBottom <= f.toolbarTop || f.railRight <= f.toolbarLeft);
+  check(railOk(f1) && railOk(f2), `the menu rail shows every entry without scrolling or covering the toolbar (${JSON.stringify(f1)} ${JSON.stringify(f2)})`);
   // news panel with the mouse
   await page.waitForTimeout(400);
   const badge = await page.$eval('#badge-news', (b) => (b.hidden ? '' : b.textContent));

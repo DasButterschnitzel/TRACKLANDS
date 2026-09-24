@@ -750,3 +750,11 @@ input.search { width: 100%; box-sizing: border-box; min-height: var(--touch-min)
 /* station service and layout */
 .svc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .svc-row .seg { margin: 0; }
+
+/* thirteen menu entries: compact buttons on shorter desktop windows so every
+   entry stays visible without scrolling */
+@media (min-width: 761px) and (max-height: 920px) {
+  #menu-rail { gap: 3px; }
+  .rail-btn { width: 44px; height: 44px; border-radius: 12px; }
+  .rail-btn .ic { width: 21px; height: 21px; }
+}

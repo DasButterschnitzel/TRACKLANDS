@@ -189,8 +189,20 @@ export const ROAD_VEHICLES = [
   { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
   { id: 'tanker_truck', name: 'Tanker Truck', kind: 'truck', groups: ['liquid'], cap: 16, speed: 55, price: 1500, op: 15, level: 5, color: 0xb8bcc2 },
   { id: 'flatbed_truck', name: 'Flatbed Truck', kind: 'truck', groups: ['flat'], cap: 14, speed: 55, price: 1400, op: 14, level: 5, color: 0x5a7a4a },
+  // trams run on tram track laid along streets and company roads
+  { id: 'tram', name: 'Tram Classic', kind: 'tram', pax: true, cap: 45, mail: 4, speed: 45, price: 1700, op: 9, level: 4, color: 0xd8483a },
+  { id: 'tram_lr', name: 'Light Rail Tram', kind: 'tram', pax: true, cap: 80, mail: 6, speed: 70, price: 3600, op: 16, level: 14, color: 0x2f8a9a },
+  // ships sail on connected water between docks
+  { id: 'ferry', name: 'Harbour Ferry', kind: 'dock', pax: true, cap: 70, mail: 10, speed: 30, price: 3200, op: 12, level: 6, color: 0xf0f0f0 },
+  { id: 'cargo_ship', name: 'Coaster', kind: 'dock', groups: ['crate', 'bulk', 'flat', 'log'], cap: 90, speed: 25, price: 4200, op: 15, level: 8, color: 0x3a5a8a },
+  { id: 'tanker_ship', name: 'Coastal Tanker', kind: 'dock', groups: ['liquid'], cap: 100, speed: 25, price: 4600, op: 16, level: 10, color: 0xb04a3a },
+  // aircraft fly straight between airports: fast, costly to run
+  { id: 'propliner', name: 'Propliner 40', kind: 'airport', pax: true, cap: 40, mail: 12, speed: 320, price: 18000, op: 450, level: 12, color: 0xe8e8ee },
+  { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
 ];
-export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180 };
+// stop kind → how its vehicles move
+export const STOP_MODE = { bus: 'road', truck: 'road', tram: 'tram', dock: 'water', airport: 'air' };
+export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200 };
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express'];
 export const LOCOS = [
   { id: 'pioneer', name: 'Pioneer 0-4-0', era: 1, kind: 'steam', role: 'mixed', speed: 60, accel: 0.9, power: 400, freight: 12, pax: 10, wagons: 2, reliability: 0.9, load: 1.0, op: 20, price: 600, rarity: 'common', trait: 'cheap_op', level: 1, color: 0x2f6b4a },

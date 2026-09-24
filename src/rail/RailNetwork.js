@@ -152,6 +152,7 @@ export class RailNetwork {
     const b = this.game.occupancy.blocked[i];
     if (b === 1) return 'err_town_building';
     if (b === 2) return 'err_industry';
+    if (b === 3) return 'err_occupied';   // docks and airports
     return null;
   }
 

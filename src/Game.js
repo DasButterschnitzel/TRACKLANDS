@@ -16,6 +16,7 @@ import { Works } from './rail/Works.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
 import { News } from './world/News.js';
+import { roadModel } from './road/Roads.js';
 import { IndustrySystem } from './world/Industries.js';
 import { TownSystem } from './world/Towns.js';
 import { DecorSystem } from './world/Decor.js';
@@ -346,6 +347,16 @@ export class Game {
       const x = tileCX(d.stop.tile), z = tileCZ(d.stop.tile), v = this.near({ x, z });
       if (v > 0.1) { ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin'); A.play(d.stop.kind === 'bus' ? 'doors' : 'truckEngine', { vol: v * 0.7, world: true }); }
     });
+    // trams ring, ships sound their horn, aircraft take off and land (near the camera)
+    const rvSnd = (v, dep) => {
+      const o = this.roads.vehPos(v, {}), vol = this.near({ x: o.x, z: o.z });
+      if (vol < 0.1) return;
+      const k = roadModel(v.model).kind;
+      const name = k === 'tram' ? 'tramBell' : k === 'dock' ? 'shipHorn' : k === 'airport' ? (dep ? 'takeoff' : 'landing') : k === 'bus' ? 'busEngine' : 'truckEngine';
+      A.play(name, { vol: vol * 0.7, world: true, dur: k === 'airport' ? 2 : 0.8 });
+    };
+    E.on('rvDepart', (v) => rvSnd(v, true));
+    E.on('rvArrive', (v) => rvSnd(v, false));
     E.on('townGrew', (t) => { const v = this.near({ x: (t.x + 0.5) * TILE, z: (t.z + 0.5) * TILE }); if (v > 0.3) A.play('cityGrow', { vol: v * 0.6, world: true }); });
     E.on('townLevel', (t) => {
       const x = (t.x + 0.5) * TILE, z = (t.z + 0.5) * TILE, y = this.world.tileH[t.z * N + t.x];

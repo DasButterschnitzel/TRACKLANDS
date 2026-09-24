@@ -26,13 +26,14 @@ export const PERMITS = {
   station_in_town: 20,      // a new or larger station on town land
   freight_terminal: 40,     // freight facilities inside the town
   industry_near_town: 45,   // a new industry close to the town
+  airport_near_town: 50,    // an airport close to the town (noise)
 };
 const POLICY_PERMIT = {
-  heritage: { demolish_home: 45, demolish_business: 45, demolish_heritage: 95 },
+  heritage: { demolish_home: 45, demolish_business: 45, demolish_heritage: 95, airport_near_town: 60 },
   growth: { demolish_home: 25, demolish_business: 25, station_in_town: 10 },
   industrial: { freight_terminal: 15, demolish_business: 25, industry_near_town: 20 },
-  green: { freight_terminal: 55, industry_near_town: 70 },
-  commuter: { station_in_town: 5 },
+  green: { freight_terminal: 55, industry_near_town: 70, airport_near_town: 70 },
+  commuter: { station_in_town: 5, airport_near_town: 40 },
   tourism: { demolish_heritage: 95, freight_terminal: 50 },
 };
 // how strongly a policy weighs a kind of change
