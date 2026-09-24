@@ -500,7 +500,8 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 }
 
 /* scrollable tool strip on narrow screens: fade the edge that has more tools */
-#toolbar .tools { scroll-snap-type: x proximity; scrollbar-width: none; }
+#toolbar .tools { scroll-snap-type: x proximity; scrollbar-width: none; flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+#toolbar .tools2 { flex: none; }
 #toolbar .tools::-webkit-scrollbar { display: none; }
 #toolbar .tools .tool { scroll-snap-align: start; flex: none; }
 #toolbar .tools.more-r { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent); }
@@ -558,8 +559,8 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 .nm-line small { color: var(--ink2); }
 
 /* signal tool: row spacing */
-#subbar .sub-sep { width: 1px; align-self: stretch; background: rgba(31,42,58,.14); margin: 4px 4px; flex: none; }
-#subbar .sub-label { font-size: .82em; font-weight: 600; color: var(--ink2); padding: 0 2px; white-space: nowrap; align-self: center; }
+#subbar .sub-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.25); margin: 4px 4px; flex: none; }
+#subbar .sub-label { font-size: .82em; font-weight: 600; color: rgba(255,255,255,.78); padding: 0 2px; white-space: nowrap; align-self: center; }
 #subbar .chip.mini { min-width: 36px; justify-content: center; }
 
 /* research: category filter, unlock chips, recommendation */
@@ -584,3 +585,19 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 .hb-nav { justify-content: space-between; margin: 10px 0; }
 .hb-topics .chip { flex-direction: row; align-items: center; gap: 6px; padding: 6px 12px; }
 .hb-topics .chip b { color: var(--ink); }
+
+/* M10 layout: keep world labels out from under the top HUD, and keep the
+   toolbar clear of an open side panel on wide screens */
+#labels { -webkit-mask-image: linear-gradient(to bottom, transparent calc(52px + var(--safe-t)), #000 calc(78px + var(--safe-t))); mask-image: linear-gradient(to bottom, transparent calc(52px + var(--safe-t)), #000 calc(78px + var(--safe-t))); }
+@media (min-width: 761px) {
+  body.panel-open #toolbar { left: calc((100vw - min(430px, 100vw - 20px) - 10px - var(--safe-r)) / 2); max-width: calc(100vw - min(430px, 100vw - 20px) - 36px - var(--safe-r)); }
+  body.panel-open.panel-wide #toolbar { left: calc((100vw - min(780px, 100vw - 20px) - 10px - var(--safe-r)) / 2); max-width: calc(100vw - min(780px, 100vw - 20px) - 36px - var(--safe-r)); }
+  body.panel-open #subbar { left: calc((100vw - min(430px, 100vw - 20px) - 10px - var(--safe-r)) / 2); max-width: calc(100vw - min(430px, 100vw - 20px) - 36px); }
+}
+[role="button"][data-act]:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+/* the menu rail never runs into the toolbar: it scrolls when the screen is short */
+#menu-rail { max-height: calc(100vh - 70px - 96px - var(--safe-b)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 8px 10px 4px 0; margin-top: -8px; }
+#menu-rail::-webkit-scrollbar { display: none; }
+@media (max-height: 520px) and (orientation: landscape) { #menu-rail { max-height: calc(100vh - 56px - 84px - var(--safe-b)); } }
+/* a wide panel (builder, research) leaves no room for the toolbar below ~1140px: it is effectively full screen */
+@media (min-width: 761px) and (max-width: 1140px) { body.panel-open.panel-wide #toolbar, body.panel-open.panel-wide #subbar { display: none; } }

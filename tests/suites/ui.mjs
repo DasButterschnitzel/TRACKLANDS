@@ -89,18 +89,45 @@ const layoutCheck = () => {
     else if (hidden && !sc.classList.contains(b.left < r.left ? 'more-l' : 'more-r')) probs.push('scrollable toolbar without edge hint: ' + (btn.id || ''));
     if (matchMedia('(pointer: coarse)').matches && (b.width < 36 || b.height < 36)) probs.push(`small touch target ${Math.round(b.width)}x${Math.round(b.height)}: ` + (btn.id || btn.dataset.act || ''));
   }
+  // an open side panel must not cover toolbar buttons (on phones the panel
+  // is a bottom sheet and replaces the toolbar on purpose)
+  // (only the visible part of a button counts: tools scrolled out of the strip are clipped)
+  const visible = (btn) => {
+    let b = btn.getBoundingClientRect();
+    for (let sc = btn.parentElement; sc && sc !== document.body; sc = sc.parentElement) {
+      const cs = getComputedStyle(sc);
+      if (!/(auto|scroll|hidden)/.test(cs.overflowX + cs.overflowY)) continue;
+      const r = sc.getBoundingClientRect();
+      b = { left: Math.max(b.left, r.left), right: Math.min(b.right, r.right), top: Math.max(b.top, r.top), bottom: Math.min(b.bottom, r.bottom) };
+    }
+    return b.right - b.left > 2 && b.bottom - b.top > 2 ? b : null;
+  };
+  const hit = (a, p) => a.right > p.left + 2 && a.left < p.right - 2 && a.bottom > p.top + 2 && a.top < p.bottom - 2;
+  const pn = document.querySelector('#panel.open');
+  if (pn && tb && W > 760) {
+    const p = pn.getBoundingClientRect();
+    for (const btn of tb.querySelectorAll('button')) { const b = visible(btn); if (b && hit(b, p)) { probs.push('toolbar button under the panel: ' + (btn.id || btn.dataset.act || '')); break; } }
+  }
+  // the menu rail and the toolbar must not overlap
+  const rail = document.querySelector('#menu-rail');
+  if (rail && tb && getComputedStyle(rail).display !== 'none') {
+    const tbs = [...tb.querySelectorAll('button')].map(visible).filter(Boolean);
+    for (const rb of rail.querySelectorAll('.rail-btn')) { const r = visible(rb); if (r && r.left >= 0 && tbs.some((b) => hit(b, r))) { probs.push('menu rail overlaps the toolbar: ' + rb.dataset.arg); break; } }
+  }
   return [...new Set(probs)].slice(0, 6);
 };
 
 export const name = 'ui';
-export async function run({ browser, base, quick }) {
+export async function run({ browser, base, quick, args = {} }) {
   const dir = path.join(ensureOut(), 'ui');
   fs.mkdirSync(dir, { recursive: true });
   const save = productionSave();
   const lines = [];
   let ok = true;
   const list = await matrix();
-  for (const [label, ctxOpts] of quick ? list.filter(([l]) => ['1280x800', 'phone-portrait'].includes(l)) : list) {
+  // --viewports=1366x768,tablet-portrait picks viewports; --quick: one desktop + one phone
+  const pick = args.viewports ? String(args.viewports).split(',') : quick ? ['1280x800', 'phone-portrait'] : null;
+  for (const [label, ctxOpts] of pick ? list.filter(([l]) => pick.includes(l)) : list) {
     const { ctx, page, errors } = await openPage(browser, base, ctxOpts);
     await loadSave(page, save, { paused: false });
     await page.evaluate(() => { const g = window.__tracklands.game; g.speed = 0; for (let i = 0; i < 30 * 30; i++) g.tick(1 / 30); g.speed = 1; });

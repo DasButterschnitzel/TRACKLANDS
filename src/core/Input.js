@@ -23,6 +23,7 @@ export class Input {
     this.h = {
       down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: (e) => this.onUp(e),
       wheel: (e) => this.onWheel(e), ctx: (e) => e.preventDefault(),
+      gs: (e) => this.onGesture(e, 'start'), gc: (e) => this.onGesture(e, 'change'),
       kd: (e) => this.onKey(e, true), ku: (e) => this.onKey(e, false), blur: () => this.keys.clear(),
     };
     el.addEventListener('pointerdown', this.h.down);
@@ -30,6 +31,8 @@ export class Input {
     window.addEventListener('pointerup', this.h.up);
     window.addEventListener('pointercancel', this.h.up);
     el.addEventListener('wheel', this.h.wheel, { passive: false });
+    el.addEventListener('gesturestart', this.h.gs);
+    el.addEventListener('gesturechange', this.h.gc);
     el.addEventListener('contextmenu', this.h.ctx);
     window.addEventListener('keydown', this.h.kd);
     window.addEventListener('keyup', this.h.ku);
@@ -44,6 +47,8 @@ export class Input {
     window.removeEventListener('pointerup', this.h.up);
     window.removeEventListener('pointercancel', this.h.up);
     el.removeEventListener('wheel', this.h.wheel);
+    el.removeEventListener('gesturestart', this.h.gs);
+    el.removeEventListener('gesturechange', this.h.gc);
     el.removeEventListener('contextmenu', this.h.ctx);
     window.removeEventListener('keydown', this.h.kd);
     window.removeEventListener('keyup', this.h.ku);
@@ -181,10 +186,34 @@ export class Input {
     this.pinch = { d, cx, cy };
   }
 
+  // Mouse wheel zooms; a trackpad pans with two fingers and zooms with a
+  // pinch (browsers send pinches as ctrl+wheel). 'auto' tells them apart by
+  // the event pattern: wheel notches come in whole lines or multiples of 120.
   onWheel(e) {
     e.preventDefault();
-    const f = Math.exp(Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 120) * 0.0022);
-    this.game.camera.zoom(f, this.groundAt(e.clientX, e.clientY));
+    const cam = this.game.camera;
+    const at = this.groundAt(e.clientX, e.clientY);
+    if (e.ctrlKey) { cam.zoom(Math.exp(Math.max(-60, Math.min(60, e.deltaY)) * 0.012), at); return; }
+    const mode = this.game.settings.wheel || 'auto';
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    const dx = e.deltaX * unit, dy = e.deltaY * unit;
+    const now = performance.now();
+    const notch = e.deltaMode === 1 || (e.deltaX === 0 && e.wheelDeltaY != null && e.wheelDeltaY !== 0 && Math.abs(e.wheelDeltaY) % 120 === 0);
+    // a gesture keeps its first classification while events keep coming
+    if (!this._wheelKind || now - this._wheelT > 350) this._wheelKind = notch ? 'mouse' : 'pad';
+    this._wheelT = now;
+    const pan = mode === 'pan' || (mode === 'auto' && this._wheelKind === 'pad');
+    if (pan) { this.game.ui.followId = null; cam.panPixels(-dx, -dy, false); return; }
+    const f = Math.exp(Math.sign(dy) * Math.min(Math.abs(dy), 120) * 0.0022);
+    cam.zoom(f, at);
+  }
+  // Safari pinch gestures (desktop trackpad)
+  onGesture(e, phase) {
+    e.preventDefault();
+    if (phase === 'start') { this._gScale = 1; return; }
+    const s = e.scale || 1;
+    this.game.camera.zoom(this._gScale / s, this.groundAt(e.clientX, e.clientY));
+    this._gScale = s;
   }
 
   onKey(e, down) {
@@ -209,6 +238,8 @@ export class Input {
       case '9': g.construction.setTool('waypoint'); break;
       case 'o': g.ui.toggleOverlayMenu(); break;
       case 't': g.ui.openPanel('trains'); break;
+      case 'm': g.ui.openPanel('map'); break;
+      case '?': g.ui.actions.help('start'); break;
       case 'q': g.camera.rotate(-1); break;
       case 'e': g.camera.rotate(1); break;
       case '+': case '=': g.camera.zoom(0.8); break;

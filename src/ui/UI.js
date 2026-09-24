@@ -190,6 +190,7 @@ export class UI {
       const on = strip.querySelector('.tool.on');
       if (on && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = Math.max(0, Math.min(on.offsetLeft - strip.clientWidth / 2 + on.offsetWidth / 2, strip.scrollWidth - strip.clientWidth));
       strip.addEventListener('scroll', edges, { passive: true });
+      this._stripEdges = edges;
       edges();
     }
     // contextual sub bar
@@ -485,6 +486,7 @@ export class UI {
     el.classList.add('open');
     document.body.classList.add('panel-open');
     this.refreshPanel(true);
+    requestAnimationFrame(() => this._stripEdges && this._stripEdges());
     this.app.audio.play('open');
     document.querySelectorAll('.rail-btn').forEach((b) => b.classList.toggle('on', b.dataset.arg === name));
     $('#menu-rail').classList.remove('open');
@@ -497,6 +499,7 @@ export class UI {
     el.hidden = true;
     document.body.classList.remove('panel-open', 'panel-wide');
     document.querySelectorAll('.rail-btn').forEach((b) => b.classList.remove('on'));
+    requestAnimationFrame(() => this._stripEdges && this._stripEdges());
   }
   refreshPanel(first) {
     if (!this.panel) return;
@@ -863,7 +866,7 @@ export class UI {
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['low', 'medium', 'high'])}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
-      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
+      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
       <h3>${this.tr('save_data')}</h3><div class="row wrap">
         ${inGame ? `<button class="btn" data-act="exportSave">${this.tr('export_save')}</button>` : ''}

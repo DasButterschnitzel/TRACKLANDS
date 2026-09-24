@@ -15,7 +15,7 @@ const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
   graphics: 'high', shadows: 'medium', particles: 'high', dayNight: true, weather: true, labels: true,
-  cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true,
+  cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
 };
 
 function loadSettings() {
@@ -127,6 +127,7 @@ class App {
     this.renderer.setSize(w, h, false);
     if (this.game) this.game.resize();
     if (this.title) this.title.resize(w, h);
+    if (this.ui && this.ui._stripEdges) this.ui._stripEdges();
   }
 
   loop(ts) {
