@@ -234,7 +234,7 @@ export const RailUIMixin = {
     const adv = g.advisor();
     const advH = adv.length ? adv.slice(0, 8).map((a) => {
       const jump = a.station != null ? `station:${a.station}` : a.train != null ? `train:${a.train}` : null;
-      return `<div class="adv">${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
+      return `<div class="adv" ${a.preview && a.preview.length ? `data-preview="${a.preview.join(',')}" data-ok="1"` : ''}>${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
     }).join('') : `<p class="muted small">${this.tr('adv_none')}</p>`;
     return `${head}
       <h3>${icon('advisor', 'mini')} ${this.tr('advisor')}</h3>${advH}
@@ -564,6 +564,7 @@ export const RailUIMixin = {
       overlayMenu: () => this.toggleOverlayMenu(),
       trackMode: (a) => g().construction.setTrackMode(a),
       signalType: (a) => g().construction.setSignalType(a),
+      signalSpacing: (a) => { g().construction.signalSpacing = Math.max(2, Math.min(8, +a || 4)); this.renderToolbar(); },
       trainsTab: (a) => { this.trainsTab = a; re(); },
       lineAdd: (a) => {
         const G = g(), t = G.trains.byId(+a);
@@ -588,7 +589,12 @@ export const RailUIMixin = {
         if (ok) this.app.audio.play('construct');
         re();
       },
-      jumpTile: (a) => { const tile = +a; g().camera.focus((tile % 64 + 0.5) * TILE, (Math.floor(tile / 64) + 0.5) * TILE, 18); },
+      jumpTile: (a, el) => {
+        const tile = +a; g().camera.focus((tile % 64 + 0.5) * TILE, (Math.floor(tile / 64) + 0.5) * TILE, 18);
+        // advisor suggestions with a location: highlight it (e.g. where a passing loop fits)
+        const pv = el && el.closest && el.closest('[data-preview]');
+        if (pv) g().construction.showTiles(String(pv.dataset.preview).split(',').filter((x) => x !== '').map(Number), true);
+      },
     };
   },
 

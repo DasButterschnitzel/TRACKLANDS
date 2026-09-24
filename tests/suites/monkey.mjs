@@ -44,7 +44,9 @@ async function session(browser, base, mode, seed, steps) {
           else if (e.tagName === 'INPUT' && (e.type === 'range' || e.type === 'number')) { e.value = String((+e.min || 0) + pick * ((+e.max || 100) - (+e.min || 0))); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }
           else if (e.tagName === 'INPUT' && e.type === 'text') { e.value = 'Zug ' + Math.floor(pick * 99); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }
           else if (e.tagName === 'INPUT' && e.type === 'file') { /* skip */ }
-          else e.click();
+          // SVG controls (network map stations) have no click(): dispatch like a real tap
+          else if (typeof e.click === 'function') e.click();
+          else e.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         }, [k, pick]);
         log.push(i + ' click ' + desc);
       } else if (r < 0.87) {

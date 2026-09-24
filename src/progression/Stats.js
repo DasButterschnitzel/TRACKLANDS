@@ -9,7 +9,7 @@ export class Stats {
       trackBuilt: 0, trackRemoved: 0, stationsBuilt: 0, trainsBought: 0, deliveries: 0, passengers: 0, cargoUnits: 0,
       coinsEarned: 0, coinsSpent: 0, freightIncome: 0, longestRoute: 0, topSpeed: 0, bridgesBuilt: 0, tunnelsBuilt: 0,
       maxTownStage: 0, maxIndustryLevel: 0, maxStationLevel: 1, trainUpgrades: 0, contractsDone: 0, researchDone: 0,
-      regionsUnlocked: 1, modelsOwned: 0, trainsOwned: 0, electricTrains: 0, townLevelUps: 0, playTime: 0, legend: 0, paxTransfers: 0,
+      regionsUnlocked: 1, modelsOwned: 0, trainsOwned: 0, electricTrains: 0, townLevelUps: 0, playTime: 0, legend: 0, paxTransfers: 0, overtakes: 0,
       cargo: {},
     };
   }

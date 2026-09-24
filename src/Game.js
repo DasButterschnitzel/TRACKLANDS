@@ -234,10 +234,16 @@ export class Game {
     net.computeRuns();
     const runHeat = new Map();
     for (let i = 0; i < N * N; i++) if (net.runId[i] >= 0 && net.waitHeat[i] > 0) runHeat.set(net.runId[i], Math.max(runHeat.get(net.runId[i]) || 0, net.waitHeat[i]));
+    // busy single track: suggest a passing loop in the middle of the run,
+    // long enough for the longest train (with a highlight on hover)
+    const need = Math.min(12, 1 + Math.ceil(this.trains.trains.reduce((m, t) => Math.max(m, this.trains.trainLength(t)), 0) / TILE));
     for (const [rid, h] of runHeat) if (h > 60) {
-      let tile = -1; for (let i = 0; i < N * N; i++) if (net.runId[i] === rid) { tile = i; break; }
-      out.push({ key: 'adv_single_track', tile, p: { n: Math.round(h) } });
+      const tiles = net.runTiles(rid);
+      const mid = Math.floor(tiles.length / 2);
+      if (tiles.length >= need + 4) out.push({ key: 'adv_passing_loop', tile: tiles[mid], preview: tiles.slice(Math.max(0, mid - Math.floor(need / 2)), mid - Math.floor(need / 2) + need), p: { n: Math.round(h), len: need } });
+      else out.push({ key: 'adv_single_short', tile: tiles[mid] ?? -1, preview: tiles, p: { n: Math.round(h) } });
     }
+    for (const t of this.trains.trains) if (t.slowT > 40) { const o = this.trains.byId(t.slowAhead); if (o) out.push({ key: 'adv_slow_ahead', train: t.id, p: { name: t.name, other: o.name } }); }
     for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, p: { n: inc.trains.length } });
     for (const t of this.trains.trains) if (t._st.rating === 'overloaded') out.push({ key: 'adv_overloaded', train: t.id, p: { name: t.name } });
     return out;

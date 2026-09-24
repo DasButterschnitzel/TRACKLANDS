@@ -11,6 +11,9 @@ export function detectLang() {
 export function setLang(l) { lang = LANGS.some((x) => x.id === l) ? l : 'en'; document.documentElement.lang = lang; }
 export function getLang() { return lang; }
 
+// optional texts (e.g. per-tool tips) are probed without counting as missing
+export function has(key) { return (DICT[lang] && DICT[lang][key]) != null || DICT.en[key] != null; }
+
 export function t(key, p) {
   let s = (DICT[lang] && DICT[lang][key]) ?? DICT.en[key];
   if (s == null) { missing.add(key); return key; }

@@ -2,6 +2,7 @@
 // then introduces later mechanics with one-time hints.
 import * as THREE from 'three';
 import { TILE, tileCX, tileCZ, N } from '../util.js';
+import { has as hasText } from '../i18n.js';
 
 const STEPS = [
   { id: 'welcome', button: 'tut_start' },
@@ -85,8 +86,8 @@ export class Tutorial {
 
   hintOnce(key) {
     if (this.hints.has(key) || this.active) return;
+    if (!hasText('hint_' + key)) return;
     const text = this.game.ui.tr('hint_' + key);
-    if (text === 'hint_' + key) return;
     this.hints.add(key);
     this.game.ui.hint(text);
   }

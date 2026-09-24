@@ -616,6 +616,20 @@ export class RailNetwork {
     }
     this.runLocks.clear();
   }
+  // tiles of a single-track run in order along the track
+  runTiles(rid) {
+    const set = [];
+    for (let i = 0; i < N * N; i++) if (this.runId[i] === rid) set.push(i);
+    if (set.length < 2) return set;
+    const inRun = new Set(set);
+    const nb = (i) => { const o = []; for (let d = 0; d < 8; d++) if (this.hasDir(i, d)) { const j = step(i, d); if (inRun.has(j)) o.push(j); } return o; };
+    let start = set.find((i) => nb(i).length <= 1);
+    if (start == null) start = set[0];
+    const out = [], seen = new Set();
+    for (let cur = start; cur != null && !seen.has(cur);) { out.push(cur); seen.add(cur); cur = nb(cur).find((j) => !seen.has(j)); }
+    for (const i of set) if (!seen.has(i)) out.push(i);
+    return out;
+  }
   runSense(stepObj) {
     const f = this.runDir[stepObj.tile];
     if (stepObj.outH != null) return stepObj.outH === f ? 0 : 1;
@@ -637,6 +651,35 @@ export class RailNetwork {
   runLockDrop(rid, id) {
     const L = this.runLocks.get(rid);
     if (L) { L.ids.delete(id); if (!L.ids.size) this.runLocks.delete(rid); }
+  }
+
+  // ---------- signal sections (block display) ----------
+  // Track split at signals, junctions and stations. Returns an Int32Array:
+  // section id per tile, -2 junction, -3 station, -1 no track.
+  sections() {
+    if (this._secVersion === this.version && this._sec) return this._sec;
+    const sec = new Int32Array(N * N).fill(-1);
+    const parent = new Int32Array(N * N);
+    for (let i = 0; i < N * N; i++) parent[i] = i;
+    const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const plain = (i) => this.conn[i] && !this.isJunction(i) && !this.special.has(i);
+    for (let i = 0; i < N * N; i++) {
+      if (!plain(i)) continue;
+      for (let d = 0; d < 4; d++) {
+        if (!this.hasDir(i, d)) continue;
+        const j = step(i, d);
+        if (j < 0 || !plain(j)) continue;
+        if (this.signals.has(i * 8 + d) || this.signals.has(j * 8 + opp(d))) continue;
+        const a = find(i), b = find(j);
+        if (a !== b) parent[a] = b;
+      }
+    }
+    for (let i = 0; i < N * N; i++) {
+      if (!this.conn[i]) continue;
+      sec[i] = this.special.has(i) ? -3 : this.isJunction(i) ? -2 : find(i);
+    }
+    this._sec = sec; this._secVersion = this.version;
+    return sec;
   }
 
   // ---------- signals ----------

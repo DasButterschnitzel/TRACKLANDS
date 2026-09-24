@@ -759,6 +759,32 @@ export class TrainSystem {
     return best;
   }
 
+  // Overtaking at stations: a faster (or higher priority) train that runs
+  // through this station on another track, in the direction we face, within
+  // the next few tiles and without stopping here. Our departure would put us
+  // right in front of it.
+  letPassFor(t, stn) {
+    if (!stn || stn.tracks.length < 2 || !t.steps.length) return null;
+    const hs = t.steps[this.stepAt(t, t.s)];
+    const dir = hs.outH != null ? hs.outH : hs.inH;
+    const all = new Set(), own = new Set();
+    stn.tracks.forEach((tk, k) => { for (const x of tk.tiles) { all.add(x); if (t.plat && t.plat.track === k) own.add(x); } });
+    if (!own.size) own.add(hs.tile);
+    for (const f of this.trains) {
+      // (a train actually standing and waiting for us must not be kept waiting)
+      if (f === t || f.state !== 'run' || (f.blockedBy === t.id && f.wait > 1) || f.target === stn.id || !f.steps.length) continue;
+      if (f._st.speed < t._st.speed * 1.2 && f._st.prioRank <= t._st.prioRank) continue;
+      const h = this.stepAt(f, f.s);
+      for (let k = h + 1; k < Math.min(f.steps.length, h + 14); k++) {
+        const s = f.steps[k];
+        if (!all.has(s.tile)) continue;
+        if (own.has(s.tile) || turnOf(s.inH, dir) > 1) break;
+        return f;
+      }
+    }
+    return null;
+  }
+
   // a train standing at that platform for a while yet (timetable hold, full
   // load, long loading): better use another platform when there is one
   platformHeldLong(stn, k, id) {
@@ -989,6 +1015,7 @@ export class TrainSystem {
     const stn = this.stationAtHead(t) || S.byId(t.target);
     t.state = 'load'; t.stateT = 0; t.v = 0;
     t.loadedHere = 0;
+    t.letPass = null; t.yieldT = 0; t.ttHold = false;
     if (t.pendingVeh) this.setVehicles(t, t.pendingVeh);
     if (!stn) { t.loadTime = 0.5; return; }
     if (t.claim && t.claim.st === stn.id) this.releaseClaim(t);
@@ -1161,6 +1188,7 @@ export class TrainSystem {
       }
       case 'load': {
         if (t.ttHold) t.ttHeld = (t.ttHeld || 0) + dt;
+        if (t.letPass) t.yieldT = (t.yieldT || 0) + dt;
         if (t.stateT >= t.loadTime) {
           const stn = this.stationAtHead(t) || g.stations.byId(t.target);
           const opt = t.curStop || { act: 'auto' };
@@ -1177,6 +1205,10 @@ export class TrainSystem {
           const hold = g.lines.holdFor(t);
           if (hold > 0 && !blocking) { t.ttHold = true; t.loadTime = t.stateT + Math.min(hold, 1); return; }
           t.ttHold = false;
+          // overtaking: let a faster train that is about to pass on another track go first
+          const fast = !blocking && (t.yieldT || 0) < 45 ? this.letPassFor(t, stn) : null;
+          if (fast) { if (!t.letPass) g.stats.inc('overtakes'); t.letPass = fast.name; t.loadTime = t.stateT + 1; return; }
+          t.letPass = null; t.yieldT = 0;
           g.lines.noteDeparture(t);
           t.state = 'depart';
         }
@@ -1393,6 +1425,10 @@ export class TrainSystem {
       if (t.steps.length > 60) this.trim(t);
       return;
     }
+    // catching up with a slower train (advisor: passing loop / overtaking)
+    const slow = res.blocker ? this.byId(res.blocker) : null;
+    if (slow && slow.state === 'run' && slow._st.speed < t._st.speed * 0.8) { t.slowAhead = slow.id; t.slowT = (t.slowT || 0) + dt; }
+    else if (t.slowT) t.slowT = Math.max(0, t.slowT - dt * 0.05);
     // blocked by another train / signal
     if (limitS < t.stopS - 0.1 && t.v < 0.05 && dist < 0.5) {
       t.wait += dt; t.waitTotal += dt;
@@ -1738,6 +1774,7 @@ export class TrainSystem {
       case 'load': {
         const pct = Math.round(this.fillRatio(t) * 100);
         const here = this.stationAtHead(t);
+        if (t.letPass) return { key: 'st_let_pass', p: { train: t.letPass, station: here ? here.name : where } };
         if (t.ttHold) return { key: 'st_timetable', p: { s: Math.max(1, Math.ceil(this.game.lines.holdFor(t))), station: here ? here.name : where } };
         return { key: t.waitFull && t.stateT > t.loadTime - 1.6 ? 'st_wait_full' : 'st_loading', p: { pct, station: here ? here.name : where }, eff: t.platEff };
       }

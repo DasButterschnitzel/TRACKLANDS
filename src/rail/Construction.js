@@ -14,6 +14,7 @@ export class Construction {
     this.tier = 0;
     this.trackMode = 'double';
     this.signalType = 'block';
+    this.signalSpacing = 4;          // tiles between signals when dragging a row
     this.decor = 'oak';
     this.drag = null;
     this.plan = null;
@@ -166,7 +167,7 @@ export class Construction {
         this.bulldoze(tile);
         break;
       case 'station': this.placeStation(tile); break;
-      case 'signal': this.placeSignal(tile, p || this.hoverP); break;
+      case 'signal': this.drag = { a: tile, b: tile, p: p || this.hoverP }; break;
       case 'waypoint': this.toggleWaypoint(tile); break;
       case 'depot': this.placeDepot(tile); break;
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
@@ -182,10 +183,21 @@ export class Construction {
       this.drag.tiles.add(tile); this.bulldoze(tile);
     } else if (this.tool === 'decor' && !this.drag.tiles.has(tile)) {
       this.drag.tiles.add(tile); this.placeDecor(tile, true);
+    } else if (this.tool === 'signal' && tile !== this.drag.b) {
+      this.drag.b = tile; this.previewSignalRow();
     }
   }
   pointerUp(tile) {
     if (!this.drag) return;
+    if (this.tool === 'signal') {
+      const d = this.drag;
+      this.drag = null;
+      this.clearPreview();
+      if (tile >= 0 && tile !== d.b) d.b = tile;
+      if (d.a === d.b) this.placeSignal(d.a, d.p); else this.placeSignalRow(d.a, d.b);
+      this.hover(this.hoverTile);
+      return;
+    }
     if (this.tool === 'track') {
       if (tile >= 0 && tile !== this.drag.b) { this.drag.b = tile; this.previewTrack(); }
       if (this.drag.a === this.drag.b) this.game.ui.toast(this.game.ui.tr('hint_drag_track'), 'info');
@@ -364,6 +376,58 @@ export class Construction {
     g.particles.emit('sparkle', tileCX(tile), net.railH(tile) + 0.8, tileCZ(tile), 4, 0.4);
     this.hover(tile, p);
   }
+  // Signals along the track from a to b (drag direction = travel direction):
+  // one every `signalSpacing` tiles, plus one in front of every junction on
+  // the way (the usual spot for an entry signal). Stations, junctions and
+  // existing signals are skipped.
+  planSignalRow(a, b) {
+    const net = this.game.net;
+    if (a < 0 || b < 0 || !net.conn[a] || !net.conn[b]) return null;
+    const r = net.findRoute({ tile: a, heading: null, fromCenter: true }, b, { allowReverse: false });
+    if (!r || !r.steps.length || r.reverse) return null;
+    const seq = [{ tile: a, out: r.steps[0].inH }, ...r.steps.slice(0, -1).map((s) => ({ tile: s.tile, out: s.outH }))];
+    const keys = [];
+    let since = this.signalSpacing;
+    for (let k = 0; k < seq.length; k++) {
+      const { tile, out } = seq[k];
+      const next = seq[k + 1] ? seq[k + 1].tile : b;
+      const ok = out != null && !net.canPlaceSignal(tile, out);
+      if (ok && net.signals.has(tile * 8 + out)) { since = 0; continue; }
+      const beforeJunction = net.isJunction(next);
+      if (ok && (since >= this.signalSpacing || beforeJunction)) { keys.push(tile * 8 + out); since = 0; }
+      since++;
+    }
+    return { keys, tiles: keys.map((k) => k >> 3) };
+  }
+  previewSignalRow() {
+    const g = this.game, d = this.drag;
+    const plan = this.planSignalRow(d.a, d.b);
+    const n = plan ? plan.keys.length : 0;
+    const cost = n * g.economy.costs.signal();
+    const ok = n > 0 && this.signalUnlocked(this.signalType) && g.economy.canAfford(cost);
+    this.showTiles(plan ? plan.tiles : [d.a, d.b], ok);
+    g.ui.cursorInfo(plan ? g.ui.tr('hint_signal_row', { n, cost: fmt(cost) }) : g.ui.tr('err_signal_row'), ok);
+  }
+  placeSignalRow(a, b) {
+    const g = this.game, net = g.net;
+    const plan = this.planSignalRow(a, b);
+    if (!plan || !plan.keys.length) { g.ui.error(plan ? 'err_signal_row_none' : 'err_signal_row'); return; }
+    if (!this.signalUnlocked(this.signalType)) { g.ui.error('err_signal_locked'); return; }
+    const unit = g.economy.costs.signal();
+    const n = Math.min(plan.keys.length, Math.floor(g.economy.coins / unit));
+    if (n <= 0) { g.ui.error('err_no_money'); return; }
+    const placed = plan.keys.slice(0, n);
+    g.economy.spend(n * unit, 'construction');
+    const type = this.signalType === 'oneway' ? 'block' : this.signalType;
+    for (const k of placed) net.signals.set(k, { type, oneway: this.signalType === 'oneway' });
+    net.bumpVersion();
+    g.trains.onNetworkChanged(false);
+    this.pushUndo({ type: 'signals', keys: placed, cost: n * unit });
+    g.audio.play('construct');
+    for (const k of placed) g.particles.emit('sparkle', tileCX(k >> 3), net.railH(k >> 3) + 0.8, tileCZ(k >> 3), 3, 0.4);
+    g.ui.toast(g.ui.tr('toast_signals_placed', { n }), 'good', 'signal');
+  }
+
   waypointError(tile) {
     const g = this.game, net = g.net;
     if (tile < 0 || !net.conn[tile]) return 'err_waypoint_track';
@@ -511,6 +575,11 @@ export class Construction {
       }
     } else if (e.type === 'decor') {
       g.decor.remove(e.tile);
+      g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'signals') {
+      for (const k of e.keys) net.signals.delete(k);
+      net.bumpVersion();
+      g.trains.onNetworkChanged(false);
       g.economy.earn(e.cost, 'refund', false);
     }
     g.audio.play('close');

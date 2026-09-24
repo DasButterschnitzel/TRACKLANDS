@@ -38,6 +38,8 @@ const SCREENS = [
   ['fleet', () => { const u = window.__tracklands.ui; u.trainsTab = 'fleet'; u.refreshPanel(); }],
   ['netmap', () => { const u = window.__tracklands.ui; u.trainsTab = 'trains'; u.closePanel(); u.mapMode = 'lines'; u.openPanel('map'); }],
   ['overlay', () => { window.__tracklands.ui.closePanel(); const g = window.__tracklands.game; g.select(null); g.overlays.set('routes'); }],
+  ['signal-tool', () => { const g = window.__tracklands.game; g.overlays.set(null); window.__tracklands.ui.closePanel(); g.construction.setTool('signal'); }],
+  ['blocks', () => { const g = window.__tracklands.game; g.construction.setTool('select'); g.overlays.set('blocks'); }],
   ['night-rain', () => { const g = window.__tracklands.game; g.overlays.set(null); g.env.timeOfDay = 0.95; g.env.weather = g.env.weatherTarget = 'rain'; }],
 ];
 

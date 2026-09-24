@@ -6,6 +6,7 @@ import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
 export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station'];
+const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
 const ROUTE_COLS = [0xffd24a, 0x4ad0ff, 0xff7a4a, 0x8aff6a, 0xd07aff, 0xff4a9a, 0x4affd0, 0xffffff];
 
 export class Overlays {
@@ -64,10 +65,15 @@ export class Overlays {
           const L = T.trainLength(t);
           for (const s of t.steps) if (s.s1 >= t.s - L && s.s0 <= t.s) bodies.add(s.tile);
         }
+        // every signal section in its own soft colour; junctions grey,
+        // stations sand; occupied tiles red, reserved tiles amber
+        const sec = net.sections();
         for (let i = 0; i < N * N; i++) {
           if (!net.conn[i]) continue;
           const held = net.tileHolder(i);
-          const col = bodies.has(i) ? 0xe04a3a : held ? 0xf0c040 : net.runId[i] >= 0 ? 0x4ab0e0 : 0x4ad07a;
+          const s = sec[i];
+          const base = s === -2 ? 0x9aa3ad : s === -3 ? 0xd8c7a0 : SECTION_COLS[(s * 2654435761 >>> 0) % SECTION_COLS.length];
+          const col = bodies.has(i) ? 0xe04a3a : held ? 0xf0c040 : base;
           this.quad(k++, i, col);
         }
         break;

@@ -81,12 +81,18 @@ export class StationSystem {
   targetsFor(stn, t) {
     const out = [];
     const a = this.axisOf(stn);
+    // on a platform at least a tile longer than the train, stop one tile short
+    // of the end: the train then keeps the exit switch (and its fouling
+    // point) clear, so others can pass on the next track
+    const L = t && t._st ? this.game.trains.trainLength(t) : Infinity;
+    const roomy = (n) => n >= 3 && n * TILE >= L + TILE * 1.2;
     stn.tracks.forEach((tk, k) => {
       if (tk.role === 'through') return;
       const n = tk.tiles.length;
       if (n === 1) { out.push({ tile: tk.tiles[0], heading: null, track: k, len: 1, role: tk.role }); return; }
-      if (tk.dir !== 'rev') out.push({ tile: tk.tiles[n - 1], heading: a, track: k, len: n, role: tk.role });
-      if (tk.dir !== 'fwd') out.push({ tile: tk.tiles[0], heading: (a + 4) & 7, track: k, len: n, role: tk.role });
+      const r = roomy(n) ? 1 : 0;
+      if (tk.dir !== 'rev') out.push({ tile: tk.tiles[n - 1 - r], heading: a, track: k, len: n, role: tk.role });
+      if (tk.dir !== 'fwd') out.push({ tile: tk.tiles[r], heading: (a + 4) & 7, track: k, len: n, role: tk.role });
     });
     if (!out.length && stn.tracks.length) {
       // every track marked "through": still allow stopping on track 1
@@ -116,6 +122,7 @@ export class StationSystem {
     if (role === 'passenger') return prio === 'passenger' || prio === 'express' || prio === 'mail' ? 0 : 20;
     if (role === 'freight') return prio === 'freight' || prio === 'service' ? 0 : 20;
     if (role === 'express') return prio === 'express' ? -1 : prio === 'passenger' ? 6 : 25;
+    if (role === 'through') return 8;   // kept free for trains passing (and overtaking) without a stop
     return 0;
   }
   claimPlatform(stn, k, id) {

@@ -306,6 +306,82 @@ export class RailTests {
     };
   }
 
+  // Overtaking: a slow stopping train waits at the middle station while a
+  // fast train runs through on the station's 'through' track.
+  overtaking() {
+    const a = this.findArea(24, 4) || this.findArea(24, 5);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 2, x0 = a.x0 + 1;
+    this.line(x0, z, x0 + 21, z);
+    this.finish();
+    const g = this.g, S_ = g.stations;
+    const A = this.station(x0 + 2, z), M = this.station(x0 + 11, z), B = this.station(x0 + 20, z);
+    S_.extendPlatform(A, 0, 1); S_.extendPlatform(B, 0, 0); S_.extendPlatform(M, 0, 1); S_.extendPlatform(M, 0, 1); S_.extendPlatform(M, 0, 0);
+    S_.addTrack(A, -1); S_.addTrack(B, -1);
+    const rm = S_.addTrack(M, -1);
+    if (!rm.error) S_.setTrackRole(M, 1, 'through');
+    const D = this.depot(x0 + 22, z);
+    g.net.connect(idx(x0 + 21, z), E);
+    this.finish();
+    const slow = this.train(['L:pioneer', 'W:coach'], D, [A, M, B], { dwell: 1 });
+    slow.route[1].dwell = 15;
+    const fast = this.train(['L:trailmaster', 'W:coach'], D, [A, B]);
+    const tr = [slow, fast];
+    const through = new Set(M.tracks[1] ? M.tracks[1].tiles : []);
+    // one yield = the slow train holding for the fast one; one overtake = the
+    // fast train running through on the through track during that hold
+    let passes = 0, yields = 0, holding = false, passed = false;
+    const tick = g.pax.tick.bind(g.pax);
+    g.pax.tick = (dt) => {
+      tick(dt);
+      if (slow.letPass && !holding) { holding = true; passed = false; yields++; }
+      if (!slow.letPass) holding = false;
+      if (holding && !passed && fast.steps.length && through.has(fast.steps[g.trains.stepAt(fast, fast.s)].tile)) { passes++; passed = true; }
+    };
+    const trips0 = tr.map((t) => t.trips);
+    const r = this.run(720, 1 / 30, tr);
+    g.pax.tick = tick;
+    const trips = tr.map((t, i) => t.trips - trips0[i]);
+    this.cleanup(tr);
+    return {
+      ok: !rm.error && r.keyConflicts === 0 && r.overlaps === 0 && r.nan === 0 && passes >= 1 && trips.every((n) => n >= 2),
+      detail: `${rm.error || ''} yields ${yields} · overtakes ${passes} · trips ${trips.join('/')} · keys ${r.keyConflicts} overlaps ${r.overlaps} ${this.states(tr)}`,
+    };
+  }
+
+  // Signal row tool: dragging along a line places a signal every N tiles in
+  // the drag direction plus one in front of a junction; undo removes them all
+  // and refunds; the block overlay splits the line into sections at them.
+  signalRow() {
+    const a = this.findArea(20, 4);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 1, x0 = a.x0 + 1;
+    this.line(x0, z, x0 + 17, z);
+    // a branch off at x0+12 makes a junction there
+    this.line(x0 + 12, z, x0 + 12, z + 2);
+    this.finish();
+    const g = this.g, C = g.construction, net = g.net;
+    C.signalType = 'block'; C.signalSpacing = 4;
+    const before = net.signals.size, coins = g.economy.coins;
+    const plan = C.planSignalRow(idx(x0, z), idx(x0 + 17, z));
+    C.placeSignalRow(idx(x0, z), idx(x0 + 17, z));
+    const placed = net.signals.size - before;
+    const keys = plan ? plan.keys : [];
+    const dirsOk = keys.every((k) => (k & 7) === E);
+    const beforeJn = keys.some((k) => (k >> 3) === idx(x0 + 11, z));
+    const sec = net.sections();
+    const secs = new Set(); for (let x = x0; x <= x0 + 17; x++) { const s = sec[idx(x, z)]; if (s >= 0) secs.add(s); }
+    const spent = coins - g.economy.coins;
+    C.undoStack[C.undoStack.length - 1].time = g.clock;
+    C.undo();
+    const after = net.signals.size - before;
+    const refunded = Math.abs(g.economy.coins - coins) < 1e-6;
+    return {
+      ok: placed >= 3 && placed === keys.length && dirsOk && beforeJn && secs.size >= 3 && spent > 0 && after === 0 && refunded,
+      detail: `placed ${placed} (${keys.map((k) => (k >> 3) % 64 - x0).join(',')}) · eastbound ${dirsOk} · before junction ${beforeJn} · sections ${secs.size} · undo ${after === 0 && refunded ? 'ok' : 'failed'}`,
+    };
+  }
+
   runAll(only) {
     if (only) { this.verbose = true; }
     const g = this.g;
@@ -321,6 +397,8 @@ export class RailTests {
     if (only === 'coarse') { this.check('coarse', () => this.signalsAndSpeed(0.1)); return this.log; }
     if (only === 'pax') { this.check('pax', () => this.paxTransfer()); return this.log; }
     if (only === 'timetable') { this.check('timetable', () => this.timetable()); return this.log; }
+    if (only === 'overtake') { this.check('overtaking at a station', () => this.overtaking()); return this.log; }
+    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));

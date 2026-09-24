@@ -74,6 +74,14 @@ export class UI {
       const h = this.handlers[act] || this.actions[act];
       if (h) { e.preventDefault(); this.app.audio.unlock(); h.call(this, el.dataset.arg, el, e); if (!el.dataset.silent) this.app.audio.play('click'); }
     });
+    // Enter/Space activate role="button" controls that are not <button>s (SVG map stations)
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const el = e.target && e.target.closest && e.target.closest('[role="button"][data-act]');
+      if (!el || el.tagName === 'BUTTON') return;
+      e.preventDefault();
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
     document.addEventListener('input', (e) => {
       const el = e.target.closest('[data-input]');
       if (!el) return;
@@ -206,7 +214,7 @@ export class UI {
         const ok = C.signalUnlocked(ty);
         const res = { block: 'block_signals', path: 'path_signals', oneway: 'one_way_signals' }[ty];
         return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
-      }).join('') + `<span class="sub-hint">${this.tr('hint_signal')}</span>`;
+      }).join('') + `<span class="sub-sep"></span><span class="sub-label">${this.tr('sig_row')}</span>${[2, 3, 4, 6].map((n) => `<button class="chip mini ${C.signalSpacing === n ? 'on' : ''}" data-act="signalSpacing" data-arg="${n}" data-tip="${this.tr('sig_row_tip', { n })}"><b>${n}</b></button>`).join('')}<span class="sub-hint">${this.tr('hint_signal')}</span>`;
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }

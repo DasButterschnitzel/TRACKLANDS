@@ -556,3 +556,8 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 .nm-line { display: inline-flex; align-items: center; gap: 5px; }
 .nm-line i { width: 16px; height: 5px; border-radius: 3px; }
 .nm-line small { color: var(--ink2); }
+
+/* signal tool: row spacing */
+#subbar .sub-sep { width: 1px; align-self: stretch; background: rgba(31,42,58,.14); margin: 4px 4px; flex: none; }
+#subbar .sub-label { font-size: .82em; font-weight: 600; color: var(--ink2); padding: 0 2px; white-space: nowrap; align-self: center; }
+#subbar .chip.mini { min-width: 36px; justify-content: center; }
