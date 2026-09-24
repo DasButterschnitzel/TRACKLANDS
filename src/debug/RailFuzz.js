@@ -146,7 +146,7 @@ export class RailFuzz extends RailTests {
   // one random live edit
   mutate() {
     const g = this.g, rng = this.rng, T = g.trains;
-    const op = rng.pick(['signal', 'unsignal', 'single', 'double', 'extend', 'addtrack', 'bulldoze', 'consist', 'buy', 'sell', 'role', 'waypoint', 'removeTrack', 'upgrade']);
+    const op = rng.pick(['signal', 'unsignal', 'single', 'double', 'extend', 'addtrack', 'bulldoze', 'consist', 'buy', 'sell', 'role', 'waypoint', 'removeTrack', 'upgrade', 'works']);
     switch (op) {
       case 'signal': this.randomSignal(); break;
       case 'unsignal': { const k = [...g.net.signals.keys()]; if (k.length) { g.net.signals.delete(rng.pick(k)); g.net.bumpVersion(); this.note('unsignal'); } break; }
@@ -180,6 +180,17 @@ export class RailFuzz extends RailTests {
       case 'sell': if (T.trains.length > 3) { const t = rng.pick(T.trains); T.sell(t); this.note(`sell ${t.name}`); } break;
       case 'role': { const s = rng.pick(this.sites); if (!s || !g.stations.byId(s.id)) break; g.stations.setTrackRole(s, rng.int(0, s.tracks.length - 1), rng.pick(['any', 'any', 'passenger', 'freight', 'express'])); break; }
       case 'waypoint': { const tiles = this.plainTiles((i) => g.net.degree(i) === 2 && !g.net.waypoints.has(i)); if (tiles.length) { g.construction.toggleWaypoint(rng.pick(tiles)); this.note('waypoint'); } break; }
+      case 'works': {
+        // pending construction on occupied track: remove a tile under a train, rebuild it
+        const tiles = this.plainTiles((i) => g.net.degree(i) === 2 && T.tileReserved(i) && !g.net.waypoints.has(i));
+        if (!tiles.length) break;
+        const t = rng.pick(tiles), before = g.net.conn[t];
+        const ends = []; for (let d = 0; d < 8; d++) if ((before >> d) & 1) ends.push(step(t, d));
+        const r = g.works.add('bulldoze', { tile: t });
+        const r2 = ends.length === 2 && r.ok ? g.works.add('track', { a: ends[0], b: ends[1], tier: g.net.tier[t], mode: g.net.single[t] ? 'single' : 'double' }) : null;
+        this.note(`works ${t} ${r.error || 'ok'} ${r2 ? r2.error || 'ok' : '-'}`);
+        break;
+      }
       case 'upgrade': { const s = rng.pick(this.sites); if (s && g.stations.byId(s.id)) g.stations.upgrade(s); break; }
       default: break;
     }

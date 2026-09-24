@@ -254,27 +254,36 @@ export class Construction {
       if (plan.bridges) s += ` · ${ui.tr('bridge')} ×${plan.bridges}`;
       if (plan.tunnels) s += ` · ${ui.tr('tunnel')} ×${plan.tunnels}`;
       if (!afford) s += ` · ${ui.tr('err_no_money')}`;
+      if (this.trackCheck(plan)) s += ` · ${ui.tr('works_will_wait')}`;
       ui.cursorInfo(s, afford);
     } else ui.cursorInfo(ui.tr(plan.reason || 'err_no_path'), false);
   }
 
   // single track is cheaper; dragging double track over single track doubles it
-  adjustPlanForMode(plan) {
+  adjustPlanForMode(plan, mode = this.trackMode) {
     if (!plan.ok) return;
     const g = this.game, net = g.net;
     plan.upgrades = [];
-    if (this.trackMode === 'single') plan.cost = Math.round(plan.cost * 0.65);
+    if (mode === 'single') plan.cost = Math.round(plan.cost * 0.65);
     else for (const t of plan.tiles) if (net.conn[t] && net.single[t] && !net.special.has(t)) plan.upgrades.push(t);
     if (plan.upgrades.length) {
-      for (const t of plan.upgrades) if (g.trains.tileReserved(t)) { plan.ok = false; plan.reason = 'err_train_on_track'; plan.invalid.push(t); return; }
       plan.cost += Math.round(plan.upgrades.reduce((a, t) => a + g.economy.costs.trackTile(net.tier[t], net.kind(t)) * 0.4, 0));
     }
   }
 
   buildTrack() {
-    const g = this.game, net = g.net, plan = this.plan;
+    const g = this.game, plan = this.plan;
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
     if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
+    const err = this.trackCheck(plan);
+    if (err === 'err_train_on_track') { g.ui.offerWorks('track', { a: this.drag.a, b: this.drag.b, tier: this.tier, mode: this.trackMode }); return; }
+    if (err) { g.ui.error(err); return; }
+    this.applyTrack(plan, this.tier, this.trackMode);
+  }
+  // Can this plan be built now? (track under a train must not change)
+  trackCheck(plan) {
+    const g = this.game, net = g.net;
+    for (const t of plan.upgrades || []) if (g.trains.tileReserved(t)) return 'err_train_on_track';
     // existing track that gains a new leg becomes a switch: not while a train is on it
     const changed = [];
     for (let k = 0; k < plan.tiles.length; k++) {
@@ -282,19 +291,35 @@ export class Construction {
       if (!net.conn[t]) { changed.push(t); continue; }
       const dOut = plan.dirs[k], dIn = k > 0 ? (plan.dirs[k - 1] + 4) & 7 : null;
       const adds = (dOut != null && !net.hasDir(t, dOut)) || (dIn != null && !net.hasDir(t, dIn));
-      if (adds && g.trains.tileReserved(t)) { g.ui.error('err_train_on_track'); return; }
+      if (adds && g.trains.tileReserved(t)) return 'err_train_on_track';
       if (adds) changed.push(t);
     }
     // new track next to a diagonal a train is on would change its fouling keys
-    if (g.trains.foulsTrain(changed)) { g.ui.error('err_train_on_track'); return; }
+    if (g.trains.foulsTrain(changed)) return 'err_train_on_track';
+    return null;
+  }
+  // the whole a→b drag as one call: plan, check, build (pending construction)
+  trackOp(a, b, tier, mode, dry) {
+    const g = this.game;
+    const plan = g.net.planConstruction(a, b, tier);
+    this.adjustPlanForMode(plan, mode);
+    if (!plan.ok) return { error: plan.reason || 'err_no_path' };
+    const err = this.trackCheck(plan);
+    if (err || dry) return { error: err, cost: plan.cost, tiles: plan.tiles };
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    this.applyTrack(plan, tier, mode);
+    return { ok: true, cost: plan.cost };
+  }
+  applyTrack(plan, tier, mode) {
+    const g = this.game, net = g.net;
     const prev = plan.tiles.map((t) => ({ t, conn: net.conn[t], tier: net.tier[t], single: net.single[t] }));
     for (let k = 0; k < plan.dirs.length; k++) net.connect(plan.tiles[k], plan.dirs[k]);
     for (const p of prev) {
-      if (!p.conn && this.trackMode === 'single' && !net.special.has(p.t)) net.single[p.t] = 1;
-      if (p.conn && this.trackMode === 'double' && (plan.upgrades || []).includes(p.t)) net.single[p.t] = 0;
+      if (!p.conn && mode === 'single' && !net.special.has(p.t)) net.single[p.t] = 1;
+      if (p.conn && mode === 'double' && (plan.upgrades || []).includes(p.t)) net.single[p.t] = 0;
     }
-    for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, this.tier);
-    for (const p of prev) if (p.conn && p.tier > this.tier) net.tier[p.t] = p.tier;
+    for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, tier);
+    for (const p of prev) if (p.conn && p.tier > tier) net.tier[p.t] = p.tier;
     g.economy.spend(plan.cost, 'construction');
     // near-miss drags: join a path end to an adjacent station/depot that has no track yet
     for (const end of [plan.tiles[0], plan.tiles[plan.tiles.length - 1]]) {
@@ -335,7 +360,7 @@ export class Construction {
     if (!plan || !plan.tiles || !plan.tiles.length) return ui.tr((plan && plan.error) || 'err_unknown');
     const head = plan.mode === 'extend' ? ui.tr('st_drag_extend', { name: plan.stn.name }) : ui.tr(plan.side.length ? 'st_drag_new_n' : 'st_drag_new', { n: plan.side.length + 1 });
     const fit = ui.tr('st_drag_fit', { m: plan.fit.metres, n: plan.fit.cars, loco: plan.fit.loco });
-    return `${head} · ${ui.tr('st_drag_len', { n: plan.len })} · ${fit} · ${fmt(plan.cost)} ●${plan.error ? ' · ' + ui.tr(plan.error) : plan.clipped ? ' · ' + ui.tr(plan.clipped) : ''}`;
+    return `${head} · ${ui.tr('st_drag_len', { n: plan.len })} · ${fit} · ${fmt(plan.cost)} ●${plan.error ? ' · ' + ui.tr(plan.error === 'err_train_on_track' ? 'works_will_wait' : plan.error) : plan.clipped ? ' · ' + ui.tr(plan.clipped) : ''}`;
   }
   previewStation(a, b) {
     const g = this.game;
@@ -355,13 +380,21 @@ export class Construction {
   }
   buildStationDrag(a, b) {
     const g = this.game;
-    const plan = g.stations.planDrag(a, b, this.stationTracks || 1);
-    if (plan.error && !(plan.tiles && plan.tiles.length && plan.error !== 'err_no_money' && plan.mode === 'extend')) { g.ui.error(plan.error); return; }
+    const r = this.stationOp(a, b, this.stationTracks || 1);
+    if (r.error === 'err_train_on_track') g.ui.offerWorks('station', { a, b, tracks: this.stationTracks || 1 });
+    else if (r.error) g.ui.error(r.error);
+  }
+  // drag a station a→b (new or extension) as one call (pending construction)
+  stationOp(a, b, tracks, dry) {
+    const g = this.game;
+    const plan = g.stations.planDrag(a, b, tracks);
+    const all = [...(plan.tiles || []), ...(plan.side || []).flatMap((sd) => sd.tiles)];
+    if (plan.error && !(plan.tiles && plan.tiles.length && plan.error !== 'err_no_money' && plan.error !== 'err_train_on_track' && plan.mode === 'extend')) return { error: plan.error, cost: plan.cost, tiles: all };
+    if (dry) return { error: null, cost: plan.cost, tiles: all };
     if (plan.error) plan.error = null;   // (extend as far as possible)
-    const all = [...plan.tiles, ...(plan.side || []).flatMap((sd) => sd.tiles)];
     const prevConn = this.areaConn(all, 3);
     const r = g.stations.buildDrag(plan);
-    if (r.error) { g.ui.error(r.error); return; }
+    if (r.error) return r;
     if (plan.mode === 'extend') this.pushUndo({ type: 'stationExtend', id: r.stn.id, k: plan.k, end: r.end, n: r.added, cost: r.cost, prevConn });
     else this.pushUndo({ type: 'station', id: r.stn.id, cost: r.cost, prevConn });
     g.audio.play('construct');
@@ -374,6 +407,7 @@ export class Construction {
       if (!links.towns.length && !links.industries.length) g.ui.toast(g.ui.tr('warn_station_no_links'), 'warn');
       if (plan.side.length && r.tracks < plan.side.length + 1) g.ui.toast(g.ui.tr('st_drag_tracks_partial', { n: r.tracks }), 'info');
     }
+    return { ok: true, cost: r.cost, stn: r.stn };
   }
   // connection snapshot of every tile within r of the given tiles (undo)
   areaConn(tiles, r) {
@@ -580,13 +614,8 @@ export class Construction {
         break;
       }
       case 'track': {
-        if (g.trains.tileReserved(tile)) { g.ui.error('err_train_on_track'); return; }
-        const tier = net.tier[tile];
-        const refund = Math.round(g.economy.costs.trackTile(tier, net.kind(tile)) * COSTS.bulldozeRefund);
-        net.disconnectTile(tile);
-        g.economy.earn(refund, 'refund', false);
-        g.stats.inc('trackRemoved');
-        this.afterTrackChange(tile);
+        if (g.trains.tileReserved(tile)) { g.ui.offerWorks('bulldoze', { tile }); return; }
+        this.removeTrackOp(tile);
         break;
       }
       case 'trees': {
@@ -599,6 +628,20 @@ export class Construction {
     }
     g.audio.play('bulldoze');
     g.particles.emit('dust', tileCX(tile), g.world.view.heightAt(tileCX(tile), tileCZ(tile)) + 0.3, tileCZ(tile), 8);
+  }
+
+  // remove plain track from one tile (bulldozer; pending construction)
+  removeTrackOp(tile, dry) {
+    const g = this.game, net = g.net;
+    if (!net.conn[tile] || net.special.has(tile)) return { error: 'err_unknown' };
+    if (g.trains.tileReserved(tile)) return { error: 'err_train_on_track', cost: 0, tiles: [tile] };
+    if (dry) return { error: null, cost: 0, tiles: [tile] };
+    const refund = Math.round(g.economy.costs.trackTile(net.tier[tile], net.kind(tile)) * COSTS.bulldozeRefund);
+    net.disconnectTile(tile);
+    g.economy.earn(refund, 'refund', false);
+    g.stats.inc('trackRemoved');
+    this.afterTrackChange(tile);
+    return { ok: true, cost: 0 };
   }
 
   afterTrackChange(tile) {
@@ -634,6 +677,9 @@ export class Construction {
       this.restoreConn(e.prev);
       g.stats.inc('trackBuilt', -e.newTiles);
       g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'works') {
+      // cancel a pending construction and refund it
+      if (g.works.cancel(e.id)) g.ui.toast(g.ui.tr('works_cancelled'), 'info', 'track');
     } else if (e.type === 'station') {
       const s = g.stations.byId(e.id);
       if (s) {

@@ -384,12 +384,18 @@ export class UI {
         el._down = null;
         if (d && (d.x < r.left - 1 || d.x > r.right + 1 || d.y < r.top - 1 || d.y > r.bottom + 1)) { this.game.input.tap(d.x, d.y); return; }
         const [type, id] = key.split(':');
+        if (type === 'works') { this.cancelWorks(+id); return; }
         if (type === 'region') this.game.select({ type: 'region', id: +id });
         else this.game.select({ type, id: +id });
       });
     }
     el._used = true;
     return el;
+  }
+  async cancelWorks(id) {
+    const W = this.game.works;
+    if (!W.byId(id)) return;
+    if (await this.confirm(this.tr('works_cancel_q'), this.tr('works_cancel'), true) && W.cancel(id)) this.toast(this.tr('works_cancelled'), 'info', 'track');
   }
   pulseLabel(type, id) {
     const el = this.labels.get(`${type}:${id}`);
@@ -412,6 +418,14 @@ export class UI {
       return true;
     };
     const order = [];
+    // pending construction sites always show (they block trains)
+    if (vs < 70) for (const w of g.works.list) {
+      const el = this.label('works:' + w.id, 'works');
+      const sig = getLang() + w.id;
+      if (el._sig !== sig) { el._sig = sig; el._w = 0; el.innerHTML = `${icon('warn', 'w')}<span>${this.tr('works_label')}</span>`; el.dataset.tip = this.tr('works_cancel'); }
+      const at = g.works.anchor(w);
+      if (at != null) place(el, tileCX(at), Math.max(g.net.railH(at), g.world.view.heightAt(tileCX(at), tileCZ(at))) + 1.8, tileCZ(at));
+    }
     const showLabels = g.settings.labels !== false;
     if (showLabels) {
       for (const t of g.towns.list) {

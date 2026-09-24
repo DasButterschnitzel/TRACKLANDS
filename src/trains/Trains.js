@@ -1079,11 +1079,15 @@ export class TrainSystem {
   shuntIntoDepot(t) {
     const first = t.steps[0];
     if (!first || first.inH != null || !this.game.stations.depotAt(first.tile)) return false;
+    // once per trip: coming straight back out of the shed with still no way
+    // on means there is no route at all (the train then waits with a problem)
+    if (t.shuntTrips === t.trips) return false;
     const L = this.trainLength(t);
     if (t.s - L > first.s1) return false;
     if (!this.canFlip(t)) return false;
     this.flipTrain(t);
     if (!this.enterDepot(t)) return false;
+    t.shuntTrips = t.trips;
     t.depotOrder = { id: this.game.stations.depotAt(t.steps[t.steps.length - 1].tile).id, stay: false };
     t.tgtKind = 'depot'; t.problem = null;
     this.afterReverse(t, 'run');
@@ -1407,7 +1411,8 @@ export class TrainSystem {
       blocker = r.blocker; kind = r.kind;
       limitS = S[k].s0 - 0.3;
       // publish what we are waiting for (fairness: see yieldsTo)
-      if (r.kind !== 'yield' || !t.waitKeys) { const wk = []; for (let i = k; i <= e; i++) wk.push(...S[i].keys); t.waitKeys = wk; }
+      if (r.kind === 'works') t.waitKeys = null;
+      else if (r.kind !== 'yield' || !t.waitKeys) { const wk = []; for (let i = k; i <= e; i++) wk.push(...S[i].keys); t.waitKeys = wk; }
       t.waitStamp = this.game.time;
       break;
     }
@@ -1505,6 +1510,19 @@ export class TrainSystem {
     for (let i = k; i <= e; i++) for (const key of S[i].keys) if (!t.held.has(key)) gk.push(key);
     const y = gk.length ? this.yieldsTo(t, gk) : 0;
     if (y) return { blocker: y, kind: 'yield' };
+    // pending construction: no new reservations onto the site (a train that
+    // already holds the keys may pass; after a long wait the site gives way)
+    const W = this.game.works;
+    if (W && W.zone.size && !((t.worksPass || 0) > this.game.time)) {
+      for (let i = k; i <= e; i++) {
+        if (!W.zone.has(S[i].tile) || S[i].keys.every((key) => t.held.has(key))) continue;
+        // waiting for the site = waiting for the train on it (deadlock chains)
+        const tile = S[i].tile, occ = this.tileOccupied(tile);
+        let b = occ && occ.id !== t.id ? occ.id : 0;
+        if (!b) for (const key of [tile * 2, tile * 2 + 1]) if (net.resv[key] && net.resv[key] !== t.id) { b = net.resv[key]; break; }
+        return { blocker: b, kind: 'works' };
+      }
+    }
     for (let i = k; i <= e; i++) {
       const st = S[i], pk = st.keys;
       if (!net.canReserve(pk, t.id)) return { blocker: net.holder(pk, t.id), kind: st.jn ? 'junction' : st.station ? 'platform' : st.single ? 'single' : 'block' };
@@ -1613,10 +1631,13 @@ export class TrainSystem {
       t.wait += dt; t.waitTotal += dt;
       if (res.blocker !== t.blockedBy) { const b = this.byId(res.blocker); t.blockStart = g.time; t.blockTrips = b ? b.trips : 0; }
       t.blockedBy = res.blocker; t.blockKind = res.kind || (res.blocker ? 'block' : 'switch');
+      // a pending construction site never holds a train for good: after a
+      // while it gives way (the work then waits for this train too)
+      if (res.kind === 'works') { t.worksWait = (t.worksWait || 0) + dt; if (t.worksWait > 30) { t.worksPass = g.time + 25; t.worksWait = 0; } }
       const ws = t.steps[Math.min(t.steps.length - 1, t.resvEnd + 1)];
       if (ws) { net.waitHeat[ws.tile] += dt; if (ws.station) g.stations.noteWait(ws.station, dt); }
       if (t.wait > 12 && t.reroutes === 0) { t.reroutes = 1; this.rerouteAvoiding(t); }
-    } else if (t.v > 0.3) { t.wait = 0; t.reroutes = 0; t.blockedBy = 0; t.blockKind = null; t.deadT = 0; t.waitKeys = null; }
+    } else if (t.v > 0.3) { t.wait = 0; t.reroutes = 0; t.blockedBy = 0; t.blockKind = null; t.deadT = 0; t.waitKeys = null; t.worksWait = 0; }
     if (t.steps.length > 80) this.trim(t);
     if (!isFinite(t.s)) this.recoverTrain(t);
   }
@@ -1878,6 +1899,8 @@ export class TrainSystem {
   }
   tileReserved(tile) {
     const net = this.net;
+    // probing a deferred construction: note the tile, report it free
+    if (this.probe) { this.probe.add(tile); return false; }
     if (net.resv[tile * 2] || net.resv[tile * 2 + 1] || net.jres.has(tile)) return true;
     return !!this.tileOccupied(tile);
   }
@@ -1966,6 +1989,7 @@ export class TrainSystem {
       case 'lost': return { key: 'prob_' + (t.problem || 'no_route'), warn: true };
       case 'idle': case 'depart': return t.problem ? { key: 'prob_' + t.problem, warn: true } : { key: 'st_idle' };
       case 'run': {
+        if (t.v < 0.05 && t.blockKind === 'works' && t.wait > 0.5) return { key: 'st_wait_works' };
         if (t.v < 0.05 && t.blockedBy !== 0 && t.wait > 0.5) {
           const other = this.byId(t.blockedBy);
           return { key: 'st_wait_' + (t.blockKind || 'block'), p: { train: other ? other.name : '', station: where }, warn: t.wait > 20 };

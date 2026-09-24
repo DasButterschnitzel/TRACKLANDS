@@ -2,7 +2,9 @@
 // game API: pick the station tool in the toolbar, set the track count in the
 // sub bar, drag a station with the mouse, extend a platform by dragging with
 // a finger, undo with the toolbar button. Also checks the ghost preview text.
-import { openPage, startTestGame, ensureOut } from '../lib.mjs';
+// Then, on the production save: bulldozing track under a train asks for a
+// pending construction; confirming pays once, shows the site, undo refunds.
+import { openPage, startTestGame, loadSave, productionSave, ensureOut } from '../lib.mjs';
 import path from 'path';
 
 export const name = 'build';
@@ -95,6 +97,52 @@ export async function run({ browser, base }) {
       check(undone[0] === 5 && Math.abs(refunded - spent) < 1, `${label}: undo shrinks it back and refunds (${undone.join('/')})`);
     }
     if (errors.length) { ok = false; lines.push(`errors (${label}): ` + errors.slice(0, 2).join(' | ')); }
+    await ctx.close();
+  }
+  // pending construction on occupied track, real mouse on the production save
+  {
+    const { page, ctx, errors } = await openPage(browser, base, { viewport: { width: 1280, height: 800 } });
+    await loadSave(page, productionSave());
+    const tile = await page.evaluate(() => {
+      const g = window.__tracklands.game, T = g.trains, net = g.net;
+      for (let i = 0; i < 90; i++) g.tick(1 / 30);
+      let best = -1;
+      for (const t of T.trains) for (const st of t.steps) {
+        const i = st.tile;
+        if (net.degree(i) === 2 && !net.special.has(i) && !net.isJunction(i) && T.tileOccupied(i) === t && !g.decor.at(i)) { best = i; break; }
+        if (best >= 0) break;
+      }
+      if (best < 0) return -1;
+      window.__focus = [((best % 64) + 0.5) * 2, (Math.floor(best / 64) + 0.5) * 2];
+      g.camera.focus(window.__focus[0], window.__focus[1], 22);
+      return best;
+    });
+    check(tile >= 0, `works: found track under a train on the production save (${tile})`);
+    if (tile >= 0) {
+      await page.waitForFunction(() => { const t = window.__tracklands.game.camera.target, f = window.__focus; return Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.15; }, null, { polling: 100, timeout: 30000 });
+      await page.click('#tool-bulldoze');
+      const p = await screenOf(page, tile);
+      const c0 = await page.evaluate(() => window.__tracklands.game.economy.coins);
+      await page.mouse.click(p[0], p[1]);
+      const modal = await page.waitForSelector('.modal.works', { timeout: 3000 }).then(() => true, () => false);
+      check(modal, 'works: bulldozing under a train opens the pending-construction dialog');
+      if (modal) {
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: path.join(out, 'build-works-dialog.png') });
+        await page.click('.modal.works [data-mbtn=ok]');
+        await page.waitForTimeout(200);
+        const st = await page.evaluate((t) => { const g = window.__tracklands.game; return { n: g.works.list.length, zone: g.works.zone.has(t), conn: !!g.net.conn[t] }; }, tile);
+        await page.waitForTimeout(200);
+        const label = await page.waitForSelector('.wlabel.works', { state: 'attached', timeout: 3000 }).then(() => true, async () => { lines.push('labels: ' + await page.evaluate(() => [...document.querySelectorAll('#labels .wlabel')].map((e) => e.dataset.key).join(' '))); return false; });
+        check(st.n === 1 && st.zone && st.conn && !!label, `works: confirmed → 1 pending site, track still there, site label shown (${JSON.stringify(st)} label ${!!label})`);
+        await page.screenshot({ path: path.join(out, 'build-works-pending.png') });
+        await page.click('#toolbar [data-act=undo]');
+        await page.waitForTimeout(200);
+        const after = await page.evaluate(() => { const g = window.__tracklands.game; return { n: g.works.list.length, coins: g.economy.coins }; });
+        check(after.n === 0 && Math.abs(after.coins - c0) < 1, `works: undo cancels it with a full refund (${after.n} left, Δ${Math.round(after.coins - c0)})`);
+      }
+    }
+    if (errors.length) { ok = false; lines.push('errors (works): ' + errors.slice(0, 2).join(' | ')); }
     await ctx.close();
   }
   return { ok, lines };

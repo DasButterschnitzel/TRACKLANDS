@@ -461,6 +461,54 @@ export class RailTests {
     };
   }
 
+  // Building on occupied track: the branch switch goes onto a tile the train
+  // holds. The work is paid once, waits (surviving a save), trains do not
+  // re-enter the site, it builds once clear; undo of a pending work refunds.
+  pendingWorks() {
+    const a = this.findArea(18, 6);
+    if (!a) return { ok: false, detail: 'no area' };
+    const z = a.z0 + 3, x0 = a.x0 + 1, g = this.g, T = g.trains, W = g.works, net = g.net;
+    this.line(x0, z, x0 + 13, z);
+    this.finish();
+    const A = this.station(x0 + 2, z), B = this.station(x0 + 12, z);
+    const D = this.depot(x0 + 14, z);
+    net.connect(idx(x0 + 13, z), E);
+    this.finish();
+    const t = this.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, B]);
+    const J = idx(x0 + 7, z);
+    let sec = 0;
+    const r1 = this.run(10, 1 / 30, [t]);
+    while (!(T.tileReserved(J) && t.state === 'run') && sec < 120) { const r = this.run(0.25, 1 / 30, [t]); r1.overlaps += r.overlaps; sec += 0.25; }
+    const direct = g.construction.trackOp(J, idx(x0 + 7, z + 2), 0, 'double', true);
+    const coins0 = g.economy.coins;
+    const w = W.add('track', { a: J, b: idx(x0 + 7, z + 2), tier: 0, mode: 'double' });
+    const paid = coins0 - g.economy.coins;
+    const inZone = W.zone.has(J);
+    // persists
+    W.deserialize(JSON.parse(JSON.stringify(W.serialize())));
+    const kept = W.list.length === 1 && W.zone.has(J);
+    let waited = 0, built = false;
+    while (waited < 120) { const r = this.run(0.5, 1 / 30, [t]); r1.overlaps += r.overlaps; r1.keyConflicts += r.keyConflicts; waited += 0.5; if (!W.list.length) { built = !!net.conn[idx(x0 + 7, z + 1)]; break; } }
+    const net0 = g.economy.coins;
+    // pending work cancelled by undo: refunded in full
+    const K = idx(x0 + 9, z);
+    let sec2 = 0;
+    while (!(T.tileReserved(K) && t.state === 'run') && sec2 < 120) { this.run(0.25, 1 / 30, [t]); sec2 += 0.25; }
+    const c1 = g.economy.coins;
+    const w2 = W.add('track', { a: K, b: idx(x0 + 9, z - 2), tier: 0, mode: 'double' });
+    const C = g.construction;
+    if (C.undoStack.length) C.undoStack[C.undoStack.length - 1].time = g.clock;
+    C.undo();
+    const refunded = Math.abs(g.economy.coins - c1) < 1e-6 && !W.list.length && !net.conn[idx(x0 + 9, z - 1)];
+    const trips0 = t.trips;
+    const r2 = this.run(60, 1 / 30, [t]);
+    this.cleanup([t]);
+    return {
+      ok: direct.error === 'err_train_on_track' && !!w.ok && paid > 0 && inZone && kept && built && !!w2.ok && refunded && t.trips > trips0 && r1.overlaps + r2.overlaps === 0 && r1.keyConflicts + r2.keyConflicts === 0 && !r1.jumps && !r2.jumps,
+      detail: `occupied ${direct.error || 'free!'} · pending ${w.ok ? 'ok' : w.error} paid ${Math.round(paid)} · zone ${inZone} · after load ${kept} · built after ${waited}s ${built} (net ${Math.round(net0 - coins0)}) · undo refund ${refunded} · trips after ${t.trips - trips0} · overlaps ${r1.overlaps + r2.overlaps} conflicts ${r1.keyConflicts + r2.keyConflicts}`,
+    };
+  }
+
   // Signal row tool: dragging along a line places a signal every N tiles in
   // the drag direction plus one in front of a junction; undo removes them all
   // and refunds; the block overlay splits the line into sections at them.
@@ -511,7 +559,8 @@ export class RailTests {
     if (only === 'timetable') { this.check('timetable', () => this.timetable()); return this.log; }
     if (only === 'overtake') { this.check('overtaking at a station', () => this.overtaking()); return this.log; }
     if (only === 'depot') { this.check('send to depot', () => this.depotOrders()); return this.log; }
-    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); this.check('send to depot', () => this.depotOrders()); return this.log; }
+    if (only === 'works') { this.check('pending construction on occupied track', () => this.pendingWorks()); return this.log; }
+    if (only === 'fresh') { this.check('overtaking at a station', () => this.overtaking()); this.check('signal row tool', () => this.signalRow()); this.check('network contracts', () => this.networkContracts()); this.check('send to depot', () => this.depotOrders()); this.check('pending construction on occupied track', () => this.pendingWorks()); return this.log; }
     this.check('single track + passing loop', () => this.singleTrack(true));
     this.check('single track, no loop (run locks)', () => this.singleTrack(false));
     this.check('short halts on single track (deadlock resolver)', () => this.singleTrack(false, 1));

@@ -610,14 +610,19 @@ export class StationSystem {
     for (const L of ladders) for (let i = 0; i < L.path.length - 1; i++) cost += g.economy.costs.trackTile(net.tier[ref.tiles[0]], K_NORMAL);
     return { side, off, tiles, ladders, cost: Math.round(cost), tier: net.tier[ref.tiles[0]] };
   }
-  addTrack(stn, side) {
+  addTrack(stn, side, dry) {
     const g = this.game, net = g.net;
+    if (!stn || !this.byId(stn.id)) return { error: 'err_unknown' };
     const plan = this.planAddTrack(stn, side);
     if (plan.error) return plan;
-    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
     // merge tiles gain a switch: never under a train
-    for (const L of plan.ladders) if (L.path.length && g.trains.tileReserved(L.path[L.path.length - 1])) return { error: 'err_train_on_track' };
-    if (g.trains.foulsTrain([...plan.tiles, ...plan.ladders.flatMap((L) => L.path)])) return { error: 'err_train_on_track' };
+    const all = [...plan.tiles, ...plan.ladders.flatMap((L) => L.path)];
+    let occ = null;
+    for (const L of plan.ladders) if (L.path.length && g.trains.tileReserved(L.path[L.path.length - 1])) occ = 'err_train_on_track';
+    if (g.trains.foulsTrain(all)) occ = 'err_train_on_track';
+    if (dry) return { error: occ, cost: plan.cost, tiles: all };
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    if (occ) return { error: occ };
     g.economy.spend(plan.cost, 'construction');
     const a = this.axisOf(stn);
     for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);

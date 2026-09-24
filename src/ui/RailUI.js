@@ -408,6 +408,30 @@ export const RailUIMixin = {
     const d = g.stations.depots[0];
     if (d && r.reason === 'no_depot_route') g.camera.focus(((d.tile % 64) + 0.5) * TILE, (Math.floor(d.tile / 64) + 0.5) * TILE);
   },
+  // Building where a train is: offer a pending construction that starts as
+  // soon as the section is clear (Works). Cancel = nothing happens.
+  offerWorks(kind, a) {
+    const g = this.game, W = g.works;
+    const p = W.probe(kind, a);
+    if (p.error) { this.error(p.error); return; }
+    const who = W.blockers(p.zone);
+    const names = who.length ? who.slice(0, 3).map((t) => esc(t.name)).join(', ') + (who.length > 3 ? ' …' : '') : this.tr('works_a_train');
+    document.querySelectorAll('.modal.works').forEach((m) => m.closest('.modal-wrap').remove());
+    const w = this.modal(`<h3>${icon('warn')} ${this.tr('works_title')}</h3>
+      <p>${this.tr('works_desc', { train: names })}</p>
+      <p class="muted small">${this.tr('works_note')}</p>
+      <div class="row between"><span>${this.tr('works_cost')}</span><b>${fmt(p.cost)} ●</b></div>
+      <div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn primary" data-mbtn="ok" ${g.economy.canAfford(p.cost) ? '' : 'disabled'}>${icon('check', 'mini')} ${this.tr('works_confirm')}</button></div>`, { cls: 'works', onCancel: () => {} });
+    w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
+    w.querySelector('[data-mbtn=ok]').onclick = () => {
+      w.remove();
+      const r = W.add(kind, a);
+      if (r.error) { this.error(r.error); return; }
+      g.construction.clearPreview && g.construction.clearPreview();
+      g.audio.play('construct');
+      this.toast(this.tr('works_added'), 'info', 'track');
+    };
+  },
   depotChooser(t) {
     const g = this.game;
     const ch = g.trains.depotChoices(t);
@@ -643,7 +667,7 @@ export const RailUIMixin = {
         r.cargo = f.length >= all.length ? null : f;
         this.renderInspector();
       },
-      stAddTrack: (a) => { const [id, side] = a.split(':').map(Number); const s = g().stations.byId(id); const r = g().stations.addTrack(s, side); if (r.error) this.error(r.error); else { this.toast(this.tr(r.deadEnds ? 'toast_track_added_dead' : 'toast_track_added'), 'good', 'station'); g().construction.clearPreview(); } this.renderInspector(); },
+      stAddTrack: (a) => { const [id, side] = a.split(':').map(Number); const s = g().stations.byId(id); const r = g().stations.addTrack(s, side); if (r.error === 'err_train_on_track') this.offerWorks('addTrack', { stn: id, side }); else if (r.error) this.error(r.error); else { this.toast(this.tr(r.deadEnds ? 'toast_track_added_dead' : 'toast_track_added'), 'good', 'station'); g().construction.clearPreview(); } this.renderInspector(); },
       stExtend: (a) => { const [id, k, end] = a.split(':').map(Number); const s = g().stations.byId(id); const r = g().stations.extendPlatform(s, k, end); if (r.error) this.error(r.error); else g().construction.clearPreview(); this.renderInspector(); },
       stRemoveTrack: async (a) => { const [id, k] = a.split(':').map(Number); const s = g().stations.byId(id); if (!(await this.confirm(this.tr('confirm_remove_track', { n: k + 1 }), this.tr('remove'), true))) return; const r = g().stations.removeTrack(s, k); if (r.error) this.error(r.error); this.renderInspector(); },
       stFacility: (a) => { const [id, f] = a.split(':'); const s = g().stations.byId(+id); const e = g().stations.buildFacility(s, f); if (e) this.error(e); this.renderInspector(); },

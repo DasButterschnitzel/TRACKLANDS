@@ -12,6 +12,7 @@ import { StationSystem } from './rail/Stations.js';
 import { PaxFlow } from './rail/PaxFlow.js';
 import { Lines } from './trains/Lines.js';
 import { Construction } from './rail/Construction.js';
+import { Works } from './rail/Works.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
 import { IndustrySystem } from './world/Industries.js';
@@ -78,6 +79,7 @@ export class Game {
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);
+    this.works = new Works(this);
     this.furniture = new RailFurniture(this);
     this.overlays = new Overlays(this);
 
@@ -127,6 +129,7 @@ export class Game {
     this.time = +s.time || 0;
     this.camera.deserialize(s.camera);
     this.trains.deserialize(s.trains);
+    this.works.deserialize(s.works);
     this.world.view.recolorTerrain();
   }
 
@@ -136,7 +139,7 @@ export class Game {
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
       trains: this.trains.serialize(), economy: this.economy.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
-      env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
+      works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
   }
@@ -371,6 +374,7 @@ export class Game {
     this.stations.tick(dt);
     this.pax.tick(dt);
     this.trains.tick(dt);
+    this.works.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);
     const decay = Math.exp(-dt / 90);

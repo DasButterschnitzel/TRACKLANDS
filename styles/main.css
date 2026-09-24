@@ -653,3 +653,5 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 .tactions.st .tact { font-size: .72em; }
 @media (max-width: 420px) { .tactions.st { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 #cursorinfo.dock { left: 50%; top: calc(64px + var(--safe-t)); transform: translateX(-50%) !important; max-width: calc(100vw - 24px); width: max-content; text-align: center; font-size: .86em; }
+.wlabel.works { flex-direction: row; gap: 4px; background: rgba(214,120,30,.94); color: #fff; padding: 2px 8px; font-size: .75em; font-weight: 600; }
+.wlabel.works .ic { width: 1.1em; height: 1.1em; }
