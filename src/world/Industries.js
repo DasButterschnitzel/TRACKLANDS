@@ -105,6 +105,7 @@ export class IndustrySystem {
     if (ind.type === 'MINE' || ind.type === 'COAL_MINE') r *= 1 + (ev.mineProd || 0);
     if (ind.stake >= 0.5) r *= 1 + INDUSTRY_INVEST.ownerBonus;
     r *= this.seasonMul(ind.type);
+    if (g.economy.cycleMul) r *= 1 + (g.economy.cycleMul() - 1) * 0.5;
     return r * g.difficulty.growthMul ** 0;
   }
 

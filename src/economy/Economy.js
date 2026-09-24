@@ -6,11 +6,15 @@ import {
 } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
 
+export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
+
 export class Economy {
   constructor(game) {
     this.game = game;
     this.coins = 0;
     this.eventFx = {};
+    // business cycle: boom / normal / slump, drawn monthly from the world seed
+    this.cycle = { state: 'normal', months: 0, m: -1 };
     this.event = null;          // {id, t, dur, town}
     this.nextEvent = 300;
     this.contracts = [];
@@ -93,6 +97,7 @@ export class Economy {
       if (isPax && train._st.trainRev) mul += train._st.trainRev;
     }
     if (needed) mul *= REVENUE.demandBonus;
+    mul *= this.cycleMul();
     const tf = transit > 0 && g.ratings ? g.ratings.timeFactor(c, dist, transit) : 1;
     return v * mul * tf * g.difficulty.incomeMul;
   }
@@ -308,6 +313,26 @@ export class Economy {
     this.game.events.emit('dailyClaimed', d);
   }
 
+  // ---------- business cycle ----------
+  // Boom pays 12 % more for every delivery, a slump 12 % less; industries
+  // produce half that much more or less. A phase lasts at least four months;
+  // the first change can come after six.
+  cycleMul(state = this.cycle.state) { return CYCLE_MUL[state] || 1; }
+  cycleMonth() {
+    const g = this.game, C = this.cycle;
+    const m = g.ledger ? g.ledger.monthIndex() : 0;
+    if (C.m < 0) { C.m = m; return; }
+    if (m <= C.m) return;
+    C.m = m;
+    C.months++;
+    if (C.months < (C.state === 'normal' ? 6 : 4)) return;
+    const r = new RNG(hashStr(`cycle:${g.world.seed}:${m}`)).next();
+    let next = C.state;
+    if (C.state === 'normal') next = r < 0.12 ? 'boom' : r < 0.24 ? 'slump' : 'normal';
+    else if (r < 0.3) next = 'normal';
+    if (next !== C.state) { const prev = C.state; C.state = next; C.months = 0; g.events.emit('econCycle', next, prev); }
+  }
+
   // ---------- events ----------
   startEvent() {
     const g = this.game;
@@ -320,6 +345,7 @@ export class Economy {
 
   tick(dt) {
     const g = this.game;
+    this.cycleMonth();
     // events
     if (this.event) {
       this.event.t += dt;
@@ -385,7 +411,7 @@ export class Economy {
 
   serialize() {
     return {
-      coins: Math.round(this.coins), event: this.event, eventFx: this.eventFx, nextEvent: this.nextEvent, contracts: this.contracts, contractSeq: this.contractSeq,
+      coins: Math.round(this.coins), event: this.event, eventFx: this.eventFx, nextEvent: this.nextEvent, cycle: { state: this.cycle.state, months: this.cycle.months }, contracts: this.contracts, contractSeq: this.contractSeq,
       daily: this.daily, incomeLog: this.incomeLog, grantCooldown: this.grantCooldown,
     };
   }
@@ -394,6 +420,8 @@ export class Economy {
     this.coins = Math.max(0, +d.coins || 0);
     this.event = d.event && typeof d.event.id === 'string' ? d.event : null;
     this.eventFx = this.event && d.eventFx ? d.eventFx : {};
+    const cy = d.cycle && typeof d.cycle === 'object' ? d.cycle : {};
+    this.cycle = { state: CYCLE_MUL[cy.state] ? cy.state : 'normal', months: Math.max(0, Math.min(1000, cy.months | 0)), m: -1 };
     this.nextEvent = +d.nextEvent || 300;
     this.contracts = Array.isArray(d.contracts) ? d.contracts.filter((k) => k && k.type && k.amount > 0) : [];
     this.contractSeq = d.contractSeq || 1;

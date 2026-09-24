@@ -15,6 +15,7 @@ import { Construction } from './rail/Construction.js';
 import { Works } from './rail/Works.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
+import { News } from './world/News.js';
 import { IndustrySystem } from './world/Industries.js';
 import { TownSystem } from './world/Towns.js';
 import { DecorSystem } from './world/Decor.js';
@@ -94,6 +95,7 @@ export class Game {
     this.works = new Works(this);
     this.furniture = new RailFurniture(this);
     this.overlays = new Overlays(this);
+    this.news = new News(this);
 
     if (save) this.restore(save);
     else this.fresh(opts);
@@ -112,6 +114,7 @@ export class Game {
     this.wireEvents();
     this.resize();
     this.offline = save ? this.computeOffline(save) : null;
+    this.news.mute = false;
   }
 
   fresh(opts) {
@@ -149,6 +152,7 @@ export class Game {
     this.works.deserialize(s.works);
     this.roads.deserialize(s.road);
     this.roads.afterLoad();
+    if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
     this.world.view.recolorTerrain();
   }
 
@@ -157,7 +161,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -375,6 +379,7 @@ export class Game {
     E.on('contractExpired', () => ui.toast(ui.tr('toast_contract_expired'), 'info', 'contracts'));
     E.on('eventStart', (ev) => ui.banner(ui.tr('ev_' + ev.id), ui.tr('ev_' + ev.id + '_desc')));
     E.on('eventEnd', () => ui.banner(null));
+    E.on('econCycle', (st) => { ui.toast(`${ui.tr('econ_' + st)}: ${ui.tr('econ_' + st + '_desc')}`, st === 'slump' ? 'info' : 'good', 'stats'); A.play(st === 'slump' ? 'reject' : 'approve'); });
     E.on('lightning', () => { if (this.settings.sound !== false) setTimeout(() => A.play('thunder'), 300 + Math.random() * 1500); });
     E.on('industryFounded', (ind) => {
       A.play('construct');

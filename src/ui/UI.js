@@ -20,6 +20,7 @@ import { LiveryEditorMixin } from './LiveryEditor.js';
 import { FinanceUIMixin } from './FinanceUI.js';
 import { RoadUIMixin } from './RoadUI.js';
 import { IndustryUIMixin } from './IndustryUI.js';
+import { NewsUIMixin } from './NewsUI.js';
 import { roadModel } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
@@ -179,7 +180,7 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'finance', 'trains', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
+    const items = ['company', 'finance', 'trains', 'news', 'lists', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'finance' ? 'coin' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
@@ -291,6 +292,7 @@ export class UI {
     set('research', g.progression.researchAvailable() ? RESEARCH.filter((r) => g.progression.researchState(r.id) === 'available').length : 0);
     const nr = g.progression.nextRegion();
     set('objectives', nr >= 0 && g.progression.regionUnlockInfo(nr).ok ? 1 : 0);
+    set('news', this.panel === 'news' ? 0 : g.news.unread);
   }
 
   // ---------- toasts, banners, floating text ----------
@@ -545,6 +547,8 @@ export class UI {
       map: { title: 'menu_map', render: () => this.pMap(), after: () => this.drawMinimap(), live: true },
       stats: { title: 'menu_stats', render: () => this.pStats(), live: true },
       finance: { title: 'menu_finance', render: () => this.pFinance(), live: true, wide: true },
+      news: { title: 'menu_news', render: () => this.pNews(), live: true },
+      lists: { title: 'menu_lists', render: () => this.pLists() },
       achievements: { title: 'menu_achievements', render: () => this.pAchievements() },
       settings: { title: 'settings', render: () => this.pSettings() },
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
@@ -1182,6 +1186,7 @@ export class UI {
       ...this.financeActions(),
       ...this.roadActions(),
       ...this.industryActions(),
+      ...this.newsActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1239,6 +1244,7 @@ export class UI {
   get inputs() {
     const g = () => this.game;
     return {
+      ...this.newsInputs(),
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
@@ -1272,4 +1278,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin);

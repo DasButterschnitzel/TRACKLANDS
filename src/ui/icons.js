@@ -32,6 +32,8 @@ const P = {
   w_storm: '<path d="M7 13h10a4 4 0 0 0 0-8 5 5 0 0 0-9.6 1.5A3.3 3.3 0 0 0 7 13z" fill="currentColor"/><path d="M13 13l-3 5h3l-2 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>',
   w_fog: '<path d="M4 8h16M3 12h18M5 16h14M7 20h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
   w_snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 4.5l2 1.5 2-1.5M10 19.5l2-1.5 2 1.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  news: '<rect x="3" y="4" width="15" height="16" rx="1.5" fill="currentColor"/><path d="M18 8h3v10a2 2 0 0 1-2 2h-1" fill="currentColor" opacity=".6"/><path d="M6 8h9M6 12h9M6 16h6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  lists: '<path d="M9 6h12M9 12h12M9 18h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4.5" cy="6" r="1.6" fill="currentColor"/><circle cx="4.5" cy="12" r="1.6" fill="currentColor"/><circle cx="4.5" cy="18" r="1.6" fill="currentColor"/>',
   focus: '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2"/>',
   up: '<path d="M12 4l7 8h-4v8H9v-8H5z" fill="currentColor"/>',
   town: '<rect x="3" y="11" width="6" height="10" fill="currentColor"/><rect x="10" y="5" width="6" height="16" fill="currentColor" opacity=".8"/><rect x="17" y="9" width="4" height="12" fill="currentColor" opacity=".6"/>',

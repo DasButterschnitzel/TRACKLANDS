@@ -58,6 +58,7 @@ export const FinanceUIMixin = {
         ${kv('plus', this.money(credit), 'fin_credit')}
         ${kv('stats', (L.rate() * 100).toFixed(1) + ' %', 'fin_rate')}
         ${kv('company', this.money(cv.total), 'fin_value')}
+        ${kv('stats', `<span class="${E.cycle.state === 'boom' ? 'pos' : E.cycle.state === 'slump' ? 'neg' : ''}">${this.tr('econ_' + E.cycle.state)}</span>`, 'econ_label')}
         ${kv('coin', pl(tm.profit), 'fin_profit_month')}
         ${kv('coin', pl(lm.profit), 'fin_profit_last')}
         ${kv('coin', pl(ytd.profit), 'fin_profit_ytd')}
