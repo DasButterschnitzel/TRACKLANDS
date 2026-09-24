@@ -551,7 +551,9 @@ export class TownSystem {
   buildRoads(t) {
     if (t.roadMesh) { this.group.remove(t.roadMesh); t.roadMesh.geometry.dispose(); }
     const W = this.game.world;
-    const tiles = new Set(this.roadTiles(t));
+    const X = this.game.crossings;
+    // streets cannot cross switches, diagonals, stations or high-speed lines
+    const tiles = new Set(this.roadTiles(t).filter((i) => !X || X.roadAxisThrough(i) !== -1));
     const pos = [];
     const H = (x, z) => heightAt(W, x, z) + 0.04;
     const quad = (x0, z0, x1, z1) => {
@@ -579,6 +581,7 @@ export class TownSystem {
     m.receiveShadow = true;
     t.roadMesh = m;
     t.roadSet = tiles;
+    if (X) X.version = -1;
     this.group.add(m);
     // cars
     const want = Math.min(2 + t.stage * 3, 20);
@@ -640,7 +643,13 @@ export class TownSystem {
         c.to = this.nextRoad(t, c.from, -1);
         c.f = 0;
       }
-      c.f += dt * c.speed * 0.6 * Math.min(speedMul, 2);
+      // a closed level crossing ahead: wait before the tile edge
+      const X = g.crossings;
+      const hold = X && X.isBlocked(c.to) && c.f < 0.4;
+      // on a crossing that starts to warn: clear it quickly
+      const rush = X && X.isBlocked(c.from) && c.f < 0.5 ? 4 : 1;
+      if (!hold) c.f += dt * c.speed * 0.6 * Math.min(speedMul, 2) * rush;
+      if (hold && c.f > 0.34) c.f = 0.34;
       if (c.f >= 1) { const prev = c.from; c.from = c.to; c.to = this.nextRoad(t, c.from, prev); c.f = 0; }
       const ax = (tx(c.from) + 0.5) * TILE, az = (tz(c.from) + 0.5) * TILE, bx = (tx(c.to) + 0.5) * TILE, bz = (tz(c.to) + 0.5) * TILE;
       const dx = bx - ax, dz = bz - az;
@@ -663,7 +672,12 @@ export class TownSystem {
       const x = tx(from) + ox, z = tz(from) + oz;
       if (!inMap(x, z)) continue;
       const i = idx(x, z);
-      if (t.roadSet.has(i) && i !== prev) opts.push(i);
+      if (!t.roadSet.has(i) || i === prev) continue;
+      // over a level crossing only straight across the railway
+      const X = this.game.crossings;
+      const ax = ox ? 0 : 2;
+      if (X && ((X.at(i) && X.at(i).axis !== ax) || (X.at(from) && X.at(from).axis !== ax))) continue;
+      opts.push(i);
     }
     if (!opts.length) return prev >= 0 ? prev : from;
     return opts[Math.floor(Math.random() * opts.length)];

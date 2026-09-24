@@ -146,6 +146,10 @@ export class AudioEngine {
         }
         break;
       }
+      case 'crossing':
+        // level crossing bell: a few bright strikes
+        for (let k = 0; k < 4; k++) { this.tone(1480, 0.18, { type: 'triangle', gain: 0.035 * v, when: k * 0.36, rev: 0.2 }); this.tone(2960, 0.08, { gain: 0.01 * v, when: k * 0.36 }); }
+        break;
       case 'switch':
         this.noiseHit(0.06, { freq: 3000, q: 6, gain: 0.05 * v });
         this.tone(220, 0.06, { type: 'square', gain: 0.02 * v, when: 0.03 });

@@ -1557,6 +1557,9 @@ export class TrainSystem {
         return { blocker: b, kind: 'works' };
       }
     }
+    // level crossings: only once the road is clear (the crossing warns)
+    const X = this.game.crossings;
+    if (X && X.map.size) for (let i = k; i <= e; i++) if (X.at(S[i].tile) && !S[i].keys.every((key) => t.held.has(key)) && X.roadBusy(S[i].tile)) return { blocker: 0, kind: 'crossing' };
     for (let i = k; i <= e; i++) {
       const st = S[i], pk = st.keys;
       if (!net.canReserve(pk, t.id)) return { blocker: net.holder(pk, t.id), kind: st.jn ? 'junction' : st.station ? 'platform' : st.single ? 'single' : 'block' };
@@ -2025,6 +2028,7 @@ export class TrainSystem {
       case 'run': {
         if (t.broken > 0) return { key: 'st_broken_down', p: { s: Math.ceil(t.broken) }, warn: true };
         if (t.v < 0.05 && t.blockKind === 'works' && t.wait > 0.5) return { key: 'st_wait_works' };
+        if (t.v < 0.05 && t.blockKind === 'crossing' && t.wait > 0.5) return { key: 'st_wait_crossing' };
         if (t.v < 0.05 && t.blockedBy !== 0 && t.wait > 0.5) {
           const other = this.byId(t.blockedBy);
           return { key: 'st_wait_' + (t.blockKind || 'block'), p: { train: other ? other.name : '', station: where }, warn: t.wait > 20 };
