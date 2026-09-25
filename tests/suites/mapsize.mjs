@@ -83,6 +83,7 @@ export async function run({ browser, base }) {
   await page.evaluate(() => window.__tracklands.newGameDialog());
   await page.waitForTimeout(300);
   await page.click('.modal input[name=size][value="64"]');
+  await page.fill('#ng-seed', '31337');   // (a fixed world: a site near a corner clears the water there)
   await page.setInputFiles('#ng-hmap', { name: 'island.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await page.click('.modal [data-mbtn=go]');
   await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running && window.__tracklands.game.hmap, null, { timeout: 60000 }).catch(() => {});
@@ -93,9 +94,10 @@ export async function run({ browser, base }) {
     const S = await import('./src/save/Save.js');
     const d = S.migrate(JSON.parse(JSON.stringify(g.serialize())));
     window.__hsave = d;
-    return { corners: [t(0, 0), t(63, 0), t(0, 63), t(63, 63)], centreH: Math.round(W.tileH[32 * N + 32] * 10) / 10, rimH: Math.round(W.tileH[2 * N + 32] * 10) / 10, towns: g.towns.list.length, saved: typeof d.hmap === 'string', sig: JSON.stringify([...W.type].slice(0, 400)) };
+    let ring = 0, wet = 0; for (let k = 0; k < 64; k++) for (const [x, z] of [[k, 0], [k, 63], [0, k], [63, k]]) { ring++; if (t(x, z) === 1) wet++; }
+    return { rimWater: Math.round((wet / ring) * 100) / 100, corners: [t(0, 0), t(63, 0), t(0, 63), t(63, 63)], centreH: Math.round(W.tileH[32 * N + 32] * 10) / 10, rimH: Math.round(W.tileH[2 * N + 32] * 10) / 10, towns: g.towns.list.length, saved: typeof d.hmap === 'string', sig: JSON.stringify([...W.type].slice(0, 400)) };
   });
-  check(!hm.none && hm.corners.every((v) => v === 1) && hm.centreH > hm.rimH + 1 && hm.towns > 0, `a height map shapes the world: sea at the corners, centre ${hm.centreH} high vs rim ${hm.rimH}, ${hm.towns} towns`);
+  check(!hm.none && hm.rimWater >= 0.85 && hm.centreH > hm.rimH + 1 && hm.towns > 0, `a height map shapes the world: ${Math.round(hm.rimWater * 100)} % sea along the rim, centre ${hm.centreH} high vs rim ${hm.rimH}, ${hm.towns} towns`);
   if (!hm.none) {
     await loadSave(page, await page.evaluate(() => window.__hsave));
     const hb = await page.evaluate(() => { const W = window.__tracklands.game.world; return JSON.stringify([...W.type].slice(0, 400)); });
