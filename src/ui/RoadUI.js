@@ -32,6 +32,7 @@ export const RoadUIMixin = {
       ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'truck' ? 'stop_no_industry' : 'stop_no_town')}</p>` : ''}
       <h4>${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}
       ${this.ratingBlock(s)}
+      ${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
       <h4>${this.tr('stop_vehicles', { n: vehs.length })}</h4>
       ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
       <h4>${this.tr('stop_buy')} ${this.helpBtn('transport')}</h4><div class="col">${buy}</div>
@@ -56,11 +57,13 @@ export const RoadUIMixin = {
     const home = R.stopById(v.stops[0]);
     const cands = home ? R.stops.filter((s) => s.kind === m.kind && !s.owner && !v.stops.includes(s.id) && cheb(s.tile, home.tile) <= 40).map((s) => ({ s, ok: !!R.path(home.tile, s.tile) })).filter((x) => x.ok) : [];
     const add = cands.length ? cands.map((x) => `<button class="tag link" data-act="rvRouteAdd" data-arg="${v.id}:${x.s.id}">${icon('plus', 'mini')} ${esc(x.s.name)}</button>`).join('') : `<p class="muted small">${this.tr('rv_no_more_stops')}</p>`;
-    return `<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span></div>
+    const line = R.lines.lineOf(v);
+    return `<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
       <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}
-      <h4>${this.tr('rv_route')}</h4><div class="rv-route">${route}</div>
+      ${this.vehLineBlock(v)}
+      ${line ? `<p class="muted small">${this.tr('rv_on_line', { name: esc(line.name) })}</p>` : `<h4>${this.tr('rv_route')}</h4><div class="rv-route">${route}</div>
       <h5>${this.tr('rv_add_stop')}</h5><div class="chips wrap">${add}</div>
-      <p class="muted small">${this.tr('rv_route_help')}</p>
+      <p class="muted small">${this.tr('rv_route_help')}</p>`}
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(v)}
       <p class="muted small">${this.tr('rv_trips', { n: v.trips, e: fmt(v.earned) })}</p>
       <div class="row wrap"><button class="btn ghost danger" data-act="rvSell" data-arg="${v.id}">${this.tr('sell')} · ${fmt(Math.round(m.price * g.difficulty.costMul * 0.5))} ●</button></div>`;

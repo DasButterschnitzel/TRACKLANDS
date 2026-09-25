@@ -272,6 +272,7 @@ export class Game {
       case 'region': { const c = this.world.centers[sel.id]; return { x: c[0] * TILE, y: 0, z: c[1] * TILE }; }
       case 'roadstop': { const s = this.roads.stopById(sel.id); return s ? { x: tileCX(s.tile), y: 0.3, z: tileCZ(s.tile) } : null; }
       case 'roadveh': { const v = this.roads.byId(sel.id); if (!v) return null; const o = this.roads.vehPos(v, {}); return { x: o.x, y: o.y, z: o.z }; }
+      case 'line': { const l = this.roads.lines.byId(sel.id); const s = l && this.roads.stopById(l.stops[0]); return s ? { x: tileCX(s.tile), y: 0.3, z: tileCZ(s.tile) } : null; }
       default: return null;
     }
   }

@@ -40,6 +40,7 @@ export class Construction {
   setTool(t) {
     if (t === this.tool) t = 'select';
     this.cancelDrag();
+    if (this.tool === 'line' && t !== 'line') { this.lineDraft = null; this.game.roads.previewRoute(null); }
     this.tool = t;
     this.clearPreview();
     if (this.hoverTile >= 0) this.hover(this.hoverTile);
@@ -240,6 +241,7 @@ export class Construction {
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
       case 'road': this.drag = { a: tile, b: tile }; this.previewRoad(); break;
       case 'industry': this.placeFound(tile); break;
+      case 'line': g.ui.lineTap(tile); break;
       case 'hq': { const r = g.company.buildHQ(tile); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('hq_built', { town: r.town ? r.town.name : '' }), 'good', 'company'); g.audio.play('construct'); this.setTool('select'); } break; }
       case 'roadstop': { const r = g.roads.addStop(tile, this.stopKind || 'bus'); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('stop_built', { name: r.stop.name }), 'good', 'station'); g.select({ type: 'roadstop', id: r.stop.id }); } break; }
       default: break;

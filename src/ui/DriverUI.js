@@ -17,7 +17,8 @@ export const DriverUIMixin = {
     this.followId = id;
     this.closePanel();
     g.select(null);   // the cab panel replaces the inspector while driving
-    g.camera.focus(g.entityPos({ type: 'train', id }).x, g.entityPos({ type: 'train', id }).z, 9);
+    const at = g.entityPos({ type: 'train', id });   // none while the train stands hidden in a depot
+    if (at) g.camera.focus(at.x, at.z, 9);
     let el = document.getElementById('driver');
     if (!el) { el = document.createElement('div'); el.id = 'driver'; el.setAttribute('role', 'group'); document.body.appendChild(el); }
     el.innerHTML = `<div class="drv-head">${icon('train', 'mini')} <b>${esc(t.name)}</b><button class="icon-btn small" data-act="stopDrive" aria-label="${this.tr('drive_stop')}">${icon('close')}</button></div>

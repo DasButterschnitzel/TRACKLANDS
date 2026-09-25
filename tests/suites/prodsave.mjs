@@ -23,7 +23,7 @@ export async function run({ browser, base, quick }) {
       coins: g.economy.coins, level: g.progression.level, xp: g.progression.xp, rp: g.progression.rp,
       research: [...g.progression.research].sort(), regions: [...g.progression.regions].sort(),
       trains: g.trains.trains.map((t) => ({ id: t.id, name: t.name, model: t.model, earned: t.earned, trips: t.trips, livery: t.livery, cargo: t.cargo.map((l) => l.c + ':' + l.n).join(','), veh: t.veh.map((v) => v.id).join('+'), mode: t.mode, route: t.route.length, depot: t.homeDepot, onTrack: !!t.steps.length })),
-      stations: g.stations.list.map((s) => ({ id: s.id, tile: s.tile, name: s.name, stock: JSON.stringify(s.stock), level: s.level })),
+      stations: g.stations.list.map((s) => ({ id: s.id, tile: s.tile, name: s.name, stock: JSON.stringify(Object.fromEntries(Object.entries(s.stock).filter((e) => e[1] > 0))), level: s.level })),
       depots: g.stations.depots.length, track: g.net.conn.reduce((a, c) => a + (c ? 1 : 0), 0),
       industries: g.industries.list.map((i) => i.id + ':' + i.level).join(','), towns: g.towns.list.map((t) => t.id + ':' + t.stage + ':' + Math.round(t.pop)).join(','),
       contracts: g.economy.contracts.length, stats: g.stats.data.deliveries,
@@ -69,11 +69,11 @@ export async function run({ browser, base, quick }) {
     const d = JSON.parse(JSON.stringify(window.__tracklands.game.serialize()));
     const again = S.migrate(JSON.parse(JSON.stringify(d)));
     window.__rt = d;
-    const snap = (g) => JSON.stringify({ c: Math.round(g.economy.coins), t: g.trains.trains.map((x) => [x.id, x.name, x.veh.map((v) => v.id).join('+'), x.earned, x.trips, x.cargo.map((l) => l.c + l.n).join(), x.mode]), s: g.stations.list.map((s) => [s.id, JSON.stringify(s.stock), s.tracks.length]), r: [...g.progression.research].length });
+    const snap = (g) => JSON.stringify({ c: Math.round(g.economy.coins), t: g.trains.trains.map((x) => [x.id, x.name, x.veh.map((v) => v.id).join('+'), x.earned, x.trips, x.cargo.map((l) => l.c + l.n).join(), x.mode]), s: g.stations.list.map((s) => [s.id, JSON.stringify(Object.fromEntries(Object.entries(s.stock).filter((e) => e[1] > 0))), s.tracks.length]), r: [...g.progression.research].length });
     return { idem: JSON.stringify(again) === JSON.stringify(d), before: snap(window.__tracklands.game) };
   });
   await loadSave(page, await page.evaluate(() => window.__rt));
-  const after = await page.evaluate(() => { const g = window.__tracklands.game; return JSON.stringify({ c: Math.round(g.economy.coins), t: g.trains.trains.map((x) => [x.id, x.name, x.veh.map((v) => v.id).join('+'), x.earned, x.trips, x.cargo.map((l) => l.c + l.n).join(), x.mode]), s: g.stations.list.map((s) => [s.id, JSON.stringify(s.stock), s.tracks.length]), r: [...g.progression.research].length }); });
+  const after = await page.evaluate(() => { const g = window.__tracklands.game; return JSON.stringify({ c: Math.round(g.economy.coins), t: g.trains.trains.map((x) => [x.id, x.name, x.veh.map((v) => v.id).join('+'), x.earned, x.trips, x.cargo.map((l) => l.c + l.n).join(), x.mode]), s: g.stations.list.map((s) => [s.id, JSON.stringify(Object.fromEntries(Object.entries(s.stock).filter((e) => e[1] > 0))), s.tracks.length]), r: [...g.progression.research].length }); });
   check(rt.idem, 'migration of the current save is a no-op');
   check(rt.before === after, 'save -> reload keeps coins, trains, cargo, stations, research');
   if (errors.length) { ok = false; lines.push('page errors: ' + errors.slice(0, 3).join(' | ')); }

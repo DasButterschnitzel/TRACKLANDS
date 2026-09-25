@@ -25,6 +25,7 @@ import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
+import { LineUIMixin } from './LineUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
@@ -192,8 +193,8 @@ export class UI {
   renderToolbar() {
     const g = this.game; if (!g) return;
     const C = g.construction;
-    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['industry', 'factory'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
-    const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B', industry: 'I' };
+    const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['line', 'route'], ['industry', 'factory'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
+    const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B', line: 'L', industry: 'I' };
     const btn = ([id, ic]) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${KEYS[id]})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
     const ov = g.overlays.mode;
     const undo = C.canUndo();
@@ -252,6 +253,8 @@ export class UI {
       const types = g.industries.foundTypes();
       if (!types.includes(C.fundType)) C.fundType = types[0];
       sub = types.map((k) => `<button class="chip ${C.fundType === k ? 'on' : ''}" data-act="fundType" data-arg="${k}"><b>${this.tr('ind_' + k)}</b><small>${fmt(g.industries.foundCost(k))}●</small></button>`).join('') + `<span class="sub-hint">${icon('factory')} ${this.tr('hint_found')}</span>`;
+    } else if (C.tool === 'line') {
+      sub = this.lineSubbar();
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
@@ -267,7 +270,7 @@ export class UI {
       } else sub = mode + sub + exit;
     }
     // fingers: say what the next tap does (docked at the top, like the plan info)
-    if (this.coarse() && C.tool !== 'select' && C.tool !== 'train' && !this._ci) this.touchHintShow(this.tr(C.touchHint()));
+    if (this.coarse() && C.tool !== 'select' && C.tool !== 'train' && !this._ci) this.touchHintShow(C.tool === 'line' ? this.lineHintText() : this.tr(C.touchHint()));
     else if (!this._ci) $('#cursorinfo').hidden = true;
     const sb = $('#subbar');
     sb.innerHTML = sub;
@@ -295,6 +298,7 @@ export class UI {
     this.updateFloats(dt);
     this.updateDriver();
     this.updateHandles();
+    this.updateStopMarks();
     this.updateLabels();
     const ut = $('#undo-t');
     if (ut) { const left = g.construction.undoTimeLeft(); ut.style.setProperty('--p', (left / 10) * 100 + '%'); }
@@ -1112,6 +1116,7 @@ export class UI {
       case 'train': { const t = g.trains.byId(sel.id); if (!t) return this.game.select(null); ic = 'train'; title = t.name; body = this.iTrain(t); break; }
       case 'roadstop': { const s = g.roads.stopById(sel.id); if (!s) return this.game.select(null); ic = s.kind; title = s.name; body = this.iRoadStop(s); break; }
       case 'roadveh': { const v = g.roads.byId(sel.id); if (!v) return this.game.select(null); ic = roadModel(v.model).kind; title = v.name; body = this.iRoadVeh(v); break; }
+      case 'line': { const l = g.roads.lines.byId(sel.id); if (!l) return this.game.select(null); ic = 'route'; title = this.tr('line_title', { name: l.name }); body = this.iLine(l); break; }
       case 'region': { ic = 'lock'; title = this.tr('region_' + REGIONS[sel.id].id); body = g.progression.regionUnlocked(sel.id) ? '' : this.regionCard(sel.id); break; }
       default: return;
     }
@@ -1271,6 +1276,7 @@ export class UI {
       ...this.liveryActions(),
       ...this.financeActions(),
       ...this.roadActions(),
+      ...this.lineActions(),
       ...this.industryActions(),
       ...this.newsActions(),
       ...this.driverActions(),
@@ -1333,6 +1339,7 @@ export class UI {
     return {
       ...this.newsInputs(),
       ...this.driverInputs(),
+      ...this.lineInputs(),
       companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
@@ -1367,4 +1374,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);
+Object.assign(UI.prototype, LineUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);

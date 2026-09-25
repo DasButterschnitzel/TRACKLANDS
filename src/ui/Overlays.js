@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'trackcheck'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
@@ -38,6 +38,8 @@ export class Overlays {
     this.mode = mode;
     g.railView.setHeatmap(mode === 'traffic');
     g.furniture.showAuto = mode === 'signals' || mode === 'blocks';
+    g.roads.showLines(mode === 'lines');
+    if (!this._linesHook) { this._linesHook = true; g.events.on('linesChanged', () => { if (this.mode === 'lines') g.roads.showLines(true); }); }
     this._t = 0;
     if (!mode) this.clear();
     g.events.emit('overlay', mode);

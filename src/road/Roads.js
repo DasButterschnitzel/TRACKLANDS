@@ -16,10 +16,13 @@ import { N, TILE, idx, tx, tz, inMap, tileCX, tileCZ, cheb, WATER_LEVEL } from '
 import { heightAt } from '../world/WorldGen.js';
 import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, STOP_MODE } from '../config.js';
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
+import { RoadLines } from './Lines.js';
 
 const D4 = [[1, 0, 1], [0, 1, 2], [-1, 0, 4], [0, -1, 8]];   // dx, dz, bit  (E S W N)
 const opp4 = (b) => (b === 1 ? 4 : b === 4 ? 1 : b === 2 ? 8 : 2);
 const MAXV = 300;
+const MIN_HOP = 3;           // a ride shorter than this (tiles) within one town pays nothing
+const RAIL_SHARE = 0.4;      // travellers at a stop with a railway in reach who head for the train
 export const STOP_KINDS = ['bus', 'truck', 'tram', 'dock', 'airport'];
 const AIR_SPEED = 0.6;       // aircraft cover this share of their nominal speed on the small map
 const STOP_SUFFIX = { bus: 'Bus', truck: 'Truck', tram: 'Tram', dock: 'Docks', airport: 'Airport' };
@@ -48,8 +51,12 @@ export class Roads {
     this.nextStop = 1; this.nextVeh = 1;
     this.version = 0;
     this._town = null;
+    this.lines = new RoadLines(game);
+    this._month = null;
     this.buildView();
   }
+  modeOfKind(kind) { return modeOf(kind); }
+  capOf(v) { const m = roadModel(v.model); return m ? m.cap : 0; }
 
   // ---------- network ----------
   townRoads() {
@@ -258,6 +265,8 @@ export class Roads {
 
   // ---------- stops ----------
   stopAt(i) { return this.stops.find((s) => s.tile === i || (s.kind === 'airport' && cheb(s.tile, i) <= 1)) || null; }
+  // walking distance around a stop (catchment for the town's travellers)
+  stopRadius(s) { return s.kind === 'airport' ? 4 : s.kind === 'dock' ? 3 : (this.stopProps ? this.stopProps(s).radius : 2); }
   stopTiles(s) { return s.kind === 'airport' ? around(s.tile).filter((t) => t >= 0) : [s.tile]; }
   stopById(id) { return this.stops.find((s) => s.id === id) || null; }
   byId(id) { return this.vehicles.find((v) => v.id === id) || null; }
@@ -334,6 +343,7 @@ export class Roads {
     if (s.owner) return { error: 'err_rival_stop' };
     if (this.vehicles.some((v) => v.stops.includes(s.id))) return { error: 'err_stop_in_use' };
     this.stops = this.stops.filter((x) => x !== s);
+    this.lines.onStopRemoved(s.id);
     this.claimLand(s, false);
     if (refund) g.economy.earn(Math.round(this.stopCost(s.kind) * refund), 'refund', false, null, s.name);
     g.towns.onStationsChanged(); g.industries.onStationsChanged();
@@ -378,11 +388,41 @@ export class Roads {
     s.rail = best ? best.id : null;
   }
   relinkAll() { for (const s of this.stops) this.relink(s); }
+  // Travellers leaving a train at a railway station: a share of them (better
+  // with frequent service and a short walk) changes to the company's bus and
+  // tram lines that start in reach of the station. They are the same people
+  // continuing their journey: each leg pays for its own distance.
+  onward(stn, n) {
+    if (n < 2) return;
+    const cands = this.stops.filter((s) => s.rail === stn.id && !s.owner && (s.kind === 'bus' || s.kind === 'tram') && this.lines.linesAt(s.id).some((l) => this.lines.vehicles(l).length));
+    if (!cands.length) return;
+    let q = 0;
+    for (const s of cands) {
+      const walk = Math.min(...this.game.stations.allTiles(stn).map((t) => cheb(t, s.tile)));
+      const freq = Math.min(1, this.lines.linesAt(s.id).reduce((a, l) => a + this.lines.vehicles(l).length, 0) / 4);
+      s._onQ = (0.5 + 0.5 * freq) * (walk <= 1 ? 1 : walk <= 3 ? 0.8 : 0.55) * (this.stopProps ? this.stopProps(s).transfer : 1);
+      q = Math.max(q, s._onQ);
+    }
+    stn._onAcc = (stn._onAcc || 0) + n * 0.3 * q;
+    let k = Math.floor(stn._onAcc);
+    if (k <= 0) return;
+    stn._onAcc -= k;
+    const sum = cands.reduce((a, s) => a + s._onQ, 0);
+    for (const s of cands) {
+      const share = Math.round((k * s._onQ) / sum);
+      if (share <= 0) continue;
+      const took = this.game.stations.receive(s, 'PASSENGERS', share);
+      s.stats.fromRail = (s.stats.fromRail || 0) + took;
+      k -= took;
+      if (k <= 0) break;
+    }
+  }
 
   // ---------- vehicles ----------
-  buy(modelId, stop, owner = null) {
+  buy(modelId, stop, owner = null, line = null) {
     const g = this.game, m = roadModel(modelId);
     if (!m || !stop) return { error: 'err_unknown' };
+    if (line && line.kind !== m.kind) return { error: 'err_wrong_stop' };
     if (m.kind !== stop.kind) return { error: 'err_wrong_stop' };
     const price = Math.round(m.price * g.difficulty.costMul);
     if (owner ? owner.money < price : !g.economy.canAfford(price)) return { error: 'err_no_money' };
@@ -393,11 +433,13 @@ export class Roads {
     if (owner) { v.owner = owner.id; v.name = `${owner.short} ${n}`; owner.money -= price; return { ok: true, vehicle: v }; }
     g.economy.spend(price, 'road_vehicles', { type: 'road', id: v.id }, v.name);
     this.ensureVehMesh();
+    if (line) this.lines.assign(v, line);
     return { ok: true, vehicle: v };
   }
   sell(v) {
     const g = this.game, m = roadModel(v.model);
     this.vehicles = this.vehicles.filter((x) => x !== v);
+    if (v.line != null) this.lines.changed();
     const refund = Math.round((m ? m.price : 0) * g.difficulty.costMul * 0.5);
     g.economy.earn(refund, 'sale', false, null, v.name);
     return refund;
@@ -409,12 +451,15 @@ export class Roads {
 
   tick(dt) {
     const g = this.game;
+    const mi = g.ledger ? g.ledger.monthIndex() : 0;
+    if (this._month == null) this._month = mi;
+    else if (mi !== this._month) { this._month = mi; this.lines.closeMonth(); }
     for (const v of this.vehicles) {
       const m = roadModel(v.model);
       if (!m) continue;
       // running costs, booked per vehicle
       const op = (m.op / 60) * dt * (v.state === 'idle' ? 0.3 : 1);
-      if (v.owner) { const r = this.rival(v); if (r) r.pay(op); } else g.economy.operatingCost(op, this.ref(v));
+      if (v.owner) { const r = this.rival(v); if (r) r.pay(op); } else { g.economy.operatingCost(op, this.ref(v)); if (v.line != null) this.lines.note(v, 'cost', op); }
       if (v.state === 'load') {
         v.t -= dt;
         if (v.t > 0) continue;
@@ -466,67 +511,125 @@ export class Roads {
     if (md !== 'road') g.events.emit('rvArrive', v, md);
     s.stats.arrivals++;
     v.trips++;
+    if (v.line != null) this.lines.note(v, 'trip', 1);
     this.unload(v, s);
     this.loadAt(v, s);
   }
+  // Travellers and goods leave at their destination stop (chosen when they
+  // boarded); travellers heading for the train change to the railway station
+  // in reach. Lots from older saves (no destination) leave at the first stop
+  // that takes them. A ride within one town shorter than MIN_HOP tiles is no
+  // journey at all.
   unload(v, s) {
     const g = this.game, E = g.economy, S = g.stations;
     const keep = [];
+    const m = roadModel(v.model);
     for (const lot of v.cargo) {
       if (lot.from === s.id) { keep.push(lot); continue; }
+      if (lot.to != null && lot.to !== s.id && v.stops.includes(lot.to)) { keep.push(lot); continue; }
       const from = this.stopById(lot.from) || S.byId(lot.from);
       const dist = from ? cheb(from.tile, s.tile) : 6;
       const transit = lot.t0 != null ? Math.max(0, g.time - lot.t0) : 0;
-      // travellers from this same town do not "arrive" here: they change to
-      // the railway if there is one (or stay aboard)
-      // (trams are the exception: getting across town is what they are for)
-      const intra = modeOf(roadModel(v.model).kind) === 'tram';
-      const sameTown = !intra && from && from.links && s.links && from.links.towns.some((id) => s.links.towns.includes(id)) && (lot.c === 'PASSENGERS' || lot.c === 'MAIL');
-      if (s.accepts && s.accepts.has(lot.c) && !sameTown) {
+      const people = lot.c === 'PASSENGERS' || lot.c === 'MAIL';
+      const sameTown = from && from.links && s.links && from.links.towns.some((id) => s.links.towns.includes(id));
+      const local = people && sameTown && dist < MIN_HOP;
+      const rail = s.rail != null && !v.owner ? S.byId(s.rail) : null;
+      const toRail = !!(lot.rail && rail);
+      if (!toRail && s.accepts && s.accepts.has(lot.c) && !local) {
         const town = s.links.towns.length ? g.towns.byId(s.links.towns[0]) : null;
         const needed = town ? g.towns.needs(town, lot.c) : false;
-        const rev = Math.round(E.revenue(lot.c, lot.n, dist, null, needed, transit) * 0.9);
+        const rev = Math.round(E.revenue(lot.c, lot.n, dist, null, needed, transit) * 0.9 * this.fareMul(m, from, s));
         if (v.owner) { const r = this.rival(v); if (r) r.earn(rev); v.earned += rev; S.distribute(s, lot.c, lot.n); continue; }
         E.bookDelivery(rev, lot.c, lot.n, null, from, s, this.ref(v));
         S.distribute(s, lot.c, lot.n);
         v.earned += rev; E.bucket.income += rev; E.bucket.deliveries++;
         g.stats.inc('deliveries'); g.stats.incCargo(lot.c, lot.n); if (lot.c === 'PASSENGERS') g.stats.inc('passengers', lot.n);
+        if (v.line != null) { this.lines.note(v, 'rev', rev); this.lines.note(v, 'pax', lot.n); }
         g.events.emit('roadDelivery', { vehicle: v, stop: s, cargo: lot.c, amount: lot.n, revenue: rev });
         continue;
       }
       // feeder: hand over to the railway station in reach, paid for this leg
-      const rail = s.rail != null && !v.owner ? S.byId(s.rail) : null;
-      if (rail) {
+      if (rail && (toRail || lot.to == null || lot.to === s.id)) {
         const took = S.receive(rail, lot.c, lot.n);
         if (took > 0) {
-          const share = Math.round(E.revenue(lot.c, took, Math.max(dist, 1), null, false, transit) * 0.45);
+          const share = Math.round(E.revenue(lot.c, took, Math.max(dist, 1), null, false, transit) * 0.45 * this.fareMul(m, from, s));
           E.bookDelivery(share, lot.c, took, null, from, rail, this.ref(v));
           v.earned += share; E.bucket.income += share;
           S.noteTransfer(rail, lot.c, took); s.stats.transfers += took;
+          if (v.line != null) { this.lines.note(v, 'rev', share); this.lines.note(v, 'pax', took); }
           g.events.emit('roadDelivery', { vehicle: v, stop: s, cargo: lot.c, amount: took, revenue: share, transfer: rail });
         }
-        if (took < lot.n) keep.push({ ...lot, n: lot.n - took });
+        if (took < lot.n) keep.push({ ...lot, n: lot.n - took, to: undefined, rail: false });
         continue;
       }
-      keep.push(lot);
+      // it could not get off where it meant to: ride on to wherever takes it
+      keep.push(lot.to === s.id ? { ...lot, to: undefined, rail: false } : lot);
     }
     v.cargo = keep;
   }
+  // fares: comfort, and the airport shuttle's luggage bonus on airport legs
+  fareMul(m, from, to) {
+    if (!m) return 1;
+    let k = m.comfort || 1;
+    if (m.airport && ((from && this.nearAirport(from)) || this.nearAirport(to))) k += m.airport;
+    return k;
+  }
+  nearAirport(s) {
+    if (!s || !s.tile) return false;
+    if (s._apT === this.version) return s._ap;
+    s._apT = this.version;
+    s._ap = this.stops.some((a) => a.kind === 'airport' && cheb(a.tile, s.tile) <= 4);
+    return s._ap;
+  }
+  // The stops still ahead of a vehicle on its run (in order, each once),
+  // until it comes back here; a one-way line ends at its last stop.
+  aheadOf(v, s) {
+    const seq = v.stops, n = seq.length, line = this.lines.lineOf(v);
+    const here = ((v.idx % n) + n) % n;
+    const out = [];
+    for (let k = 1; k < n; k++) {
+      const i = (here + k) % n;
+      if (line && line.pattern === 'oneway' && i === 0) break;
+      const id = seq[i];
+      if (id === s.id) break;
+      if (!out.includes(id)) out.push(id);
+    }
+    return out.map((id) => this.stopById(id)).filter(Boolean);
+  }
+  // Boarding: every group picks a destination among the stops ahead: a
+  // stop in another town, another part of this town (at least MIN_HOP tiles
+  // away) or a stop with a railway station in reach (for the train).
   loadAt(v, s) {
     const g = this.game, caps = this.caps(v);
-    // only cargo that some other stop on the route can take (or feed to rail)
-    const others = v.stops.filter((id) => id !== s.id).map((id) => this.stopById(id)).filter(Boolean);
+    const line = this.lines.lineOf(v);
+    if (line && !this.lines.boards(line, v.idx % v.stops.length)) return;
+    const ahead = this.aheadOf(v, s);
+    const townOf = (x) => (x.links ? x.links.towns : []);
     for (const c in caps) {
       const have = v.cargo.filter((l) => l.c === c).reduce((a, l) => a + l.n, 0);
       const room = caps[c] - have;
       if (room <= 0 || !(s.stock[c] >= 1)) continue;
-      const townOf = (x) => (x.links ? x.links.towns : []);
-      const intra = modeOf(roadModel(v.model).kind) === 'tram';
-      const useful = (o) => o.rail != null || (o.accepts && o.accepts.has(c) && (intra || !((c === 'PASSENGERS' || c === 'MAIL') && townOf(o).some((id) => townOf(s).includes(id)))));
-      if (!others.some(useful)) continue;
-      const n = Math.min(room, Math.floor(s.stock[c]));
+      const people = c === 'PASSENGERS' || c === 'MAIL';
+      const dests = [];
+      for (const o of ahead) {
+        const d = cheb(o.tile, s.tile);
+        const same = townOf(o).some((id) => townOf(s).includes(id));
+        if (o.accepts && o.accepts.has(c) && !(people && same && d < MIN_HOP)) {
+          const w = !people ? 1 : same ? Math.max(0.5, Math.min(1.5, d / 6)) : 1.6;
+          dests.push({ o, rail: false, w });
+        }
+        if (o.rail != null && !v.owner) dests.push({ o, rail: true, w: people ? (o.accepts && o.accepts.has(c) ? RAIL_SHARE * 2 : 1.2) : 1 });
+      }
+      if (!dests.length) continue;
+      let n = Math.min(room, Math.floor(s.stock[c]));
       s.stock[c] -= n; s.picked += n;
-      v.cargo.push({ c, n, from: s.id, t0: g.time });
+      const sum = dests.reduce((a, d) => a + d.w, 0);
+      // split the group by weight (largest remainder)
+      const parts = dests.map((d) => ({ d, k: Math.floor((n * d.w) / sum), r: ((n * d.w) / sum) % 1 }));
+      let left = n - parts.reduce((a, p) => a + p.k, 0);
+      parts.sort((a, b) => b.r - a.r);
+      for (const p of parts) { if (left <= 0) break; p.k++; left--; }
+      for (const p of parts) if (p.k > 0) v.cargo.push({ c, n: p.k, from: s.id, t0: g.time, to: p.d.o.id, rail: p.d.rail || undefined });
       if (g.ratings) g.ratings.onPickup(s, c, { _st: { speed: roadModel(v.model).speed } });
     }
     v.t = 2 + Math.min(4, this.load(v) / 12);
@@ -652,6 +755,54 @@ export class Roads {
     this.roadMesh.receiveShadow = true;
     this.group.add(this.roadMesh);
   }
+  // Ribbons along the routes of lines, in their colours: the line tool's
+  // preview (one item) and the lines overlay (all lines, side by side).
+  ribbon(items) {
+    const W = this.game.world, pos = [], col = [];
+    const c = new THREE.Color();
+    items.forEach((it, k) => {
+      if (!it.stops || it.stops.length < 2) return;
+      c.set(it.color);
+      const seq = this.lines.seq({ stops: it.stops, pattern: it.pattern || 'loop' });
+      const mode = modeOf(it.kind);
+      const lane = ((k % 5) - 2) * 0.13;
+      const legs = seq.length === 2 ? 1 : seq.length;
+      for (let i = 0; i < legs; i++) {
+        const a = this.stopById(seq[i]), b = this.stopById(seq[(i + 1) % seq.length]);
+        if (!a || !b) continue;
+        const p = mode === 'air' ? [a.tile, b.tile] : this.route(mode, a.tile, b.tile) || [a.tile, b.tile];
+        for (let j = 0; j + 1 < p.length; j++) {
+          const x0 = tileCX(p[j]), z0 = tileCZ(p[j]), x1 = tileCX(p[j + 1]), z1 = tileCZ(p[j + 1]);
+          const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len;
+          const w = 0.11, o = lane;
+          const y0 = (mode === 'water' ? WATER_LEVEL : heightAt(W, x0, z0)) + (mode === 'air' ? 2.5 : 0.32), y1 = (mode === 'water' ? WATER_LEVEL : heightAt(W, x1, z1)) + (mode === 'air' ? 2.5 : 0.32);
+          const A = [x0 + nx * (o - w), y0, z0 + nz * (o - w)], B = [x0 + nx * (o + w), y0, z0 + nz * (o + w)], C = [x1 + nx * (o + w), y1, z1 + nz * (o + w)], D = [x1 + nx * (o - w), y1, z1 + nz * (o - w)];
+          for (const v of [A, B, C, A, C, D]) { pos.push(v[0], v[1], v[2]); col.push(c.r, c.g, c.b); }
+        }
+      }
+    });
+    if (!pos.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const m = new THREE.Mesh(geo, this.ribbonMat || (this.ribbonMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthTest: false, side: THREE.DoubleSide })));
+    m.renderOrder = 7;
+    m.frustumCulled = false;
+    return m;
+  }
+  previewRoute(item) {
+    if (this.previewMesh) { this.group.remove(this.previewMesh); this.previewMesh.geometry.dispose(); this.previewMesh = null; }
+    if (!item) return;
+    this.previewMesh = this.ribbon([item]);
+    if (this.previewMesh) this.group.add(this.previewMesh);
+  }
+  // the lines overlay: every line's route
+  showLines(on) {
+    if (this.linesMesh) { this.group.remove(this.linesMesh); this.linesMesh.geometry.dispose(); this.linesMesh = null; }
+    if (!on) return;
+    this.linesMesh = this.ribbon(this.lines.list.map((l) => ({ stops: l.stops, kind: l.kind, pattern: l.pattern, color: l.color })));
+    if (this.linesMesh) this.group.add(this.linesMesh);
+  }
   rebuildStopMesh() {
     const W = this.game.world;
     let k = 0, kd = 0, ka = 0;
@@ -764,7 +915,8 @@ export class Roads {
     return {
       roads, tram, nextStop: this.nextStop, nextVeh: this.nextVeh,
       stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: s.fin || undefined })),
-      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: v.fin || undefined, state: v.state === 'run' ? 'load' : v.state })),
+      lines: this.lines.serialize(),
+      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: v.fin || undefined, state: v.state === 'run' ? 'load' : v.state })),
     };
   }
   deserialize(d) {
@@ -787,10 +939,14 @@ export class Roads {
     for (const v of Array.isArray(d.vehicles) ? d.vehicles : []) {
       if (!v || !roadModel(v.model) || !okTile(v.tile)) continue;
       const stops = (Array.isArray(v.stops) ? v.stops : []).filter((id) => this.stops.some((s) => s.id === id));
-      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : 'load', t: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined })), earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: v.fin && typeof v.fin === 'object' ? v.fin : null, v: 0, owner: typeof v.owner === 'string' && /^r\d{1,2}$/.test(v.owner) ? v.owner : undefined });
+      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : 'load', t: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined, to: Number.isInteger(l.to) && this.stops.some((s) => s.id === l.to) ? l.to : undefined, rail: l.rail ? true : undefined })), line: Number.isInteger(v.line) ? v.line : null, earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: v.fin && typeof v.fin === 'object' ? v.fin : null, v: 0, owner: typeof v.owner === 'string' && /^r\d{1,2}$/.test(v.owner) ? v.owner : undefined });
     }
     this.nextStop = Math.max(d.nextStop | 0, 1, ...this.stops.map((s) => s.id + 1));
     this.nextVeh = Math.max(d.nextVeh | 0, 1, ...this.vehicles.map((v) => v.id + 1));
+    this.lines.deserialize(d.lines);
+    // vehicles whose line is gone (or never existed) become lines of their own
+    for (const v of this.vehicles) if (v.line != null && !this.lines.byId(v.line)) v.line = null;
+    this.lines.adoptVehicles();
   }
   afterLoad() { this.relinkAll(); this.rebuildRoadMesh(); this.rebuildStopMesh(); }
 }

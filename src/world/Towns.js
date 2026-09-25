@@ -8,6 +8,14 @@ import { heightAt } from './WorldGen.js';
 
 const CLASSES = ['hamlet', 'village', 'small_town', 'town', 'large_town', 'city', 'large_city', 'metropolis', 'megalopolis'];
 const ARCH = ['cottage', 'house', 'house2', 'townhouse', 'shop', 'apartment', 'block', 'office', 'tower', 'skyscraper', 'civic', 'warehouse', 'plaza'];
+// how many travellers a building stands for (catchment coverage)
+const ARCH_W = { cottage: 1, house: 1.5, house2: 1.5, townhouse: 2.5, shop: 1.5, apartment: 4, block: 6, office: 4, tower: 8, skyscraper: 12, civic: 2, warehouse: 1, plaza: 0.5 };
+// Travellers come from the buildings the company's stations and stops reach:
+// a town sends COV_FLOOR of its travellers to any station in it, plus
+// COV_SPAN times the share of its buildings within walking distance of a
+// stop or station (so bus and tram stops in districts the railway does not
+// reach add travellers of their own; a well-covered town gives the most)
+const COV_FLOOR = 0.6, COV_SPAN = 0.55;
 const WALL = 0xf4efe6, GL = 0x34465a, TRIM = 0xd8d2c8;
 
 class InstancePool {
@@ -323,9 +331,12 @@ export class TownSystem {
       // frequent, well-connected service attracts more travellers (PaxFlow)
       const pax = (P.paxBase + t.pop * P.paxPerPop) * (1 + fx.paxProd + (ev.paxProd || 0)) * (t.tourist ? 1.5 : 1) * (g.pax ? g.pax.townMul(sts) : 1);
       const mail = (P.mailBase + t.pop * P.mailPerPop) * (1 + fx.mailProd);
-      t.paxAcc += (pax / 60) * dt;
+      const cov = this.coverage(t, sts);
+      t.paxAcc += (pax * COV_FLOOR / 60) * dt;
+      t.paxCovAcc = (t.paxCovAcc || 0) + (pax * COV_SPAN * cov.share / 60) * dt;
       t.mailAcc += (mail / 60) * dt;
       if (t.paxAcc >= 1) { const n = Math.floor(t.paxAcc); t.paxAcc -= n; this.push(sts, 'PASSENGERS', n); }
+      if (t.paxCovAcc >= 1) { const n = Math.floor(t.paxCovAcc); t.paxCovAcc -= n; this.pushCovered(cov, n); }
       if (t.mailAcc >= 1) { const n = Math.floor(t.mailAcc); t.mailAcc -= n; this.push(sts, 'MAIL', n); }
     }
   }
@@ -340,7 +351,33 @@ export class TownSystem {
     let left = n;
     sts.forEach((s, i) => { const k = i === sts.length - 1 ? left : Math.min(left, Math.round(n * w[i] / sum)); if (k > 0) { this.game.stations.receive(s, c, k); left -= k; } });
   }
-  onStationsChanged() { for (const t of this.list) t._sts = null; }
+  onStationsChanged() { for (const t of this.list) { t._sts = null; t._cov = null; } }
+  // which stations and stops reach which of the town's buildings
+  coverage(t, sts) {
+    if (t._cov && t._cov.n === t.buildings.length) return t._cov;
+    const g = this.game, S = g.stations, R = g.roads;
+    const shapes = (sts || []).filter((s) => !s.service || S.serves(s, 'PASSENGERS')).map((s) => ({ s, tiles: s.road ? R.stopTiles(s) : S.allTiles(s), r: s.road ? R.stopRadius(s) : S.radius(s) }));
+    let tot = 0, cov = 0;
+    const w = new Map();
+    for (const b of t.buildings) {
+      const bw = ARCH_W[b.arch] || 1;
+      tot += bw;
+      const hit = shapes.filter((sh) => sh.tiles.some((u) => cheb(u, b.tile) <= sh.r));
+      if (!hit.length) continue;
+      cov += bw;
+      for (const h of hit) w.set(h.s, (w.get(h.s) || 0) + bw / hit.length);
+    }
+    t._cov = { share: tot ? cov / tot : 1, w, weight: cov, total: tot, n: t.buildings.length };
+    return t._cov;
+  }
+  // the travellers from reached buildings go to the stop or station that reaches them
+  pushCovered(cov, n) {
+    if (!cov.w.size) return;
+    const list = [...cov.w.entries()];
+    const sum = list.reduce((a, e) => a + e[1], 0);
+    let left = n;
+    list.forEach(([s, w], i) => { const k = i === list.length - 1 ? left : Math.min(left, Math.round((n * w) / sum)); if (k > 0) { this.game.stations.receive(s, 'PASSENGERS', k); left -= k; } });
+  }
   // a new or bigger station reshapes the town around it (rail influence)
   onStationGrew(stn) {
     for (const t of this.list) if (Math.max(Math.abs(tx(stn.tile) - t.x), Math.abs(tz(stn.tile) - t.z)) <= 7) this.layout(t, true, 2);

@@ -821,3 +821,35 @@ textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospa
 .bhandle i { width: 12px; height: 12px; border-radius: 50%; background: #fff; }
 .bhandle.a { background: rgba(233,185,73,.92); }
 .bhandle[hidden] { display: none; }
+
+/* ---------- lines ---------- */
+#stopmarks { position: fixed; inset: 0; pointer-events: none; z-index: 16; }
+.stopmark { position: absolute; left: 0; top: 0; pointer-events: auto; min-width: 44px; height: 44px; margin-left: -22px; margin-top: -22px; border-radius: 22px; border: 3px solid #fff; background: rgba(31,42,58,.82); color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 6px; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+.stopmark .ic { width: 18px; height: 18px; }
+.stopmark b { font-size: .8em; }
+.stopmark b:empty { display: none; }
+.stopmark.on { background: var(--teal); }
+.stopmark.dim { opacity: .35; }
+.stopmark[hidden] { display: none; }
+.ldot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; box-shadow: 0 0 0 2px rgba(255,255,255,.8); }
+.lname { font-weight: 800; }
+.lstat { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: .8em; font-weight: 700; background: #3ac070; color: #fff; }
+.lstat.overcrowded, .lstat.blocked { background: #e04a3a; }
+.lstat.underused, .lstat.no_vehicles, .lstat.no_route { background: #f0b040; color: #3a2a00; }
+.lstats { grid-template-columns: repeat(3, 1fr); }
+.lstats small { display: block; opacity: .7; font-size: .75em; }
+.lhist { display: flex; align-items: flex-end; gap: 2px; height: 46px; margin: 4px 0 8px; }
+.lhist i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; }
+.lhist i.rev { background: #3ac070; }
+.lhist i.cost { background: #e0a33a; margin-right: 6px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.swatch { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; }
+.swatch.on { border-color: var(--ink); }
+@media (pointer: coarse) { .swatch { width: 44px; height: 44px; } }
+.flipv { display: inline-flex; transform: scaleY(-1); }
+.rv-stop .link { background: none; border: 0; color: inherit; text-align: left; padding: 0; flex: 1; font: inherit; }
+#subbar .chip { flex: none; }
+#subbar .sub-hint.bb { min-width: 180px; max-width: 320px; font-size: .8em; line-height: 1.25; }
+.rv-route .rv-stop.l { grid-template-columns: 24px 1fr auto auto auto auto; gap: 4px; }
+.rv-stop.l > b { color: #fff; border-radius: 6px; line-height: 22px; }
+.rv-stop.l small { white-space: nowrap; opacity: .75; }

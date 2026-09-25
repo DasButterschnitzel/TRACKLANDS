@@ -846,6 +846,8 @@ export class StationSystem {
     const cur = stn.stock[c] || 0;
     const take = Math.max(0, Math.min(n, cap - cur));
     if (take > 0) stn.stock[c] = cur + take;
+    // road stops measure what turns up at them (line demand)
+    if (stn.road && take > 0) stn.stats.genMonth = (stn.stats.genMonth || 0) + take;
     stn.warn = cur + take >= cap * 0.9;
     return take;
   }
@@ -854,6 +856,8 @@ export class StationSystem {
   distribute(stn, c, n) {
     const g = this.game;
     stn.delivered += n;
+    // last mile: some travellers arriving by train continue by bus or tram
+    if (c === 'PASSENGERS' && !stn.road && g.roads) g.roads.onward(stn, n);
     if (TOWN_ACCEPTS.includes(c) && stn.links.towns.length) {
       const town = g.towns.byId(stn.links.towns[0]);
       if (town) { g.towns.receive(town, c, n); return { town }; }
