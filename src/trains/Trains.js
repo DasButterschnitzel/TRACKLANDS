@@ -1633,9 +1633,12 @@ export class TrainSystem {
     const stopAt = Math.min(t.stopS, limitS, t.ss[t.ss.length - 1]);
     const dist = stopAt - t.s;
     const vb = Math.sqrt(2 * decel * Math.max(0, dist - 0.01));
-    const vt = Math.min(vlim, vb);
+    let vt = Math.min(vlim, vb);
+    // driver mode: the player sets the power (a share of what is allowed) and
+    // may brake; signals, stops and line limits still protect the train
+    if (t.drive) { vt = t.drive.brake ? 0 : Math.min(vt, vmaxTrain * t.drive.throttle); t.drive.limit = vlim; t.drive.vt = vt; }
     if (t.v < vt) t.v = Math.min(vt, t.v + accel * dt);
-    else t.v = Math.max(vt, t.v - decel * 1.5 * dt);
+    else t.v = Math.max(vt, t.v - decel * (t.drive && t.drive.brake ? 2.2 : 1.5) * dt);
     if (!isFinite(t.v)) t.v = 0;
     const sPrev = t.s;
     t.s = Math.min(t.s + t.v * dt, Math.max(t.s, stopAt));

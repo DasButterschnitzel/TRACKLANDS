@@ -16,6 +16,7 @@ import { Works } from './rail/Works.js';
 import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
 import { News } from './world/News.js';
+import { Company } from './world/Company.js';
 import { roadModel } from './road/Roads.js';
 import { IndustrySystem } from './world/Industries.js';
 import { TownSystem } from './world/Towns.js';
@@ -104,6 +105,7 @@ export class Game {
     this.furniture = new RailFurniture(this);
     this.overlays = new Overlays(this);
     this.news = new News(this);
+    this.company = new Company(this);
 
     if (save) this.restore(save);
     else this.fresh(opts);
@@ -111,6 +113,7 @@ export class Game {
     this.railView.markAll();
     this.stations.buildAllVisuals();
     this.industries.buildAllVisuals();
+    this.company.buildVisual();
     this.industries.onStationsChanged();
     this.towns.onStationsChanged();
     this.economy.fillContracts();
@@ -161,6 +164,7 @@ export class Game {
     this.roads.deserialize(s.road);
     this.roads.afterLoad();
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
+    this.company.deserialize(s.company);
     this.world.view.recolorTerrain();
   }
 
@@ -169,7 +173,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -448,6 +452,7 @@ export class Game {
     this.roads.tick(dt);
     this.works.tick(dt);
     this.env.tickWeather(dt);
+    this.company.tick();
     this.economy.tick(dt);
     this.progression.tick(dt);
     const decay = Math.exp(-dt / 90);

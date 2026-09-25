@@ -176,6 +176,7 @@ export class Ledger {
     let stations = 0;
     for (const s of g.stations.list) stations += E.costs.station() * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
     stations += g.stations.depots.length * E.costs.depot() * 0.5;
+    if (g.company) stations += g.company.value();
     const shares = g.industries ? g.industries.stakeValue() : 0;
     const recent = this.months.slice(-6);
     const avgProfit = recent.length ? recent.reduce((a, p) => a + this.profitOf(p).profit, 0) / recent.length : 0;

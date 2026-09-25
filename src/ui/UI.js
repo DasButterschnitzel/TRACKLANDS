@@ -21,10 +21,12 @@ import { FinanceUIMixin } from './FinanceUI.js';
 import { RoadUIMixin } from './RoadUI.js';
 import { IndustryUIMixin } from './IndustryUI.js';
 import { NewsUIMixin } from './NewsUI.js';
+import { DriverUIMixin } from './DriverUI.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
+import { COMPANY_COLORS } from '../world/Company.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -68,6 +70,7 @@ export class UI {
   }
 
   detach() {
+    if (this.driveId != null) this.stopDrive();
     this.game = null;
     this.hud.hidden = true;
     this.closePanel(); this.showInspector(null);
@@ -273,6 +276,7 @@ export class UI {
       if (p) { g.camera.target.x += (p.x - g.camera.target.x) * Math.min(1, dt * 5); g.camera.target.z += (p.z - g.camera.target.z) * Math.min(1, dt * 5); } else this.followId = null;
     }
     this.updateFloats(dt);
+    this.updateDriver();
     this.updateLabels();
     const ut = $('#undo-t');
     if (ut) { const left = g.construction.undoTimeLeft(); ut.style.setProperty('--p', (left / 10) * 100 + '%'); }
@@ -629,6 +633,7 @@ export class UI {
       : `<h3>${this.tr('legacy_title')}</h3><p class="muted">${this.tr('legacy_locked', { n: LEGACY_LEVEL })}</p>`;
     return `<div class="company-head"><div class="big-lvl">${P.level}</div><div><b>${this.tr('company_level')}</b>${this.bar(P.xp / P.xpNeeded())}<small>${fmt(P.xp)} / ${fmt(P.xpNeeded())} XP</small></div></div>
       ${ev}
+      ${this.identityBlock()}
       <div class="kv-grid">
         <div>${icon('coin')}<b>${fmt(E.coins)}</b><small>${this.tr('coins')}</small></div>
         <div>${icon('rp')}<b>${P.rp}</b><small>${this.tr('research_points')}</small></div>
@@ -640,6 +645,19 @@ export class UI {
       <p class="muted">${this.tr('difficulty')}: ${this.tr('diff_' + g.difficultyId)} · ${this.tr('legacy_badge', { n: P.legacy.count })} · ${fmtTime(S.playTime)}</p>
       ${legend}${legacy}
       <h3>${this.tr('more')}</h3><button class="btn ghost" data-act="panel" data-arg="credits">${this.tr('credits')}</button> <button class="btn ghost" data-act="saveQuit">${this.tr('save_quit')}</button>`;
+  }
+
+  // company name, colour and headquarters
+  identityBlock() {
+    const C = this.game.company, hq = C.hq;
+    const town = hq && hq.town != null ? this.game.towns.byId(hq.town) : null;
+    const sw = COMPANY_COLORS.map((c) => `<button class="cswatch ${C.color === c ? 'on' : ''}" style="background:#${c.toString(16).padStart(6, '0')}" data-act="companyColor" data-arg="${c}" aria-label="${this.tr('company_color')}" aria-pressed="${C.color === c}"></button>`).join('');
+    return `<h3>${this.tr('identity')}</h3>
+      <label class="set"><span>${this.tr('company_name')}</span><input class="inp" maxlength="32" value="${escapeHtml(C.name)}" data-change="companyName" aria-label="${this.tr('company_name')}"/></label>
+      <div class="set"><span>${this.tr('company_color')}</span><div class="cswatches">${sw}</div></div>
+      <div class="card">${icon('company')} <b>${this.tr('hq_title')}</b> <small>${hq ? this.tr(town ? 'hq_in' : 'hq_built_at', { town: town ? escapeHtml(town.name) : '' }) : this.tr('hq_none')}</small>
+        <div class="row wrap">${hq ? `<button class="btn ghost small" data-act="jumpHQ">${icon('focus', 'mini')} ${this.tr('show')}</button>` : ''}<button class="btn small" data-act="hqPlace">${icon('company', 'mini')} ${this.tr(hq ? 'hq_move' : 'hq_build', { n: fmt(C.hqCost()) })}</button></div>
+        <p class="muted small">${this.tr('hq_help')}</p></div>`;
   }
 
   // what a research node unlocks: locomotives, wagons, track types, signals
@@ -1185,6 +1203,9 @@ export class UI {
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
+      companyColor: (a) => { const G = g(); G.company.color = +a; G.company.buildVisual(); this.refreshPanel(); },
+      hqPlace: () => { this.closePanel(); g().construction.setTool('hq'); this.toast(this.tr('hq_hint', { n: fmt(g().company.hqCost()) }), 'info', 'company'); },
+      jumpHQ: () => { const G = g(), h = G.company.hq; if (h) { this.closePanel(); G.camera.focus(tileCX(h.tile) + 1, tileCZ(h.tile) + 1, 14); } },
       weatherInfo: () => this.toast(this.weatherText(), 'info', 'w_' + (g().settings.weather ? g().env.weather : 'clear')),
       ...this.railActions(),
       ...this.liveryActions(),
@@ -1192,6 +1213,7 @@ export class UI {
       ...this.roadActions(),
       ...this.industryActions(),
       ...this.newsActions(),
+      ...this.driverActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
@@ -1250,6 +1272,8 @@ export class UI {
     const g = () => this.game;
     return {
       ...this.newsInputs(),
+      ...this.driverInputs(),
+      companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
@@ -1283,4 +1307,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin);

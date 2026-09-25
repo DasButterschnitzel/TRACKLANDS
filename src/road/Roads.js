@@ -718,7 +718,7 @@ export class Roads {
     const mesh = { bus: this.busMesh, truck: this.truckMesh, tram: this.tramMesh, dock: this.shipMesh, airport: this.planeMesh };
     const scale = { bus: 1.4, truck: 1.4, tram: 1.4, dock: 1.2, airport: 1.3 };
     const o = {};
-    const livery = this.game.progression.companyColor ? this.game.progression.companyColor() : 0x2f6b4a;
+    const livery = this.game.company ? this.game.company.color : 0x2f6b4a;
     for (const v of this.vehicles) {
       const m = roadModel(v.model);
       if (!m || !mesh[m.kind]) continue;

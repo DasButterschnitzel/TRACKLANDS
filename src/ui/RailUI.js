@@ -368,7 +368,7 @@ export const RailUIMixin = {
       ${t.mode === 'manual' ? this.lineBlock(t) + this.scheduleEditor(t) : `<p class="muted small">${this.tr('auto_desc')}</p>`}
       <h4 id="tr-upg">${this.tr('upgrades')}</h4>${upg}
       ${this.groupSelect(t)}
-      <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
+      <div class="row wrap"><button class="btn ghost" data-act="follow" data-arg="${t.id}">${icon('focus')} ${this.tr('follow')}</button><button class="btn ghost" data-act="drive" data-arg="${t.id}">${icon('train')} ${this.tr('drive')}</button><button class="btn ghost" data-act="renameTrain" data-arg="${t.id}">${this.tr('rename')}</button><button class="btn danger" data-act="sellTrain" data-arg="${t.id}">${this.tr('sell')} (${fmt(g.trains.sellValue(t))}●)</button></div>`;
   },
 
   // service type (passenger / freight / mixed) and layout (through / terminus / hybrid)

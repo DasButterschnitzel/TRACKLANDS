@@ -227,8 +227,18 @@ export class Input {
     const g = this.game;
     if (!g.running) return;
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); g.construction.undo(); return; }
+    // driver mode: W / S set the power, X brakes
+    if (g.ui.driveId != null && (k === 'w' || k === 's' || k === 'x' || k === 'arrowup' || k === 'arrowdown')) {
+      const t = g.trains.byId(g.ui.driveId);
+      if (t && t.drive) {
+        if (k === 'x') t.drive.brake = !t.drive.brake;
+        else g.ui.setThrottle(t.drive.throttle + (k === 'w' || k === 'arrowup' ? 0.1 : -0.1));
+        e.preventDefault();
+        return;
+      }
+    }
     switch (k) {
-      case 'escape': if (!g.ui.closeTop()) g.construction.setTool('select'); break;
+      case 'escape': if (g.ui.driveId != null) g.ui.stopDrive(); else if (!g.ui.closeTop()) g.construction.setTool('select'); break;
       case ' ': if (e.target === document.body || e.target === this.el) { e.preventDefault(); g.togglePause(); } break;
       case '1': g.construction.setTool('select'); break;
       case '2': g.construction.setTool('track'); break;
@@ -259,6 +269,7 @@ export class Input {
 
   update(dt) {
     const k = this.keys;
+    if (this.game.ui && this.game.ui.driveId != null) return;   // the keys drive the train
     let x = 0, y = 0;
     if (k.has('w') || k.has('arrowup')) y += 1;
     if (k.has('s') || k.has('arrowdown')) y -= 1;

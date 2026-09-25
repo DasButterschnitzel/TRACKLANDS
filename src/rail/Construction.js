@@ -108,6 +108,7 @@ export class Construction {
     let ok = true, info = '';
     if (this.tool === 'station') { this.previewStation(tile, tile); return; }
     if (this.tool === 'industry') { this.previewFound(tile); return; }
+    if (this.tool === 'hq') { this.previewHQ(tile); return; }
     if (this.tool === 'station' || this.tool === 'depot') {
       const err = g.stations.placeError(tile, this.tool);
       ok = !err;
@@ -162,6 +163,15 @@ export class Construction {
     if (info) g.ui.cursorInfo(info, ok); else g.ui.hideCursorInfo();
   }
 
+  previewHQ(tile) {
+    const g = this.game, err = g.company.hqError(tile);
+    const x = tile % N, z = Math.floor(tile / N);
+    let k = 0;
+    for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (inMap(x + dx, z + dz)) this.putQuad(this.ghost, k++, idx(x + dx, z + dz), err ? 0xd0503f : 0x3fc8b8);
+    this.ghost.count = k; this.flush(this.ghost);
+    const t = err ? null : g.company.nearestTown(tile);
+    g.ui.cursorInfo(err ? g.ui.tr(err) : `${g.ui.tr('hq_title')} · ${fmt(g.company.hqCost())} ●${t ? ' · ' + t.name : ''}`, !err);
+  }
   // fund a new industry: a 2x2 site with its corner at the tile
   foundKind() {
     const types = this.game.industries.foundTypes();
@@ -230,6 +240,7 @@ export class Construction {
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
       case 'road': this.drag = { a: tile, b: tile }; this.previewRoad(); break;
       case 'industry': this.placeFound(tile); break;
+      case 'hq': { const r = g.company.buildHQ(tile); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('hq_built', { town: r.town ? r.town.name : '' }), 'good', 'company'); g.audio.play('construct'); this.setTool('select'); } break; }
       case 'roadstop': { const r = g.roads.addStop(tile, this.stopKind || 'bus'); if (r.error) g.ui.error(r.error); else { g.ui.toast(g.ui.tr('stop_built', { name: r.stop.name }), 'good', 'station'); g.select({ type: 'roadstop', id: r.stop.id }); } break; }
       default: break;
     }
