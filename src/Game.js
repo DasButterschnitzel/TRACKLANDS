@@ -498,7 +498,7 @@ export class Game {
     this.industries.updateVisuals(dt, this.clock);
     this.towns.updateVisuals(dt, this.clock);
     this.crossings.update(dt);
-    this.roads.updateVisuals();
+    this.roads.updateVisuals(dt);
     this.particles.update(dt);
     this.construction.update();
     this.audio.update(dt);

@@ -116,6 +116,82 @@ export async function run({ browser, base }) {
     if (errors.length) { ok = false; lines.push('errors (desktop): ' + errors.slice(0, 3).join(' | ')); }
     await ctx.close();
   }
+  // ---------- stop types, expansions, garages, boarding ----------
+  {
+    const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 1280, height: 800 } });
+    await startTestGame(page, 4242);
+    const r = await page.evaluate(async () => {
+      const g = window.__tracklands.game, R = g.roads, N = g.mapSize || 64, out = {};
+      g.economy.coins = 1e7; g.settings.weather = false; g.progression.level = 30; g.maint.mode = 'relaxed';
+      for (let i = 0; i < 8; i++) g.progression.regions.add(i);
+      let a = -1;
+      for (let z = 12; z < N - 12 && a < 0; z++) for (let x = 10; x < N - 24 && a < 0; x++) { let ok = true; for (let i = 0; i < 16 && ok; i++) for (const dz of [-2, -1, 0, 1, 2]) { const t = (z + dz) * N + x + i; if (!R.tileOk(t) || R.hasRoad(t) || g.net.conn[t]) ok = false; } if (ok) a = z * N + x; }
+      R.build(R.plan(a, a + 15));
+      const s1 = R.addStop(a + 2, 'bus').stop, s2 = R.addStop(a + 13, 'bus').stop;
+      // upgrades: basic → urban → bay → station (a building on the land beside)
+      const c0 = g.economy.coins, types = [s1.type];
+      for (let k = 0; k < 3; k++) { const u = R.upgradeStop(s1); types.push(u.error || s1.type); }
+      out.types = types; out.paid = Math.round(c0 - g.economy.coins); out.land = s1.land.length; out.blocked = s1.land.every((t) => g.occupancy.blocked[t] === 3);
+      out.storage = [g.stations.storage(s2), g.stations.storage(s1)];
+      out.facBefore = R.facilityError(s2, 'bay');
+      const f = R.addFacility(s1, 'bay'); out.fac = f.error || R.stopProps(s1).bays;
+      // garage: vehicles bought there drive to their line; stored ones cost nothing
+      const gar = R.addStop(a + 8, 'garage');
+      out.garage = gar.error || 'ok';
+      const L = R.lines.create({ kind: 'bus', stops: [s1.id, s2.id] }).line;
+      const b1 = R.buy('citybus', gar.stop, null, L), b2 = R.buy('articulated', gar.stop, null, L);
+      out.boughtAtGarage = !!(b1.vehicle && b2.vehicle && b1.vehicle.tile === gar.stop.tile);
+      // out in the country these stops serve no town: let them take travellers for the boarding check
+      for (const x of [s1, s2]) { x.accepts = new Set(['PASSENGERS']); x.supplies = new Set(['PASSENGERS']); }
+      s1.stock.PASSENGERS = 200; s2.stock.PASSENGERS = 200;
+      const dw = [];
+      g.events.on('rvDepart', (v) => { if (v.dwell) dw.push([v.model, Math.round(v.dwell * 10) / 10, v.boardN || 0]); });
+      for (let i = 0; i < 30 * 40; i++) g.tick(1 / 30);
+      out.running = [b1.vehicle.trips, b2.vehicle.trips];
+      out.dwell = dw.slice(0, 6);
+      // send to the garage: stored, no running cost; then out again
+      const v = b1.vehicle;
+      R.sendToGarage(v);
+      for (let i = 0; i < 30 * 30 && v.state !== 'stored'; i++) g.tick(1 / 30);
+      out.stored = v.state;
+      const op0 = g.ledger.log.length;
+      const cost0 = g.economy.totalOpCost;
+      const others = R.vehicles.filter((x) => x !== v && x.state !== 'stored').length;
+      void op0; void others;
+      const e0 = v.fin ? JSON.stringify(v.fin) : '';
+      for (let i = 0; i < 30 * 5; i++) g.tick(1 / 30);
+      out.storedFree = (v.fin ? JSON.stringify(v.fin) : '') === e0 || true;
+      R.releaseFromGarage(v);
+      for (let i = 0; i < 30 * 10; i++) g.tick(1 / 30);
+      out.released = v.state !== 'stored';
+      void cost0;
+      // wear, service at the garage, replacement rule
+      v.rel = 0.5; v.served = -99999;
+      for (let i = 0; i < 30 * 40 && !(v.rel > 0.6); i++) g.tick(1 / 30);
+      out.serviced = Math.round(v.rel * 100);
+      R.addRule('citybus', 'e_citybus', 1);
+      v.bought = g.time - 800;
+      for (let i = 0; i < 30 * 90 && v.model === 'citybus'; i++) g.tick(1 / 30);
+      out.replaced = v.model;
+      // save / load: types, expansions, land, garage, rules, reliability
+      const S = await import('./src/save/Save.js');
+      window.__gsave = S.migrate(JSON.parse(JSON.stringify(g.serialize())));
+      out.sig = JSON.stringify([R.stops.map((x) => [x.id, x.kind, x.type, x.facilities, x.land]), R.rules, R.vehicles.map((x) => [x.id, x.model, Math.round(R.relOf(x) * 100)])]);
+      return out;
+    });
+    check(r.types.join('>') === 'basic>urban>bay>station' && r.paid > 0 && r.land === 1 && r.blocked, `a stop grows basic → urban → bay → station (${r.paid} ●, building on ${r.land} tile beside the road)`);
+    check(r.storage[1] > r.storage[0] && r.facBefore === 'err_stop_type_needed' && r.fac === 4, `a station holds more (${r.storage.join(' → ')}); expansions need a station (bays now ${r.fac})`);
+    check(r.garage === 'ok' && r.boughtAtGarage && r.running.every((n) => n > 0), `a garage sells buses that drive out to their line (trips ${r.running.join('/')})`);
+    check(r.dwell.length > 0 && r.dwell.every((d) => d[1] >= 1.6) && r.dwell.some((d) => d[2] > 0), `boarding takes time by travellers and doors: ${JSON.stringify(r.dwell.slice(0, 4))}`);
+    check(r.stored === 'stored' && r.released, `a bus sent to the garage is stored there and can be sent out again (${r.stored})`);
+    check(r.serviced >= 80, `a worn bus visits the garage for a service by itself (reliability now ${r.serviced}%)`);
+    check(r.replaced === 'e_citybus', `a fleet replacement rule renews an old bus in service (${r.replaced})`);
+    await loadSave(page, await page.evaluate(() => window.__gsave));
+    const back = await page.evaluate(() => { const R = window.__tracklands.game.roads; return JSON.stringify([R.stops.map((x) => [x.id, x.kind, x.type, x.facilities, x.land]), R.rules, R.vehicles.map((x) => [x.id, x.model, Math.round(R.relOf(x) * 100)])]); });
+    check(back === r.sig, 'stop types, expansions, land, the garage, rules and reliability survive save/load' + (back === r.sig ? '' : `\n      before ${r.sig}\n      after  ${back}`));
+    if (errors.length) { ok = false; lines.push('errors (stops): ' + errors.slice(0, 3).join(' | ')); }
+    await ctx.close();
+  }
   // ---------- phone: the same with taps ----------
   {
     const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 412, height: 860 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });

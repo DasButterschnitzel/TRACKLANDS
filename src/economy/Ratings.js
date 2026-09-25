@@ -58,7 +58,7 @@ export class CargoRatings {
     if (this.t < 1) return;
     const step = this.t; this.t = 0;
     const k = Math.min(1, step / 25);   // ratings move over ~half a month
-    for (const stn of this.game.stations.list) {
+    for (const stn of this.game.roads ? this.game.stations.list.concat(this.game.roads.stops) : this.game.stations.list) {
       if (!stn.ratings) continue;
       for (const c in stn.ratings) { const e = stn.ratings[c]; e.r += (this.target(stn, c) - e.r) * k; }
     }

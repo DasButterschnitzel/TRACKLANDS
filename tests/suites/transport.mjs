@@ -132,7 +132,7 @@ export async function run({ browser, base }) {
     placed = await page.evaluate((i) => { const s = window.__tracklands.game.roads.stopAt(i); return !!s && s.kind === 'airport'; }, spot);
     check(ghost === 9, `the airport preview covers 3×3 (${ghost})`);
   }
-  check(chips.join(',') === 'bus,truck,tram,dock,airport' && placed, `stop tool offers ${chips.join(', ')}; an airport placed with the mouse: ${placed}`);
+  check(chips.join(',') === 'bus,truck,tram,dock,airport,garage' && placed, `stop tool offers ${chips.join(', ')}; an airport placed with the mouse: ${placed}`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
   await ctx.close();
   return { ok, lines };

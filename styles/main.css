@@ -853,3 +853,4 @@ textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospa
 .rv-route .rv-stop.l { grid-template-columns: 24px 1fr auto auto auto auto; gap: 4px; }
 .rv-stop.l > b { color: #fff; border-radius: 6px; line-height: 22px; }
 .rv-stop.l small { white-space: nowrap; opacity: .75; }
+.card.stype { display: flex; flex-direction: column; gap: 2px; } .facgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; } .swatch.auto { display: grid; place-items: center; font-weight: 800; background: var(--bg2); color: var(--ink); }

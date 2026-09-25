@@ -278,7 +278,7 @@ export class RoadLines {
 
   // ---------- save ----------
   serialize() {
-    return { next: this.nextId, list: this.list.map((l) => ({ id: l.id, name: l.name, color: l.color, kind: l.kind, stops: l.stops, pattern: l.pattern, model: l.model || undefined, auto: l.auto || undefined, created: Math.round(l.created || 0), hist: l.hist, cur: l.cur })) };
+    return { next: this.nextId, list: this.list.map((l) => ({ id: l.id, name: l.name, color: l.color, kind: l.kind, stops: l.stops, pattern: l.pattern, model: l.model || undefined, auto: l.auto || undefined, livery: l.livery || undefined, created: Math.round(l.created || 0), hist: l.hist, cur: l.cur })) };
   }
   deserialize(d) {
     this.list = [];
@@ -290,7 +290,7 @@ export class RoadLines {
       const kind = typeof x.kind === 'string' ? x.kind : stops.length ? R.stopById(stops[0]).kind : 'bus';
       const hist = (Array.isArray(x.hist) ? x.hist : []).filter((h) => h && typeof h === 'object').slice(-HIST).map((h) => ({ pax: +h.pax || 0, rev: +h.rev || 0, cost: +h.cost || 0, trips: h.trips | 0, n: h.n | 0 }));
       const cur = x.cur && typeof x.cur === 'object' ? { pax: +x.cur.pax || 0, rev: +x.cur.rev || 0, cost: +x.cur.cost || 0, trips: x.cur.trips | 0 } : { pax: 0, rev: 0, cost: 0, trips: 0 };
-      this.list.push({ id: x.id, name: String(x.name || x.id).slice(0, 24), color: Number.isFinite(+x.color) ? (+x.color >>> 0) & 0xffffff : LINE_COLORS[x.id % LINE_COLORS.length], kind, stops: stops.filter((s) => R.stopById(s).kind === kind), pattern: PATTERNS.includes(x.pattern) ? x.pattern : 'loop', model: typeof x.model === 'string' ? x.model : null, auto: !!x.auto, created: +x.created || 0, hist, cur, gen: {} });
+      this.list.push({ id: x.id, name: String(x.name || x.id).slice(0, 24), color: Number.isFinite(+x.color) ? (+x.color >>> 0) & 0xffffff : LINE_COLORS[x.id % LINE_COLORS.length], kind, stops: stops.filter((s) => R.stopById(s).kind === kind), pattern: PATTERNS.includes(x.pattern) ? x.pattern : 'loop', model: typeof x.model === 'string' ? x.model : null, auto: !!x.auto, livery: !!x.livery, created: +x.created || 0, hist, cur, gen: {} });
     }
     this.nextId = Math.max(d.next | 0, 1, ...this.list.map((l) => l.id + 1));
   }

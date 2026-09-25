@@ -47,7 +47,7 @@ export class StationSystem {
   allTiles(stn) { const out = []; for (const tk of stn.tracks) for (const t of tk.tiles) out.push(t); return out; }
 
   radius(stn) { return STATION.radius[stn.level] + this.game.progression.fx.stationRadius; }
-  storage(stn) { return Math.round(STATION.storage[stn.level] * (1 + this.game.progression.fx.storage)); }
+  storage(stn) { return Math.round(STATION.storage[stn.level | 0] * (1 + this.game.progression.fx.storage) * (stn.road && this.game.roads ? this.game.roads.stopProps(stn).storageMul : 1)); }
   loadRate(stn, cargos) {
     let r = STATION.loadRate[stn.level];
     // a station built for one kind of traffic handles it faster

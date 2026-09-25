@@ -30,6 +30,7 @@ export const LineUIMixin = {
     const g = this.game, R = g.roads, d = this.lineDraft(), s = R.stopById(id);
     if (!s) return;
     if (s.owner) { this.error('err_rival_stop'); return; }
+    if (s.kind === 'garage') { this.toast(this.tr('line_no_garage'), 'info', 'depot'); return; }
     if (d.stops.length && d.kind && s.kind !== d.kind) { this.error('err_line_kind', { kind: this.tr('tool_roadstop_' + d.kind) }); return; }
     if (d.stops[d.stops.length - 1] === id) d.stops.pop();
     else d.stops.push(id);
@@ -77,7 +78,7 @@ export const LineUIMixin = {
     const on = g.construction.tool === 'line';
     if (!on) { if (box.childElementCount) box.innerHTML = ''; return; }
     const d = this.lineDraft(), R = g.roads;
-    const stops = R.stops.filter((s) => !s.owner);
+    const stops = R.stops.filter((s) => !s.owner && s.kind !== 'garage');
     if (box.childElementCount !== stops.length || box._sig !== stops.map((s) => s.id).join(',')) {
       box.innerHTML = stops.map((s) => `<button class="stopmark" data-act="lineStop" data-arg="${s.id}" aria-label="${esc(s.name)}">${icon(s.kind, 'mini')}<b></b></button>`).join('');
       box._sig = stops.map((s) => s.id).join(',');
@@ -124,7 +125,7 @@ export const LineUIMixin = {
     const cur = k.model ? k.model.id : models[0] && models[0].id;
     const st = `<span class="lstat ${k.status}">${this.tr('lst_' + k.status)}</span>`;
     const stat = (label, v) => `<div><small>${label}</small><b>${v}</b></div>`;
-    const sugg = k.status === 'no_vehicles' ? '' : k.suggest > 0 ? `<div class="card warn">${icon('advisor')} <span>${this.tr('line_suggest_add', { n: k.suggest })}</span><button class="btn small primary" data-act="lineAdd" data-arg="${l.id}:${k.suggest}">${this.tr('line_add_n', { n: k.suggest })}</button></div>` : k.suggest < -1 ? `<div class="card">${icon('info')} <span>${this.tr('line_suggest_less', { n: -k.suggest })}</span></div>` : '';
+    const sugg = k.status === 'no_vehicles' ? '' : k.suggest > 0 ? `<div class="card warn">${icon('advisor')} <span>${this.tr('line_suggest_add', { n: k.suggest })}</span><button class="btn small primary" data-act="rlAdd" data-arg="${l.id}:${k.suggest}">${this.tr('line_add_n', { n: k.suggest })}</button></div>` : k.suggest < -1 ? `<div class="card">${icon('info')} <span>${this.tr('line_suggest_less', { n: -k.suggest })}</span></div>` : '';
     const hist = l.hist.slice(-6);
     const last = hist[hist.length - 1];
     return `<div class="pill-row"><span class="pill">${this.lineBadge(l)}</span><span class="pill">${icon(l.kind, 'mini')} ${this.tr('tool_roadstop_' + l.kind)}</span>${st}</div>
@@ -138,11 +139,12 @@ export const LineUIMixin = {
       <div class="row wrap"><button class="btn small" data-act="lineEdit" data-arg="${l.id}">${icon('route', 'mini')} ${this.tr('line_edit_map')}</button></div>
       <h4>${this.tr('line_vehicles')}: ${vs.length}</h4>
       ${vs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
-      ${models.length ? `<div class="row wrap"><select data-change="lineModelSel" data-id="${l.id}">${models.map((m) => `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)} · ${m.cap} · ${fmt(Math.round(m.price * g.difficulty.costMul))} ●</option>`).join('')}</select><button class="btn small primary" data-act="lineAdd" data-arg="${l.id}:1">${icon('plus', 'mini')} ${this.tr('line_add_vehicle')}</button></div>` : ''}
+      ${models.length ? `<div class="row wrap"><select data-change="lineModelSel" data-id="${l.id}">${models.map((m) => `<option value="${m.id}" ${m.id === cur ? 'selected' : ''}>${esc(m.name)} · ${m.cap} · ${fmt(Math.round(m.price * g.difficulty.costMul))} ●</option>`).join('')}</select><button class="btn small primary" data-act="rlAdd" data-arg="${l.id}:1">${icon('plus', 'mini')} ${this.tr('line_add_vehicle')}</button></div>` : ''}
       <h4>${this.tr('fin_heading')}</h4>
       <div class="bstats">${stat(this.tr('line_pax_month'), last ? fmt(last.pax) : '—')}${stat(this.tr('fin_income'), last ? fmt(last.rev) + ' ●' : '—')}${stat(this.tr('fin_expenses'), last ? fmt(last.cost) + ' ●' : '—')}${stat(this.tr('line_profit'), fmt(k.profit) + ' ●')}</div>
       ${hist.length > 1 ? `<div class="lhist">${hist.map((h) => { const mx = Math.max(1, ...hist.map((x) => Math.max(x.rev, x.cost))); return `<i style="height:${Math.round((h.rev / mx) * 100)}%" class="rev"></i><i style="height:${Math.round((h.cost / mx) * 100)}%" class="cost"></i>`; }).join('')}</div>` : `<p class="muted small">${this.tr('line_first_month')}</p>`}
       <h4>${this.tr('line_look')}</h4>
+      <label class="set tog"><span>${this.tr('line_livery')}</span><input type="checkbox" ${l.livery ? 'checked' : ''} data-change="lineLivery" data-id="${l.id}"/><i></i></label>
       <label class="set"><span>${this.tr('line_name')}</span><input type="text" maxlength="24" value="${esc(l.name)}" data-change="lineName" data-id="${l.id}"/></label>
       <div class="swatches">${LINE_COLORS.map((c) => `<button class="swatch ${c === l.color ? 'on' : ''}" style="background:${lineHex(c)}" data-act="lineColor" data-arg="${l.id}:${c}" aria-label="${lineHex(c)}"></button>`).join('')}</div>
       <div class="row wrap"><button class="btn ghost danger" data-act="lineDelete" data-arg="${l.id}">${icon('bulldoze', 'mini')} ${this.tr('line_delete')}</button></div>`;
@@ -182,7 +184,7 @@ export const LineUIMixin = {
       linePat: (a) => { const [id, p] = a.split(':'); const l = L().byId(+id); if (l) L().setPattern(l, p); re(); },
       lineMove: (a) => { const [id, i, dir] = a.split(':').map(Number); const l = L().byId(id); if (!l) return; const j = i + dir; if (j < 0 || j >= l.stops.length) return; const st = l.stops.slice(); [st[i], st[j]] = [st[j], st[i]]; L().setStops(l, st); re(); },
       lineDrop: (a) => { const [id, i] = a.split(':').map(Number); const l = L().byId(id); if (!l || l.stops.length <= 2) return; const st = l.stops.slice(); st.splice(i, 1); L().setStops(l, st); re(); },
-      lineAdd: (a) => {
+      rlAdd: (a) => {
         const [id, n] = a.split(':').map(Number); const l = L().byId(id); if (!l) return;
         const m = L().model(l); if (!m) return;
         const R = g().roads; let bought = 0;
@@ -200,9 +202,11 @@ export const LineUIMixin = {
   lineInputs() {
     const L = () => this.game.roads.lines;
     return {
+      lineLivery: (el) => { const l = L().byId(+el.dataset.id); if (l) l.livery = el.checked; this.renderInspector(); },
       lineAuto: (el) => { const l = L().byId(+el.dataset.id); if (l) l.auto = el.checked; this.renderInspector(); },
       lineName: (el) => { const l = L().byId(+el.dataset.id); const v = el.value.trim().slice(0, 24); if (l && v) { l.name = v; L().changed(); } this.renderInspector(); },
       lineModelSel: (el) => { const l = L().byId(+el.dataset.id); if (l) l.model = el.value; this.renderInspector(); },
+      rvRule: (el) => { const R = this.game.roads, v = R.byId(+el.dataset.id); if (!v) return; if (el.value) R.addRule(v.model, el.value, 12); else R.removeRule(v.model); this.renderInspector(); },
       rvLine: (el) => { const v = this.game.roads.byId(+el.dataset.id); if (!v) return; const l = el.value ? L().byId(+el.value) : null; if (l) L().assign(v, l); else { v.line = null; L().changed(); } this.renderInspector(); },
     };
   },

@@ -134,6 +134,17 @@ export async function run({ browser, base, quick, args = {} }) {
     await loadSave(page, save, { paused: false });
     await page.evaluate(() => { const g = window.__tracklands.game; g.speed = 0; for (let i = 0; i < 30 * 30; i++) g.tick(1 / 30); g.speed = 1; });
     const probs = new Set();
+    // every mixin's action and input map is spread into one object, so a key
+    // defined twice silently replaces the other panel's handler
+    for (const d of await page.evaluate(() => {
+      const u = window.__tracklands.ui, out = [];
+      const names = Object.getOwnPropertyNames(Object.getPrototypeOf(u)).filter((n) => /^[a-z]+(Actions|Inputs)$/.test(n) && !u[n].length);
+      for (const kind of ['Actions', 'Inputs']) {
+        const seen = {};
+        for (const n of names.filter((x) => x.endsWith(kind))) for (const k of Object.keys(u[n]())) { if (seen[k]) out.push(`${k} in ${seen[k]} and ${n}`); else seen[k] = n; }
+      }
+      return out;
+    })) probs.add(`handler collision: ${d}`);
     for (const [screen, fn] of SCREENS) {
       await page.evaluate(fn);
       await page.waitForTimeout(700);

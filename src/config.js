@@ -182,8 +182,20 @@ export const KMH_PER_TILE_S = 40;
 // ---------- ROAD TRANSPORT ----------
 // buses carry passengers (and some mail); trucks carry the cargo groups of their body
 export const ROAD_VEHICLES = [
-  { id: 'citybus', name: 'Citybus 30', kind: 'bus', cap: 30, mail: 4, speed: 55, price: 900, op: 10, level: 1, color: 0xe8c547 },
-  { id: 'coach', name: 'Coach Express 44', kind: 'bus', cap: 44, mail: 8, speed: 90, price: 2600, op: 22, level: 8, color: 0x3f6e9a },
+  // buses: role city (fast boarding, many stops), regional (fast, comfortable,
+  // slow to board), airport (luggage: pays more on airport legs); board =
+  // boarding speed, comfort scales fares a little, rel = reliability when new
+  { id: 'minibus', name: 'Hopper 16', kind: 'bus', role: 'city', era: 1, cap: 16, mail: 2, speed: 50, accel: 1.4, board: 1.3, comfort: 0.9, rel: 0.93, energy: 'diesel', doors: 1, life: 14, price: 520, op: 5, level: 1, color: 0x5aa0c8, shape: 'mini' },
+  { id: 'citybus', name: 'Citybus 30', kind: 'bus', role: 'city', era: 1, cap: 30, mail: 4, speed: 55, accel: 1.1, board: 1.0, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 2, life: 18, price: 900, op: 10, level: 1, color: 0xe8c547, shape: 'classic' },
+  { id: 'urban_bus', name: 'Metro 40 Low-Floor', kind: 'bus', role: 'city', era: 2, cap: 40, mail: 4, speed: 60, accel: 1.2, board: 1.35, comfort: 1.0, rel: 0.92, energy: 'diesel', doors: 2, life: 18, price: 1500, op: 13, level: 6, color: 0xd8483a, shape: 'urban' },
+  { id: 'coach', name: 'Coach Express 44', kind: 'bus', role: 'regional', era: 2, cap: 44, mail: 8, speed: 90, accel: 1.0, board: 0.6, comfort: 1.1, rel: 0.9, energy: 'diesel', doors: 1, life: 16, price: 2600, op: 22, level: 8, color: 0x3f6e9a, shape: 'coach' },
+  { id: 'double_decker', name: 'Skyline 70 Double-Deck', kind: 'bus', role: 'city', era: 2, cap: 70, mail: 6, speed: 55, accel: 0.9, board: 0.75, comfort: 1.0, rel: 0.9, energy: 'diesel', doors: 2, life: 20, price: 3200, op: 20, level: 10, color: 0xc0392b, shape: 'decker' },
+  { id: 'articulated', name: 'Flex 90 Articulated', kind: 'bus', role: 'city', era: 3, cap: 90, mail: 6, speed: 58, accel: 0.9, board: 1.5, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 3, life: 18, price: 4200, op: 26, level: 12, color: 0xe0a33a, shape: 'artic', turn: 0.85 },
+  { id: 'airport_shuttle', name: 'Jetlink 36 Airport Shuttle', kind: 'bus', role: 'airport', era: 3, cap: 36, mail: 2, speed: 80, accel: 1.1, board: 0.9, comfort: 1.1, rel: 0.93, energy: 'diesel', doors: 2, life: 16, price: 2400, op: 16, level: 12, color: 0x2f8a9a, shape: 'shuttle', airport: 0.25 },
+  { id: 'e_citybus', name: 'Volta 42 Electric', kind: 'bus', role: 'city', era: 4, cap: 42, mail: 4, speed: 62, accel: 1.7, board: 1.4, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 2, life: 16, price: 3600, op: 7, level: 16, color: 0x3fae5a, shape: 'electric' },
+  { id: 'express_coach', name: 'Interstate 52', kind: 'bus', role: 'regional', era: 4, cap: 52, mail: 10, speed: 110, accel: 1.1, board: 0.6, comfort: 1.18, rel: 0.93, energy: 'diesel', doors: 1, life: 16, price: 5200, op: 30, level: 18, color: 0x4a5568, shape: 'express' },
+  { id: 'e_articulated', name: 'Volta Flex 100 Electric', kind: 'bus', role: 'city', era: 4, cap: 100, mail: 6, speed: 62, accel: 1.5, board: 1.7, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 3, life: 18, price: 6800, op: 14, level: 20, color: 0x17a2b8, shape: 'eartic', turn: 0.85 },
+  { id: 'autopod', name: 'Pod 12 Autonomous Shuttle', kind: 'bus', role: 'city', era: 5, cap: 12, mail: 0, speed: 45, accel: 1.6, board: 1.6, comfort: 1.1, rel: 0.97, energy: 'electric', doors: 1, life: 14, price: 1700, op: 2, level: 26, color: 0xe8e8ee, shape: 'pod' },
   { id: 'box_truck', name: 'Box Truck', kind: 'truck', groups: ['crate', 'mail'], cap: 14, speed: 55, price: 1100, op: 12, level: 1, color: 0xc9793a },
   { id: 'logging_truck', name: 'Logging Truck', kind: 'truck', groups: ['log'], cap: 16, speed: 50, price: 1200, op: 13, level: 1, color: 0x7a5a3a },
   { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
@@ -201,8 +213,34 @@ export const ROAD_VEHICLES = [
   { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
 ];
 // stop kind → how its vehicles move
-export const STOP_MODE = { bus: 'road', truck: 'road', tram: 'tram', dock: 'water', airport: 'air' };
-export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200 };
+export const STOP_MODE = { bus: 'road', truck: 'road', tram: 'tram', dock: 'water', airport: 'air', garage: 'road' };
+// Bus stop types, from a pole by the road to an interchange with the railway.
+// level: company level to build it; cost: × ROAD_COSTS.stop (upgrade price);
+// board: boarding speed; bays: buses served at once; radius: walking
+// distance (tiles); transfer: how easily travellers change to and from
+// trains; land: tiles beside the road the building needs; pullIn: buses leave
+// the road to stop (no queue behind them). Storage follows STATION.storage
+// by type rank (60 … 1600).
+export const STOP_TYPES = {
+  basic: { level: 1, cost: 1, board: 1.0, bays: 1, radius: 2, transfer: 1.0, land: 0 },
+  urban: { level: 3, cost: 0.9, board: 1.15, bays: 1, radius: 2, transfer: 1.0, land: 0 },
+  bay: { level: 5, cost: 1.4, board: 1.15, bays: 2, radius: 2, transfer: 1.0, land: 0, pullIn: true },
+  station: { level: 8, cost: 5, board: 1.3, bays: 3, radius: 3, transfer: 1.15, land: 1, pullIn: true },
+  terminal: { level: 14, cost: 14, board: 1.45, bays: 6, radius: 4, transfer: 1.25, land: 2, pullIn: true },
+  interchange: { level: 18, cost: 10, board: 1.5, bays: 6, radius: 4, transfer: 1.5, land: 2, pullIn: true, railReach: 6 },
+};
+export const STOP_ORDER = ['basic', 'urban', 'bay', 'station', 'terminal', 'interchange'];
+// expansions of bus stations and terminals: max count, cost (× ROAD_COSTS.stop)
+export const STOP_FACILITIES = {
+  bay: { max: 4, cost: 1.5, from: 'station' },          // one more bus served at once
+  shelter: { max: 1, cost: 0.8, from: 'station' },      // comfort: a better rating
+  capacity: { max: 2, cost: 2, from: 'station' },       // +50 % waiting room each
+  entrance: { max: 1, cost: 2.5, from: 'station' },     // second entrance: faster boarding
+  building: { max: 1, cost: 6, from: 'terminal' },      // terminal building: rating
+  transfer: { max: 1, cost: 4, from: 'station' },       // transfer facility: easier changes
+  turning: { max: 1, cost: 2, from: 'station' },        // turning area: buses turn off the road
+};
+export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200, garage: 900, lane: 30 };
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express'];
 export const LOCOS = [
   { id: 'pioneer', name: 'Pioneer 0-4-0', era: 1, kind: 'steam', role: 'mixed', speed: 60, accel: 0.9, power: 400, freight: 12, pax: 10, wagons: 2, reliability: 0.9, load: 1.0, op: 20, price: 600, rarity: 'common', trait: 'cheap_op', level: 1, color: 0x2f6b4a },

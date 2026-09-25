@@ -247,7 +247,7 @@ export class UI {
         + `<button class="chip ${rm === 'tram' ? 'on' : ''} ${tramOk ? '' : 'locked'}" data-act="roadMode" data-arg="tram" ${tramOk ? '' : `data-tip="${this.tr('unlock_level', { n: 4 })}"`}>${tramOk ? '' : icon('lock')}<b>${icon('tram', 'mini')} ${this.tr('road_mode_tram')}</b><small>${fmt(Math.round(ROAD_COSTS.tram * g.economy.costs.mul()))}●</small></button>`
         + `<span class="sub-hint">${this.tr(rm === 'tram' ? 'hint_tram' : 'hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
     } else if (C.tool === 'roadstop') {
-      const LV = { bus: 1, truck: 1, tram: 4, dock: 6, airport: 12 };
+      const LV = { bus: 1, truck: 1, tram: 4, dock: 6, airport: 12, garage: 1 };
       sub = STOP_KINDS.map((k) => { const on = g.roads.kindUnlocked(k); return `<button class="chip ${(C.stopKind || 'bus') === k ? 'on' : ''} ${on ? '' : 'locked'}" data-act="stopKind" data-arg="${k}" ${on ? `data-tip="${this.tr('stop_tip_' + k)}"` : `data-tip="${this.tr('unlock_level', { n: LV[k] })}"`}>${on ? '' : icon('lock')}<b>${icon(k, 'mini')} ${this.tr('tool_roadstop_' + k)}</b><small>${fmt(g.roads.stopCost(k))}●</small></button>`; }).join('') + `<span class="sub-hint">${this.tr('hint_stop_' + (C.stopKind || 'bus'))}</span>`;
     } else if (C.tool === 'industry') {
       const types = g.industries.foundTypes();
