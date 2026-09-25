@@ -68,12 +68,11 @@ export async function run({ browser, base }) {
   await page.waitForTimeout(200);
   const ov = {};
   for (const m of ['towns', 'ratings', 'industry']) {
-    await page.click(`#overlay-menu [data-act=overlay][data-arg=${m}]`);
-    await page.waitForTimeout(500);
-    ov[m] = await page.evaluate(() => { const O = window.__tracklands.game.overlays; return O.quads.count + O.cols.count; });
-    await page.click(`#overlay-menu [data-act=overlay][data-arg=${m}]`).catch(() => {});
-    await page.waitForTimeout(100);
     if (!(await page.$('#overlay-menu:not([hidden])'))) await page.click('[data-act=overlayMenu]');
+    await page.click(`#overlay-menu [data-act=overlay][data-arg=${m}]`);
+    // overlays redraw on the frame loop (every 0.3 s): wait for the first draw
+    ov[m] = await page.waitForFunction((mode) => { const O = window.__tracklands.game.overlays; const n = O.quads.count + O.cols.count; return O.mode === mode && n > 0 ? n : false; }, m, { polling: 100, timeout: 10000 }).then((h) => h.jsonValue()).catch(() => 0);
+    await page.evaluate(() => window.__tracklands.game.overlays.set(null));
   }
   check(ov.towns > 0 && ov.ratings > 0 && ov.industry > 0, `town, rating and industry overlays draw (${JSON.stringify(ov)})`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
