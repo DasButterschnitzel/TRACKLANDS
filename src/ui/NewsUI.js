@@ -34,7 +34,7 @@ export const NewsUIMixin = {
     }).join('');
     const cy = this.game.economy.cycle.state;
     return `<div class="pill-row"><span class="pill ${cy === 'boom' ? 'good' : cy === 'slump' ? 'bad' : ''}">${icon('stats', 'mini')} ${this.tr('econ_' + cy)}</span></div>
-      <div class="row"><div class="seg small" role="group">${chips}</div>${this.helpBtn('world')}</div><div class="fin-list">${rows || `<p class="muted">${this.tr('news_none')}</p>`}</div>`;
+      <div class="row news-filter"><div class="seg small" role="group">${chips}</div>${this.helpBtn('world')}</div><div class="fin-list">${rows || `<p class="muted">${this.tr('news_none')}</p>`}</div>`;
   },
 
   // ---------- world lists ----------

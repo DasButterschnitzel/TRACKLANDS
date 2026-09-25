@@ -16,14 +16,14 @@ export const DriverUIMixin = {
     t.drive = { throttle: 0.6, brake: false, limit: 0, vt: 0 };
     this.followId = id;
     this.closePanel();
-    g.select({ type: 'train', id });
+    g.select(null);   // the cab panel replaces the inspector while driving
     g.camera.focus(g.entityPos({ type: 'train', id }).x, g.entityPos({ type: 'train', id }).z, 9);
     let el = document.getElementById('driver');
     if (!el) { el = document.createElement('div'); el.id = 'driver'; el.setAttribute('role', 'group'); document.body.appendChild(el); }
     el.innerHTML = `<div class="drv-head">${icon('train', 'mini')} <b>${esc(t.name)}</b><button class="icon-btn small" data-act="stopDrive" aria-label="${this.tr('drive_stop')}">${icon('close')}</button></div>
       <div class="drv-speed"><b id="drv-v">0</b><small>km/h</small><span id="drv-lim"></span></div>
       <label class="drv-lever"><span>${this.tr('drive_power')}</span><input type="range" min="0" max="100" step="5" value="60" data-input="driveThrottle" aria-label="${this.tr('drive_power')}"/></label>
-      <div class="row"><button class="btn small" data-act="driveBrake" id="drv-brake">${this.tr('drive_brake')}</button></div>
+      <div class="row"><button class="btn small" data-act="driveBrake" id="drv-brake">${this.tr('drive_brake')}</button><button class="btn ghost small" data-act="stopDrive">${this.tr('drive_stop')}</button></div>
       <small class="muted">${this.tr('drive_help')}</small>`;
     el.hidden = false;
     this.app.audio.play('whistle');
@@ -51,7 +51,7 @@ export const DriverUIMixin = {
     const kmh = (v) => Math.round((v / TILE) * KMH_PER_TILE_S);
     const a = document.getElementById('drv-v'), b = document.getElementById('drv-lim'), br = document.getElementById('drv-brake');
     if (a) a.textContent = kmh(t.v);
-    if (b) b.textContent = this.tr('drive_limit', { n: kmh(t.drive.limit || 0) });
+    if (b) b.textContent = t.drive.limit > 0.05 ? this.tr('drive_limit', { n: kmh(t.drive.limit) }) : this.tr('drive_stopped');
     if (br) br.classList.toggle('on', !!t.drive.brake);
   },
   driverActions() {

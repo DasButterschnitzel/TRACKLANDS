@@ -795,3 +795,12 @@ textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospa
 .fin-row.you { background: rgba(47,179,163,.12); }
 .fin-head { align-items: center; gap: 6px; }
 .fin-head .fin-tabs { flex: 1; min-width: 0; }
+#driver .btn { color: var(--ink); }
+#driver .btn.ghost { color: #fff; border-color: rgba(255,255,255,.4); }
+#driver .row { gap: 6px; }
+.scn > div > b { display: block; margin-bottom: 2px; }
+.fin-row.news { grid-template-columns: auto 1fr; }
+.news-filter { align-items: center; gap: 6px; flex-wrap: nowrap; }
+.news-filter .seg { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.news-filter .seg::-webkit-scrollbar { display: none; }
+.news-filter .seg button { flex: none; }

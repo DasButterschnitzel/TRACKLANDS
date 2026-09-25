@@ -24,7 +24,7 @@ export function scenarioDialog(app) {
   const row = (sc) => `<div class="scn"><div><b>${esc(scnName(sc))}</b><small>${sc.custom ? '' : esc(t('scn_' + sc.id + '_desc')) + '<br>'}${t('size_' + sc.mapSize)} · ${sc.startYear}–${sc.deadline} · ${t('diff_' + sc.difficulty)}</small>
       <ul>${sc.goals.map((g) => `<li>${esc(goalText(g))}</li>`).join('')}</ul></div>
       <div class="row wrap"><button class="btn primary small" data-play="${esc(sc.id)}">${t('scn_play')}</button>${sc.custom ? `<button class="btn ghost small" data-export="${esc(sc.id)}">${t('scn_export')}</button><button class="btn ghost small danger" data-del="${esc(sc.id)}">${t('scn_delete')}</button>` : ''}</div></div>`;
-  const w = app.ui.modal(`<h2>${icon('flag')} ${t('scenarios')}</h2>
+  const w = app.ui.modal(`<h2>${icon('objectives')} ${t('scenarios')}</h2>
     <div class="scn-list">${SCENARIOS.map(row).join('')}${own.map(row).join('')}</div>
     <div class="row wrap end"><button class="btn ghost" data-mbtn="import">${t('scn_import')}</button><button class="btn" data-mbtn="edit">${icon('plus', 'mini')} ${t('scn_editor')}</button><button class="btn ghost" data-mbtn="no">${t('close')}</button></div>`, { onCancel: () => {} });
   w.classList.add('scn-modal');
@@ -98,15 +98,15 @@ export const ScenarioUIMixin = {
     const R = this.game.scenario;
     if (!R) return '';
     const L = this.game.ledger, yearsLeft = Math.max(0, R.sc.deadline - L.year());
-    const rows = R.goals().map((g) => `<div class="chk ${g.done ? 'ok' : ''}">${icon(g.done ? 'check' : 'flag')}<span>${esc(goalText(g, this.tr.bind(this)))}</span><small>${fmt(Math.min(g.have, g.n))}/${fmt(g.n)}</small></div>`).join('');
+    const rows = R.goals().map((g) => `<div class="chk ${g.done ? 'ok' : ''}">${icon(g.done ? 'check' : 'objectives')}<span>${esc(goalText(g, this.tr.bind(this)))}</span><small>${fmt(Math.min(g.have, g.n))}/${fmt(g.n)}</small></div>`).join('');
     const st = R.state === 'won' ? `<span class="pill good">${this.tr('scn_won')}</span>` : R.state === 'lost' ? `<span class="pill bad">${this.tr('scn_lost')}</span>` : `<span class="pill">${this.tr('scn_deadline_left', { y: R.sc.deadline, n: yearsLeft })}</span>`;
-    return `<div class="card scn-card"><h3>${icon('flag')} ${esc(scnName(R.sc))}</h3>${st}<div class="checks">${rows}</div></div>`;
+    return `<div class="card scn-card"><h3>${icon('objectives')} ${esc(scnName(R.sc))}</h3>${st}<div class="checks">${rows}</div></div>`;
   },
   scenarioEnd(state) {
     const R = this.game.scenario;
     if (!R) return;
     this.app.audio.play(state === 'won' ? 'legend' : 'reject');
-    const w = this.modal(`<h2>${icon('flag')} ${this.tr(state === 'won' ? 'scn_won_title' : 'scn_lost_title')}</h2>
+    const w = this.modal(`<h2>${icon('objectives')} ${this.tr(state === 'won' ? 'scn_won_title' : 'scn_lost_title')}</h2>
       <p>${this.tr(state === 'won' ? 'scn_won_desc' : 'scn_lost_desc', { name: esc(scnName(R.sc)), y: this.game.ledger.year() })}</p>
       <div class="row end"><button class="btn primary" data-mbtn="ok">${this.tr('scn_keep_playing')}</button></div>`);
     w.querySelector('[data-mbtn=ok]').onclick = () => { if (R.state === 'lost') R.state = 'free'; w.remove(); };

@@ -220,7 +220,7 @@ class App {
       <div class="title-btns">
         ${has ? `<button class="btn primary big" data-t="continue">${t('continue')}${info}</button>` : `<button class="btn primary big" data-t="new">${t('start_journey')}</button>`}
         ${has ? `<button class="btn big" data-t="new">${t('new_game')}</button>` : ''}
-        <button class="btn" data-t="scenarios">${icon('flag')} ${t('scenarios')}</button>
+        <button class="btn" data-t="scenarios">${icon('objectives')} ${t('scenarios')}</button>
         <button class="btn" data-t="settings">${icon('settings')} ${t('settings')}</button>
         <button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>
         <button class="btn" data-t="credits">${t('credits')}</button>
