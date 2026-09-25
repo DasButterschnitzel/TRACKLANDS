@@ -776,3 +776,15 @@ input.search { width: 100%; box-sizing: border-box; min-height: var(--touch-min)
 #driver .btn.on { background: var(--bad); color: #fff; }
 #driver small.muted { color: rgba(255,255,255,.7); }
 @media (max-width: 760px) { #driver { left: calc(8px + var(--safe-l)); right: auto; bottom: calc(92px + var(--safe-b)); width: 200px; } }
+
+/* scenarios */
+.scn-modal .modal { max-width: 620px; }
+.scn-list { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; }
+.scn { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r-s); background: rgba(31,42,58,.05); }
+.scn small { color: var(--ink2); }
+.scn ul { margin: 4px 0 0 18px; padding: 0; font-size: .9em; }
+.goal-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.goal-row select, .goal-row input { min-height: var(--touch-min); }
+.goal-row input { width: 110px; }
+.scn-card h3 { margin-top: 0; }
+textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8em; }

@@ -22,6 +22,7 @@ import { RoadUIMixin } from './RoadUI.js';
 import { IndustryUIMixin } from './IndustryUI.js';
 import { NewsUIMixin } from './NewsUI.js';
 import { DriverUIMixin } from './DriverUI.js';
+import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { log } from '../core/Log.js';
@@ -760,7 +761,7 @@ export class UI {
 
   pObjectives() {
     const g = this.game, P = g.progression;
-    let h = '';
+    let h = this.scenarioBlock();
     const next = P.nextRegion();
     if (next >= 0) h += `<h3>${this.tr('next_region')}</h3>${this.regionCard(next)}`;
     REGIONS.forEach((r, i) => {
@@ -1307,4 +1308,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin);
+Object.assign(UI.prototype, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);

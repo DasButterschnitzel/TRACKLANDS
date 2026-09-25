@@ -9,6 +9,7 @@ import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES } from './util.js';
 import { readHeightmap } from './world/Heightmap.js';
+import { scenarioDialog } from './ui/ScenarioMenu.js';
 import { icon } from './ui/icons.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION } from './config.js';
 import { log } from './core/Log.js';
@@ -219,6 +220,7 @@ class App {
       <div class="title-btns">
         ${has ? `<button class="btn primary big" data-t="continue">${t('continue')}${info}</button>` : `<button class="btn primary big" data-t="new">${t('start_journey')}</button>`}
         ${has ? `<button class="btn big" data-t="new">${t('new_game')}</button>` : ''}
+        <button class="btn" data-t="scenarios">${icon('flag')} ${t('scenarios')}</button>
         <button class="btn" data-t="settings">${icon('settings')} ${t('settings')}</button>
         <button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>
         <button class="btn" data-t="credits">${t('credits')}</button>
@@ -230,6 +232,7 @@ class App {
   titleAction(a) {
     if (a === 'continue') this.startGame({ save: this.save });
     else if (a === 'new') this.newGameDialog();
+    else if (a === 'scenarios') scenarioDialog(this);
     else if (a === 'settings') this.ui.openPanel('settings');
     else if (a === 'credits') this.ui.openPanel('credits');
     else if (a === 'stats') {
