@@ -15,7 +15,7 @@ export const IndustryUIMixin = {
     const buyErr = I.buyStakeError(ind), expErr = I.expandError(ind);
     const cell = (label, v) => `<div><small>${this.tr(label)}</small><b>${v}</b></div>`;
     const next = ind.level < 4 ? this.tr('ilvl_' + (ind.level + 1)) : '';
-    return `<h4>${this.tr('inv_heading')} ${this.helpBtn('freight')}</h4>
+    return `<h4>${this.tr('inv_heading')} ${this.helpBtn('tycoon')}</h4>
       <div class="stake" role="img" aria-label="${this.tr('inv_stake_aria', { n: Math.round(stake * 100) })}"><span class="pips">${pips}</span><b>${this.tr('inv_stake', { n: Math.round(stake * 100) })}</b>${stake >= 0.5 ? `<span class="pill good">${this.tr('inv_majority')}</span>` : ''}</div>
       <div class="fin-mini">${cell('inv_value', fmt(I.value(ind)) + ' ●')}${cell('inv_output', fmt(ind.lastPv || 0) + ' ●')}${cell('inv_dividend', fmt(I.dividendEstimate(ind)) + ' ●')}${cell('inv_dividend_next', fmt(I.dividendEstimate(ind, Math.min(1, stake + INDUSTRY_INVEST.step))) + ' ●')}</div>
       <div class="row wrap">

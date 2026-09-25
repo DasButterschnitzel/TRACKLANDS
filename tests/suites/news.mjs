@@ -69,6 +69,16 @@ export async function run({ browser, base }) {
   await page.setViewportSize({ width: 1280, height: 800 });
   const railOk = (f) => f.scroll <= 1 && f.lastBottom <= f.h && (f.lastBottom <= f.toolbarTop || f.railRight <= f.toolbarLeft);
   check(railOk(f1) && railOk(f2), `the menu rail shows every entry without scrolling or covering the toolbar (${JSON.stringify(f1)} ${JSON.stringify(f2)})`);
+  // every tool is in view on the desktop toolbar; the new handbook topics open from their "?" buttons
+  const tools = await page.evaluate(() => { const s = document.querySelector('#toolbar .tools'), sr = s.getBoundingClientRect(); return [...s.querySelectorAll('.tool')].filter((b) => { const r = b.getBoundingClientRect(); return r.right > sr.right + 1 || r.left < sr.left - 1; }).map((b) => b.id); });
+  check(tools.length === 0, `every tool is in view on the toolbar at 1280×800 (hidden: ${tools.join(', ') || 'none'})`);
+  await page.evaluate(() => window.__tracklands.ui.openPanel('finance'));
+  await page.waitForTimeout(250);
+  await page.click('#panel .fin-head [data-act=help]');
+  await page.waitForTimeout(250);
+  const hb = await page.evaluate(() => ({ panel: window.__tracklands.ui.panel, topic: window.__tracklands.ui.handbookTopic, n: document.querySelectorAll('#panel .hb-topics .chip').length }));
+  check(hb.panel === 'handbook' && hb.topic === 'tycoon' && hb.n === 12, `the finance "?" opens the handbook at the new topic (${JSON.stringify(hb)})`);
+  await page.evaluate(() => window.__tracklands.ui.closePanel());
   // news panel with the mouse
   await page.waitForTimeout(400);
   const badge = await page.$eval('#badge-news', (b) => (b.hidden ? '' : b.textContent));

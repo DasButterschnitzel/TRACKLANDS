@@ -34,7 +34,7 @@ export const RoadUIMixin = {
       ${this.ratingBlock(s)}
       <h4>${this.tr('stop_vehicles', { n: vehs.length })}</h4>
       ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
-      <h4>${this.tr('stop_buy')}</h4><div class="col">${buy}</div>
+      <h4>${this.tr('stop_buy')} ${this.helpBtn('transport')}</h4><div class="col">${buy}</div>
       <p class="muted small">${this.tr('stop_help_' + s.kind)}</p>
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(s)}
       <div class="row wrap"><button class="btn ghost danger" data-act="rvStopRemove" data-arg="${s.id}">${icon('bulldoze', 'mini')} ${this.tr('stop_remove')}</button></div>`;

@@ -40,7 +40,7 @@ export const FinanceUIMixin = {
     else if (tab === 'value') body = this.finValue();
     else if (tab === 'invest') body = this.finInvest();
     else body = this.pStats();
-    return `<div class="seg fin-tabs" role="tablist">${tabs}</div>${body}`;
+    return `<div class="row fin-head"><div class="seg fin-tabs" role="tablist">${tabs}</div>${this.helpBtn('tycoon')}</div>${body}`;
   },
 
   finOverview() {
