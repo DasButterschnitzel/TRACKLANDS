@@ -788,3 +788,8 @@ input.search { width: 100%; box-sizing: border-box; min-height: var(--touch-min)
 .goal-row input { width: 110px; }
 .scn-card h3 { margin-top: 0; }
 textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8em; }
+
+/* rivals */
+.rdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.card.rival { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fin-row.you { background: rgba(47,179,163,.12); }

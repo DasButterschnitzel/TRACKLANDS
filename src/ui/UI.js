@@ -635,6 +635,7 @@ export class UI {
     return `<div class="company-head"><div class="big-lvl">${P.level}</div><div><b>${this.tr('company_level')}</b>${this.bar(P.xp / P.xpNeeded())}<small>${fmt(P.xp)} / ${fmt(P.xpNeeded())} XP</small></div></div>
       ${ev}
       ${this.identityBlock()}
+      ${this.rivalsBlock()}
       <div class="kv-grid">
         <div>${icon('coin')}<b>${fmt(E.coins)}</b><small>${this.tr('coins')}</small></div>
         <div>${icon('rp')}<b>${P.rp}</b><small>${this.tr('research_points')}</small></div>
@@ -646,6 +647,15 @@ export class UI {
       <p class="muted">${this.tr('difficulty')}: ${this.tr('diff_' + g.difficultyId)} · ${this.tr('legacy_badge', { n: P.legacy.count })} · ${fmtTime(S.playTime)}</p>
       ${legend}${legacy}
       <h3>${this.tr('more')}</h3><button class="btn ghost" data-act="panel" data-arg="credits">${this.tr('credits')}</button> <button class="btn ghost" data-act="saveQuit">${this.tr('save_quit')}</button>`;
+  }
+
+  // rival companies next to ours
+  rivalsBlock() {
+    const g = this.game, Rv = g.rivals;
+    if (!Rv || !Rv.list.length) return '';
+    const mine = g.ledger.companyValue().total;
+    const rows = [{ name: g.company.name, color: g.company.color, value: mine, you: true }, ...Rv.list.map((r) => ({ name: r.name, color: r.color, value: r.value(), r }))].sort((a, b) => b.value - a.value);
+    return `<h3>${this.tr('rivals')}</h3><div class="fin-list">${rows.map((x, i) => `<div class="fin-row ${x.you ? 'you' : ''}"><span><b>${i + 1}.</b> <i class="rdot" style="background:#${x.color.toString(16).padStart(6, '0')}"></i> ${escapeHtml(x.name)}${x.you ? ` <small>(${this.tr('rival_you')})</small>` : ''}</span><small>${x.r ? this.tr('rival_stats', { b: x.r.vehicles().length, s: x.r.stops().length, p: fmt(x.r.lastProfit) }) : ''}</small><b>${fmt(x.value)} ●</b></div>`).join('')}</div><p class="muted small">${this.tr('rivals_help')}</p>`;
   }
 
   // company name, colour and headquarters

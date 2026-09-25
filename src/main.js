@@ -254,6 +254,7 @@ class App {
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
       <p class="muted small">${t('ng_heightmap_help')}</p>
+      <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${[0, 1, 2].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
     w.querySelector('#ng-rand').onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); };
@@ -265,13 +266,14 @@ class App {
       const mapSize = +w.querySelector('input[name=size]:checked').value;
       const startYear = +w.querySelector('#ng-year').value;
       const reliability = w.querySelector('#ng-rel').value;
+      const rivals = +w.querySelector('#ng-rivals').value;
       const file = w.querySelector('#ng-hmap').files[0];
       let hmap = null;
       if (file) {
         try { hmap = await readHeightmap(file, mapSize); } catch (e) { this.ui.toast(t('ng_heightmap_bad'), 'error'); return; }
       }
       w.remove();
-      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap });
+      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals });
     };
   }
 

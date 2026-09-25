@@ -7,8 +7,14 @@ import { ROAD_VEHICLES } from '../config.js';
 import { roadModel, roadCaps } from '../road/Roads.js';
 
 export const RoadUIMixin = {
+  // a rival's stop or vehicle: look, do not touch
+  rivalCard(o) {
+    const r = this.game.roads.rival(o);
+    return r ? `<div class="card rival"><i class="rdot" style="background:#${r.color.toString(16).padStart(6, '0')}"></i><b>${esc(r.name)}</b><small>${this.tr('rival_owned')}</small></div>` : '';
+  },
   iRoadStop(s) {
     const g = this.game, R = g.roads, P = g.progression;
+    if (s.owner) return `${this.rivalCard(s)}<h4>${this.tr('waiting')}</h4>${Object.keys(s.stock).filter((c) => s.stock[c] >= 1).map((c) => this.cargoRow(c, s.stock[c], g.stations.storage(s))).join('') || `<p class="muted small">${this.tr('none_yet')}</p>`}${this.ratingBlock(s)}`;
     const towns = (s.links.towns || []).map((id) => g.towns.byId(id)).filter(Boolean);
     const inds = (s.links.industries || []).map((id) => g.industries.byId(id)).filter(Boolean);
     const rail = s.rail != null ? g.stations.byId(s.rail) : null;
@@ -43,11 +49,12 @@ export const RoadUIMixin = {
   },
   iRoadVeh(v) {
     const g = this.game, R = g.roads, m = roadModel(v.model), caps = roadCaps(m);
+    if (v.owner) return `${this.rivalCard(v)}<p class="muted">${esc(m.name)} · ${this.rvStatus(v)}</p>`;
     const load = Object.keys(caps).map((c) => { const n = v.cargo.filter((l) => l.c === c).reduce((a, l) => a + l.n, 0); return n ? this.cargoRow(c, n, caps[c]) : ''; }).join('');
     // stops within reach of the route by road: tap to add; listed ones: tap to remove
     const route = v.stops.map((id, i) => { const s = R.stopById(id); return s ? `<div class="rv-stop"><b>${i + 1}</b><span>${esc(s.name)}</span><button class="icon-btn small" data-act="rvRouteDel" data-arg="${v.id}:${i}" aria-label="${this.tr('remove')}">${icon('minus')}</button></div>` : ''; }).join('');
     const home = R.stopById(v.stops[0]);
-    const cands = home ? R.stops.filter((s) => s.kind === m.kind && !v.stops.includes(s.id) && cheb(s.tile, home.tile) <= 40).map((s) => ({ s, ok: !!R.path(home.tile, s.tile) })).filter((x) => x.ok) : [];
+    const cands = home ? R.stops.filter((s) => s.kind === m.kind && !s.owner && !v.stops.includes(s.id) && cheb(s.tile, home.tile) <= 40).map((s) => ({ s, ok: !!R.path(home.tile, s.tile) })).filter((x) => x.ok) : [];
     const add = cands.length ? cands.map((x) => `<button class="tag link" data-act="rvRouteAdd" data-arg="${v.id}:${x.s.id}">${icon('plus', 'mini')} ${esc(x.s.name)}</button>`).join('') : `<p class="muted small">${this.tr('rv_no_more_stops')}</p>`;
     return `<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span></div>
       <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}

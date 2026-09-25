@@ -43,6 +43,7 @@ export class News {
     E.on('regionUnlocked', (r) => this.add('company', 'news_region', { region: 'region_' + (REGIONS[r] ? REGIONS[r].id : r) }));
     E.on('stationBuilt', (s) => this.add('company', 'news_station', { name: s.name }, { type: 'station', id: s.id }));
     E.on('trainBrokeDown', (t) => this.add('company', 'news_breakdown', { name: t.name }, { type: 'train', id: t.id }));
+    E.on('rivalLine', (r, a, b) => this.add('economy', 'news_rival_line', { rival: r.name, a: a.name, b: b.name }));
     E.on('weather', (w) => { if (w === 'storm' || w === 'snow') this.add('weather', 'news_weather_' + w, {}); });
     E.on('delivery', (d) => {
       if (d.town && !this.firsts.has('town:' + d.town.id)) {

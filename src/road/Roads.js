@@ -212,22 +212,23 @@ export class Roads {
     return res;
   }
   bitBetween(i, j) { const dx = tx(j) - tx(i), dz = tz(j) - tz(i); return dx === 1 ? 1 : dx === -1 ? 4 : dz === 1 ? 2 : 8; }
-  build(plan) {
+  // owner: a rival company (src/world/Rivals.js) that pays for it itself
+  build(plan, owner = null) {
     const g = this.game;
     if (!plan || !plan.ok) return { error: plan ? plan.reason : 'err_unknown' };
-    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    if (owner ? owner.money < plan.cost : !g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
     const prev = plan.tiles.map((t) => [t, this.bits[t]]);
     for (let k = 1; k < plan.tiles.length; k++) {
       const i = plan.tiles[k - 1], j = plan.tiles[k], b = this.bitBetween(i, j);
       this.bits[i] |= b; this.bits[j] |= opp4(b);
     }
-    if (plan.cost > 0) g.economy.spend(plan.cost, 'construction', { type: 'tile', id: plan.tiles[Math.floor(plan.tiles.length / 2)] }, `~fin_n_road:${plan.tiles.length}`);
+    if (owner) owner.money -= plan.cost;
+    else if (plan.cost > 0) g.economy.spend(plan.cost, 'construction', { type: 'tile', id: plan.tiles[Math.floor(plan.tiles.length / 2)] }, `~fin_n_road:${plan.tiles.length}`);
     const wooded = plan.tiles.filter((t) => g.world.view.hasTrees(t));
     g.world.view.clearTreesMany(plan.tiles);
-    if (wooded.length && g.authority) g.authority.onTreesCleared(wooded[0], wooded.length);
+    if (wooded.length && g.authority && !owner) g.authority.onTreesCleared(wooded[0], wooded.length);
     this.changed();
-    g.construction.pushUndo({ type: 'road', prev, cost: plan.cost });
-    g.audio.play('road');
+    if (!owner) { g.construction.pushUndo({ type: 'road', prev, cost: plan.cost }); g.audio.play('road'); }
     return { ok: true };
   }
   undo(e) {
@@ -306,18 +307,20 @@ export class Roads {
   }
   kindUnlocked(kind) { const L = this.game.progression.level; return ROAD_VEHICLES.some((m) => m.kind === kind && m.level <= L); }
   stopCost(kind = 'bus') { const c = kind === 'dock' ? ROAD_COSTS.dock : kind === 'airport' ? ROAD_COSTS.airport : ROAD_COSTS.stop; return Math.round(c * this.game.economy.costs.mul()); }
-  addStop(i, kind = 'bus') {
+  addStop(i, kind = 'bus', owner = null) {
     const g = this.game;
-    const err = this.stopError(i, kind);
+    const err = owner ? (this.hasRoad(i) && !this.stopAt(i) && !g.net.conn[i] && owner.money >= this.stopCost(kind) ? null : 'err_occupied') : this.stopError(i, kind);
     if (err) return { error: err };
     const s = {
       id: this.nextStop++, tile: i, kind, road: true, name: '', level: 0, stock: {}, claimed: {}, facilities: [], delivered: 0, picked: 0, created: g.time,
       stats: { arrivals: 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false,
     };
+    if (owner) s.owner = owner.id;
     this.relink(s);
     s.name = this.stopName(s);
     this.stops.push(s);
     this.claimLand(s, true);
+    if (owner) { owner.money -= this.stopCost(kind); g.towns.onStationsChanged(); g.industries.onStationsChanged(); this.rebuildStopMesh(); return { ok: true, stop: s }; }
     g.economy.spend(this.stopCost(kind), 'construction', { type: 'roadstop', id: s.id }, `~fin_n_stop_${kind}:1`);
     if (kind === 'airport') { const t = this.nearTown(i); if (t && g.authority) g.authority.change(t, -3, 'auth_airport'); }
     g.towns.onStationsChanged(); g.industries.onStationsChanged();
@@ -328,6 +331,7 @@ export class Roads {
   }
   removeStop(s, refund = 0.5) {
     const g = this.game;
+    if (s.owner) return { error: 'err_rival_stop' };
     if (this.vehicles.some((v) => v.stops.includes(s.id))) return { error: 'err_stop_in_use' };
     this.stops = this.stops.filter((x) => x !== s);
     this.claimLand(s, false);
@@ -376,15 +380,17 @@ export class Roads {
   relinkAll() { for (const s of this.stops) this.relink(s); }
 
   // ---------- vehicles ----------
-  buy(modelId, stop) {
+  buy(modelId, stop, owner = null) {
     const g = this.game, m = roadModel(modelId);
     if (!m || !stop) return { error: 'err_unknown' };
     if (m.kind !== stop.kind) return { error: 'err_wrong_stop' };
     const price = Math.round(m.price * g.difficulty.costMul);
-    if (!g.economy.canAfford(price)) return { error: 'err_no_money' };
+    if (owner ? owner.money < price : !g.economy.canAfford(price)) return { error: 'err_no_money' };
+    if (stop.owner && !owner) return { error: 'err_rival_stop' };
     let n = 1; while (this.vehicles.some((v) => v.name === `${m.name.split(' ')[0]} ${n}`)) n++;
     const v = { id: this.nextVeh++, model: m.id, name: `${m.name.split(' ')[0]} ${n}`, stops: [stop.id], idx: 0, tile: stop.tile, prev: -1, next: -1, f: 0, path: null, state: 'load', t: 2, cargo: [], earned: 0, trips: 0, bought: g.time, fin: null, v: 0 };
     this.vehicles.push(v);
+    if (owner) { v.owner = owner.id; v.name = `${owner.short} ${n}`; owner.money -= price; return { ok: true, vehicle: v }; }
     g.economy.spend(price, 'road_vehicles', { type: 'road', id: v.id }, v.name);
     this.ensureVehMesh();
     return { ok: true, vehicle: v };
@@ -407,7 +413,8 @@ export class Roads {
       const m = roadModel(v.model);
       if (!m) continue;
       // running costs, booked per vehicle
-      g.economy.operatingCost((m.op / 60) * dt * (v.state === 'idle' ? 0.3 : 1), this.ref(v));
+      const op = (m.op / 60) * dt * (v.state === 'idle' ? 0.3 : 1);
+      if (v.owner) { const r = this.rival(v); if (r) r.pay(op); } else g.economy.operatingCost(op, this.ref(v));
       if (v.state === 'load') {
         v.t -= dt;
         if (v.t > 0) continue;
@@ -437,6 +444,7 @@ export class Roads {
       while (v.f >= 1 && v.pi < v.path.length - 1) { v.f -= 1; v.pi++; v.prev = v.tile; v.tile = v.path[v.pi]; }
     }
   }
+  rival(o) { return o.owner && this.game.rivals ? this.game.rivals.byId(o.owner) : null; }
   targetStop(v) { return this.stopById(v.stops[v.idx % v.stops.length]); }
   leave(v) {
     if (v.stops.length < 2) { v.state = 'idle'; v.t = 3; v.problem = 'no_route'; return; }
@@ -478,6 +486,7 @@ export class Roads {
         const town = s.links.towns.length ? g.towns.byId(s.links.towns[0]) : null;
         const needed = town ? g.towns.needs(town, lot.c) : false;
         const rev = Math.round(E.revenue(lot.c, lot.n, dist, null, needed, transit) * 0.9);
+        if (v.owner) { const r = this.rival(v); if (r) r.earn(rev); v.earned += rev; S.distribute(s, lot.c, lot.n); continue; }
         E.bookDelivery(rev, lot.c, lot.n, null, from, s, this.ref(v));
         S.distribute(s, lot.c, lot.n);
         v.earned += rev; E.bucket.income += rev; E.bucket.deliveries++;
@@ -486,7 +495,7 @@ export class Roads {
         continue;
       }
       // feeder: hand over to the railway station in reach, paid for this leg
-      const rail = s.rail != null ? S.byId(s.rail) : null;
+      const rail = s.rail != null && !v.owner ? S.byId(s.rail) : null;
       if (rail) {
         const took = S.receive(rail, lot.c, lot.n);
         if (took > 0) {
@@ -674,7 +683,7 @@ export class Roads {
       this._s.set(1.3, 1.3, 1.3);
       this._m.compose(this._p, this._q, this._s);
       this.stopMesh.setMatrixAt(k, this._m);
-      this.stopMesh.setColorAt(k, this._c.set(s.kind === 'bus' ? 0xffffff : 0xe8d8b0));
+      this.stopMesh.setColorAt(k, this._c.set(s.owner && this.rival(s) ? this.rival(s).color : s.kind === 'bus' ? 0xffffff : 0xe8d8b0));
       k++;
     }
     this.stopMesh.count = k;
@@ -727,7 +736,7 @@ export class Roads {
       this.vehPos(v, o);
       this._p.set(o.x, o.y, o.z); this._q.setFromAxisAngle(this._up, o.yaw); const sc = scale[m.kind]; this._s.set(sc, sc, sc);
       this._m.compose(this._p, this._q, this._s);
-      M.setMatrixAt(n[m.kind], this._m); M.setColorAt(n[m.kind], this._c.set(m.color || livery)); n[m.kind]++;
+      M.setMatrixAt(n[m.kind], this._m); M.setColorAt(n[m.kind], this._c.set(v.owner && this.rival(v) ? this.rival(v).color : m.color || livery)); n[m.kind]++;
     }
     for (const k in mesh) { const M = mesh[k]; M.count = n[k]; M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; }
   }
@@ -754,8 +763,8 @@ export class Roads {
     for (let i = 0; i < N * N; i++) { if (this.bits[i]) roads.push(i, this.bits[i]); if (this.tram[i]) tram.push(i); }
     return {
       roads, tram, nextStop: this.nextStop, nextVeh: this.nextVeh,
-      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: s.fin || undefined })),
-      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: v.fin || undefined, state: v.state === 'run' ? 'load' : v.state })),
+      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: s.fin || undefined })),
+      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: v.fin || undefined, state: v.state === 'run' ? 'load' : v.state })),
     };
   }
   deserialize(d) {
@@ -770,6 +779,7 @@ export class Roads {
         stats: { arrivals: s.arrivals | 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: s.transfers | 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false, fin: s.fin && typeof s.fin === 'object' ? s.fin : null };
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stop.stock[c] = Math.min(9999, +s.stock[c]);
       if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stop, s.ratings);
+      if (typeof s.owner === 'string' && /^r\d{1,2}$/.test(s.owner)) stop.owner = s.owner;
       this.stops.push(stop);
       this.claimLand(stop, true);
     }
@@ -777,7 +787,7 @@ export class Roads {
     for (const v of Array.isArray(d.vehicles) ? d.vehicles : []) {
       if (!v || !roadModel(v.model) || !okTile(v.tile)) continue;
       const stops = (Array.isArray(v.stops) ? v.stops : []).filter((id) => this.stops.some((s) => s.id === id));
-      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : 'load', t: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined })), earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: v.fin && typeof v.fin === 'object' ? v.fin : null, v: 0 });
+      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : 'load', t: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined })), earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: v.fin && typeof v.fin === 'object' ? v.fin : null, v: 0, owner: typeof v.owner === 'string' && /^r\d{1,2}$/.test(v.owner) ? v.owner : undefined });
     }
     this.nextStop = Math.max(d.nextStop | 0, 1, ...this.stops.map((s) => s.id + 1));
     this.nextVeh = Math.max(d.nextVeh | 0, 1, ...this.vehicles.map((v) => v.id + 1));

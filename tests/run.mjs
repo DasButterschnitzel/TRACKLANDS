@@ -40,8 +40,9 @@ import * as transport from './suites/transport.mjs';
 import * as mapsize from './suites/mapsize.mjs';
 import * as company from './suites/company.mjs';
 import * as scenarios from './suites/scenarios.mjs';
+import * as rivals from './suites/rivals.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

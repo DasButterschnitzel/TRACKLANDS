@@ -17,6 +17,7 @@ import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
 import { News } from './world/News.js';
 import { Company } from './world/Company.js';
+import { Rivals } from './world/Rivals.js';
 import { ScenarioRun, cleanScenario } from './world/Scenarios.js';
 import { roadModel } from './road/Roads.js';
 import { IndustrySystem } from './world/Industries.js';
@@ -107,6 +108,7 @@ export class Game {
     this.overlays = new Overlays(this);
     this.news = new News(this);
     this.company = new Company(this);
+    this.rivals = new Rivals(this);
     this.scenario = null;
 
     if (save) this.restore(save);
@@ -134,6 +136,8 @@ export class Game {
     this.ledger.startYear = Math.min(2100, Math.max(1800, (opts && opts.startYear) | 0 || 1950));
     if (opts && ['off', 'relaxed', 'tycoon'].includes(opts.reliability)) this.maint.mode = opts.reliability;
     this.economy.coins = this.difficulty.money + (this.progression.legacy.count * 2500);
+    // rival companies (test games have none unless asked)
+    this.rivals.start(opts && opts.rivals != null ? opts.rivals : opts && opts.test ? 0 : 1);
     // a scenario: its own start money and goals
     const sc = opts && opts.scenario ? cleanScenario(opts.scenario) : null;
     if (sc) { if (!opts.scenario.custom) sc.custom = false; if (sc.money > 0) this.economy.coins = sc.money; this.scenario = new ScenarioRun(this, sc); }
@@ -166,6 +170,7 @@ export class Game {
     this.maint.deserialize(s.maint);
     this.trains.deserialize(s.trains);
     this.works.deserialize(s.works);
+    this.rivals.deserialize(s.rivals);
     this.roads.deserialize(s.road);
     this.roads.afterLoad();
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
@@ -179,7 +184,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -460,6 +465,7 @@ export class Game {
     this.works.tick(dt);
     this.env.tickWeather(dt);
     this.company.tick();
+    this.rivals.tick();
     if (this.scenario) this.scenario.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);
