@@ -58,6 +58,7 @@ export class UI {
     this._coinsShown = game.economy.coins;
     const E = game.events;
     E.on('tool', () => this.renderToolbar());
+    E.on('buildstate', () => this.renderToolbar());
     E.on('undo', () => this.renderToolbar());
     E.on('speed', () => this.renderTop());
     E.on('grant', () => this.renderGrant());
@@ -254,9 +255,24 @@ export class UI {
     } else if (C.tool === 'waypoint') {
       sub = `<span class="sub-hint">${icon('waypoint')} ${this.tr('hint_waypoint', { cost: fmt(g.economy.costs.waypoint()) })}</span>`;
     }
+    // the active tool is always named, with a way out; a touch construction
+    // waiting for confirmation replaces the options with Build / Cancel
+    if (C.tool !== 'select' && C.tool !== 'train') {
+      const mode = `<span class="sub-mode" aria-live="polite">${icon(tools.find((t) => t[0] === C.tool)?.[1] || (C.tool === 'hq' ? 'company' : 'build'), 'mini')}<b>${this.tr('tool_' + C.tool)}</b></span>`;
+      const exit = `<button class="icon-btn small sub-exit" data-act="tool" data-arg="select" aria-label="${this.tr('tool_exit')}" data-tip="${this.tr('tool_exit')} (Esc)">${icon('close')}</button>`;
+      const d = C.drag;
+      if (d && d.touch) {
+        const ready = C.touchReady();
+        sub = `${mode}<span class="sub-hint bb">${this.tr(C.touchHint())}</span><button class="btn small primary bb-go" data-act="buildConfirm" ${ready ? '' : 'disabled'}>${icon('check', 'mini')} ${this.tr(C.tool === 'bulldoze' ? 'bb_demolish' : 'bb_build')}</button><button class="btn small ghost bb-cancel" data-act="buildCancel">${icon('close', 'mini')} ${this.tr('cancel')}</button>`;
+      } else sub = mode + sub + exit;
+    }
+    // fingers: say what the next tap does (docked at the top, like the plan info)
+    if (this.coarse() && C.tool !== 'select' && C.tool !== 'train' && !this._ci) this.touchHintShow(this.tr(C.touchHint()));
+    else if (!this._ci) $('#cursorinfo').hidden = true;
     const sb = $('#subbar');
     sb.innerHTML = sub;
     sb.hidden = !sub;
+    sb.classList.toggle('confirm', !!(C.drag && C.drag.touch));
     document.body.classList.toggle('building', C.tool !== 'select');
   }
 
@@ -278,6 +294,7 @@ export class UI {
     }
     this.updateFloats(dt);
     this.updateDriver();
+    this.updateHandles();
     this.updateLabels();
     const ut = $('#undo-t');
     if (ut) { const left = g.construction.undoTimeLeft(); ut.style.setProperty('--p', (left / 10) * 100 + '%'); }
@@ -383,12 +400,35 @@ export class UI {
   }
 
   cursorInfo(text, ok) {
+    this._ci = { text, ok: !!ok };
     const el = $('#cursorinfo');
     el.hidden = false;
     el.textContent = text;
     el.className = ok ? 'ok' : 'bad';
   }
-  hideCursorInfo() { $('#cursorinfo').hidden = true; }
+  hideCursorInfo() { this._ci = null; $('#cursorinfo').hidden = true; }
+  coarse() { return !!(window.matchMedia && matchMedia('(pointer: coarse)').matches); }
+  touchHintShow(text) {
+    const el = $('#cursorinfo');
+    el.hidden = false;
+    el.textContent = text;
+    el.className = 'ok hint dock';
+  }
+  // touch construction handles: markers over the start / end of a plan that
+  // a finger drags (the canvas does the hit test; these only show where)
+  updateHandles() {
+    const g = this.game, box = $('#bhandles');
+    if (!box) return;
+    const hs = g.construction.touchHandles();
+    while (box.children.length > hs.length) box.lastChild.remove();
+    while (box.children.length < hs.length) { const el = document.createElement('div'); el.className = 'bhandle'; el.innerHTML = '<i></i>'; box.appendChild(el); }
+    hs.forEach((h, k) => {
+      const el = box.children[k], p = g.input.tileScreen(h.tile);
+      el.className = 'bhandle ' + h.id;
+      el.style.transform = `translate(${p.x}px, ${p.y}px)`;
+      el.hidden = !p.vis;
+    });
+  }
   pointerMoved(x, y) {
     const el = $('#cursorinfo');
     // fingers cover the spot: dock the hint at the top; the mouse keeps it
@@ -416,6 +456,22 @@ export class UI {
   }
 
   // ---------- world labels ----------
+  // the label under a screen point (topmost), if any
+  labelAt(x, y) {
+    const els = [...this.labels.values()];
+    for (let k = els.length - 1; k >= 0; k--) {
+      const el = els[k];
+      if (el.hidden || el.style.display === 'none' || el.style.visibility === 'hidden' || +el.style.opacity === 0) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return el.dataset.key;
+    }
+    return null;
+  }
+  labelSelect(key) {
+    const [type, id] = key.split(':');
+    if (type === 'works') { this.cancelWorks(+id); return; }
+    this.game.select({ type, id: +id });
+  }
   label(key, cls) {
     let el = this.labels.get(key);
     if (!el) {
@@ -424,18 +480,8 @@ export class UI {
       el.dataset.key = key;
       $('#labels').appendChild(el);
       this.labels.set(key, el);
-      // touch adjustment snaps taps near a label onto it; a finger that
-      // actually landed beside the label (on a train, say) taps the world
-      el.addEventListener('pointerdown', (e) => { el._down = e.pointerType === 'mouse' ? null : { x: e.clientX, y: e.clientY }; });
-      el.addEventListener('click', () => {
-        const d = el._down, r = el.getBoundingClientRect();
-        el._down = null;
-        if (d && (d.x < r.left - 1 || d.x > r.right + 1 || d.y < r.top - 1 || d.y > r.bottom + 1)) { this.game.input.tap(d.x, d.y); return; }
-        const [type, id] = key.split(':');
-        if (type === 'works') { this.cancelWorks(+id); return; }
-        if (type === 'region') this.game.select({ type: 'region', id: +id });
-        else this.game.select({ type, id: +id });
-      });
+      // labels are drawn over the world but never take the pointer: a finger
+      // may pan or build across them; a tap on one is resolved by labelAt()
     }
     el._used = true;
     return el;
@@ -1001,7 +1047,8 @@ export class UI {
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
       ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
       ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p>` : ''}
-      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}
+      <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
+      <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
       <h3>${this.tr('save_data')}</h3><div class="row wrap">
         ${inGame ? `<button class="btn" data-act="exportSave">${this.tr('export_save')}</button>` : ''}
@@ -1211,6 +1258,8 @@ export class UI {
       musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.refreshPanel(); },
       roadMode: (a) => { if (a === 'tram' && !g().roads.kindUnlocked('tram')) { this.error('err_locked'); return; } g().construction.roadMode = a; this.renderToolbar(); },
       stopKind: (a) => { if (!g().roads.kindUnlocked(a)) { this.error('err_locked'); return; } g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
+      buildConfirm: () => { const C = g().construction; if (C.touchReady()) C.touchCommit(); },
+      buildCancel: () => g().construction.touchCancel(),
       stTracks: (a) => { const C = g().construction; C.setStationTracks((C.stationTracks || 1) + +a); this.renderToolbar(); },
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),

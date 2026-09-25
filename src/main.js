@@ -19,6 +19,7 @@ const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
   graphics: 'auto', shadows: 'medium', particles: 'high', dayNight: true, weather: true, labels: true,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
+  instantBuild: false, keepTool: true,
 };
 
 function loadSettings() {

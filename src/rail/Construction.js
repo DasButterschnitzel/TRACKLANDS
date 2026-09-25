@@ -304,6 +304,149 @@ export class Construction {
   }
   cancelDrag() { this.drag = null; this.plan = null; this.clearPreview(); }
 
+  // ---------- touch: anchors, handles, confirm (shared build commands) ----------
+  // A touch construction is a plan in this.drag with touch:true. Drawing tools
+  // (track, road, station, bulldoze) collect it from taps and handle drags;
+  // single-site tools that cost a lot (depot, stops, industry, HQ) show the
+  // site first. Everything is committed by touchCommit(), the same calls the
+  // mouse makes on release; nothing is built while the finger only pans.
+  touchKind() {
+    const t = this.tool;
+    if (t === 'track' || t === 'road' || t === 'station') return 'line';
+    if (t === 'bulldoze') return 'mark';
+    if (t === 'signal') return 'signal';
+    if (t === 'depot' || t === 'roadstop' || t === 'industry' || t === 'hq') return 'site';
+    return 'tap';
+  }
+  instant() { return !!this.game.settings.instantBuild; }
+  touchLongPressTool() { const k = this.touchKind(); return k === 'line' || k === 'mark' || k === 'signal'; }
+  touchTap(tile, p) {
+    if (tile < 0) return;
+    const k = this.touchKind();
+    if (k === 'line') {
+      if (!this.drag || !this.drag.touch) this.drag = { a: tile, b: tile, touch: true };
+      else { this.drag.b = tile; this.drag.set = true; }
+      this.previewDrag();
+      if (this.instant() && this.drag.a !== this.drag.b) this.touchCommit(); else this.touchChanged();
+      return;
+    }
+    if (k === 'mark') {
+      if (!this.drag || !this.drag.touch) this.drag = { tiles: new Set(), touch: true };
+      if (this.drag.tiles.has(tile)) this.drag.tiles.delete(tile); else if (this.bulldozeTarget(tile) != null) this.drag.tiles.add(tile);
+      this.previewMarks();
+      if (this.instant() && this.drag.tiles.size) this.touchCommit(); else this.touchChanged();
+      return;
+    }
+    if (k === 'site' && !this.instant()) {
+      this.drag = { point: tile, p, touch: true };
+      this.previewPoint();
+      this.touchChanged();
+      return;
+    }
+    // cheap single placements (signal, waypoint, decoration) and instant build
+    this.drag = null;
+    this.pointerDown(tile, p);
+    this.pointerUp(tile);
+    this.touchChanged();
+  }
+  // hold still on the map: start drawing from there (replaces the old plan)
+  touchLongPress(tile, p) {
+    if (tile < 0) return false;
+    const k = this.touchKind();
+    if (k === 'line') { this.drag = { a: tile, b: tile, touch: true }; this.previewDrag(); }
+    else if (k === 'mark') { this.drag = { tiles: new Set(this.bulldozeTarget(tile) != null ? [tile] : []), touch: true }; this.previewMarks(); }
+    else if (k === 'signal') { this.drag = { a: tile, b: tile, p, touch: true }; this.previewSignalRow(); }
+    else return false;
+    this.touchChanged();
+    return true;
+  }
+  touchDrag(handle, tile, p) {
+    const d = this.drag;
+    if (!d || tile < 0) return;
+    if (d.tiles) { if (!d.tiles.has(tile) && this.bulldozeTarget(tile) != null) { d.tiles.add(tile); this.previewMarks(); } return; }
+    if (d.point != null) { if (tile !== d.point) { d.point = tile; d.p = p; this.previewPoint(); } return; }
+    const key = handle === 'a' ? 'a' : 'b';
+    if (tile === d[key]) return;
+    d[key] = tile;
+    if (key === 'a' && this.tool === 'signal') d.p = p;
+    if (this.tool === 'signal') this.previewSignalRow(); else this.previewDrag();
+  }
+  // a handle was let go (or the drawing paused for a pinch)
+  touchDragEnd(paused) {
+    if (!paused && this.instant() && this.touchReady()) { this.touchCommit(); return; }
+    this.touchChanged();
+  }
+  previewDrag() {
+    const d = this.drag;
+    if (!d) return;
+    if (this.tool === 'track') this.previewTrack();
+    else if (this.tool === 'road') this.previewRoad();
+    else if (this.tool === 'station') this.previewStation(d.a, d.b);
+  }
+  previewPoint() {
+    const d = this.drag;
+    this.drag = null;
+    this.hover(d.point, d.p);
+    this.drag = d;
+  }
+  previewMarks() {
+    const g = this.game, d = this.drag;
+    let k = 0;
+    for (const t of d.tiles) { if (k >= 400) break; this.putQuad(this.ghost, k++, t, 0xe0a33a); }
+    this.ghost.count = k; this.flush(this.ghost);
+    if (k) g.ui.cursorInfo(g.ui.tr('bulldoze_marked', { n: k }), true); else g.ui.hideCursorInfo();
+  }
+  // can the plan be built as it stands?
+  touchReady() {
+    const d = this.drag, ci = this.game.ui._ci;
+    if (!d) return false;
+    if (d.tiles) return d.tiles.size > 0;
+    if (d.point != null) return !!(ci && ci.ok);
+    if (this.tool === 'station') { const sp = this.stationPlan; return !!(sp && sp.tiles && sp.tiles.length && sp.error !== 'err_no_money'); }
+    if (d.a === d.b) return false;
+    if (this.tool === 'track') return !!(this.plan && this.plan.ok);
+    return !!(ci && ci.ok);
+  }
+  touchHint() {
+    const d = this.drag, k = this.touchKind();
+    if (k === 'mark') return d && d.tiles && d.tiles.size ? 'touch_hint_marked' : 'touch_hint_mark';
+    if (k === 'site') return d && d.point != null ? 'touch_hint_site_set' : 'touch_hint_site';
+    if (k === 'signal') return d ? 'touch_hint_line_set' : 'touch_hint_signal';
+    if (k === 'line') return !d ? 'touch_hint_start' : d.a === d.b && this.tool !== 'station' ? 'touch_hint_end' : 'touch_hint_line_set';
+    return 'touch_hint_tap';
+  }
+  // the markers a finger can drag
+  touchHandles() {
+    const d = this.drag;
+    if (!d || !d.touch) return [];
+    if (d.tiles) return [];
+    if (d.point != null) return [{ id: 'b', tile: d.point }];
+    return d.a === d.b ? [{ id: 'b', tile: d.b }] : [{ id: 'a', tile: d.a }, { id: 'b', tile: d.b }];
+  }
+  touchCommit() {
+    const d = this.drag;
+    if (!d) return;
+    if (d.tiles) {
+      const tiles = [...d.tiles];
+      this.drag = null;
+      this.clearPreview();
+      for (const t of tiles) this.bulldoze(t);
+    } else if (d.point != null) {
+      this.drag = null;
+      this.clearPreview();
+      this.pointerDown(d.point, d.p);
+      this.pointerUp(d.point);
+    } else this.pointerUp(d.b);
+    this.drag = null;
+    if (!this.game.settings.keepTool && this.tool !== 'select') this.setTool('select');
+    this.touchChanged();
+  }
+  touchCancel() {
+    this.cancelDrag();
+    this.touchChanged();
+  }
+  touchChanged() { this.game.events.emit('buildstate'); }
+
   // ---------- track ----------
   previewTrack() {
     const g = this.game;

@@ -1,7 +1,25 @@
 // Pointer (mouse + multi-touch) and keyboard input. Translates gestures into
 // camera motion, tool actions and object selection.
+//
+// Mouse: a press with a build tool starts drawing at once (drag, release to
+// build); the right or middle button pans.
+//
+// Touch (and pen) run a gesture state machine that never guesses on touch
+// down: a finger is PENDING until it either moves past the slop (PAN, always,
+// whatever tool is active), lifts (TAP: select, or set a construction anchor
+// / place a point), is held still (LONG PRESS: start drawing from there) or a
+// second finger arrives (PINCH: zoom and pan; a construction in progress is
+// kept and resumes afterwards). Drawing on touch happens only by dragging a
+// construction handle (a start or end marker placed by a tap or a long
+// press); a finished drawing waits in the sub bar for Build or Cancel unless
+// "instant build" is on. Both paths end in the same Construction commands.
 import * as THREE from 'three';
-import { N, TILE, worldToTile } from '../util.js';
+import { N, TILE, worldToTile, tileCX, tileCZ } from '../util.js';
+
+const TOUCH_SLOP = 10;       // px a finger may wander and still be a tap
+const LONG_PRESS_MS = 450;   // hold still this long to start drawing
+const LONG_STILL = 7;        // px a held finger may drift and still count as holding still
+const HANDLE_R = 34;         // px around a construction handle that grabs it
 
 export class Input {
   constructor(game, el) {
@@ -15,6 +33,10 @@ export class Input {
     this.hoverTile = -1;
     this.lastPinch = 0;
     this._ptr = { x: 0, y: 0 };
+    this.gesture = null;     // touch: { state: pending|pan|build|pinch, handle }
+    this.longPressMs = LONG_PRESS_MS;
+    this._long = 0;
+    this._v = new THREE.Vector3();
     this.bind();
   }
 
@@ -24,7 +46,8 @@ export class Input {
       down: (e) => this.onDown(e), move: (e) => this.onMove(e), up: (e) => this.onUp(e),
       wheel: (e) => this.onWheel(e), ctx: (e) => e.preventDefault(),
       gs: (e) => this.onGesture(e, 'start'), gc: (e) => this.onGesture(e, 'change'),
-      kd: (e) => this.onKey(e, true), ku: (e) => this.onKey(e, false), blur: () => this.keys.clear(),
+      kd: (e) => this.onKey(e, true), ku: (e) => this.onKey(e, false), blur: () => { this.keys.clear(); this.resetPointers(); },
+      vis: () => { if (document.hidden) this.resetPointers(); }, orient: () => this.resetPointers(),
     };
     el.addEventListener('pointerdown', this.h.down);
     window.addEventListener('pointermove', this.h.move);
@@ -37,6 +60,8 @@ export class Input {
     window.addEventListener('keydown', this.h.kd);
     window.addEventListener('keyup', this.h.ku);
     window.addEventListener('blur', this.h.blur);
+    document.addEventListener('visibilitychange', this.h.vis);
+    window.addEventListener('orientationchange', this.h.orient);
     el.style.touchAction = 'none';
   }
 
@@ -53,6 +78,35 @@ export class Input {
     window.removeEventListener('keydown', this.h.kd);
     window.removeEventListener('keyup', this.h.ku);
     window.removeEventListener('blur', this.h.blur);
+    document.removeEventListener('visibilitychange', this.h.vis);
+    window.removeEventListener('orientationchange', this.h.orient);
+    this.clearLong();
+  }
+  // forget every finger (app hidden, rotated, focus lost): nothing stays
+  // pressed; a mouse drawing is dropped, a touch construction plan is kept
+  resetPointers() {
+    this.clearLong();
+    if (this.mode === 'tool' && !this.gesture) this.game.construction.cancelDrag();
+    this.pointers.clear();
+    this.gesture = null;
+    this.mode = null;
+  }
+  clearLong() { if (this._long) { clearTimeout(this._long); this._long = 0; } }
+  // client position of a tile centre (construction handles)
+  tileScreen(tile) {
+    const g = this.game, net = g.net;
+    const x = tileCX(tile), z = tileCZ(tile);
+    const y = net.conn[tile] ? net.railH(tile) : g.world.view.heightAt(x, z);
+    this._v.set(x, y, z).project(g.camera.camera);
+    const r = this.el.getBoundingClientRect();
+    return { x: r.left + (this._v.x + 1) / 2 * r.width, y: r.top + (1 - this._v.y) / 2 * r.height, vis: this._v.z < 1 };
+  }
+  // the construction handle under a finger (nearest within reach)
+  handleAt(x, y) {
+    const hs = this.game.construction.touchHandles();
+    let best = null, bd = HANDLE_R;
+    for (const h of hs) { const p = this.tileScreen(h.tile); const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = h.id; } }
+    return best;
   }
 
   // screen -> ground point (iterative terrain intersection)
@@ -106,6 +160,7 @@ export class Input {
 
   onDown(e) {
     this.game.audio.unlock();
+    if (e.pointerType !== 'mouse') { this.touchDown(e); return; }
     this.el.setPointerCapture?.(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, type: e.pointerType });
     const n = this.pointers.size;
@@ -129,14 +184,16 @@ export class Input {
     this._ptr.x = e.clientX; this._ptr.y = e.clientY;
     const C = this.game.construction;
     if (!ptr) {
-      // hover (mouse)
-      if (e.target === this.el) {
+      // hover (mouse only: a finger that started on a panel is the panel's)
+      if (e.pointerType === 'mouse' && e.target === this.el) {
         const { tile, p } = this.tileAt(e.clientX, e.clientY);
+        if (C.tool === 'select') this.el.style.cursor = this.game.ui.labelAt(e.clientX, e.clientY) ? 'pointer' : '';
         if (tile !== this.hoverTile || C.tool === 'signal') { this.hoverTile = tile; C.hover(tile, p); }
         this.game.ui.pointerMoved(e.clientX, e.clientY);
       }
       return;
     }
+    if (ptr.type !== 'mouse') { this.touchMove(e, ptr); return; }
     const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
     ptr.x = e.clientX; ptr.y = e.clientY;
     if (this.mode === 'pinch') { this.pinchMove(); return; }
@@ -155,6 +212,7 @@ export class Input {
   onUp(e) {
     const ptr = this.pointers.get(e.pointerId);
     if (!ptr) return;
+    if (ptr.type !== 'mouse') { this.touchUp(e, e.type === 'pointercancel'); return; }
     this.pointers.delete(e.pointerId);
     const C = this.game.construction;
     if (this.mode === 'pinch') { if (this.pointers.size === 0) this.mode = null; else if (this.pointers.size === 1) this.mode = 'pan'; return; }
@@ -163,8 +221,108 @@ export class Input {
     this.mode = null;
   }
 
+  // ---------- touch gesture state machine ----------
+  touchDown(e) {
+    this.el.setPointerCapture?.(e.pointerId);
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, type: e.pointerType });
+    const C = this.game.construction;
+    if (this.pointers.size >= 2) {
+      // a second finger: zoom and pan; a drawing in progress waits
+      this.clearLong();
+      if (this.gesture && this.gesture.state === 'build') C.touchDragEnd(true);
+      this.gesture = { state: 'pinch' };
+      this.mode = 'pinch';
+      this.pinchStart();
+      return;
+    }
+    const handle = this.handleAt(e.clientX, e.clientY);
+    this.gesture = { state: handle ? 'build' : 'pending', handle, t0: e.timeStamp };
+    this.mode = handle ? 'tool' : 'maybe';
+    if (handle || !C.touchLongPressTool()) return;
+    // a cue only: whether this was a long press is decided from the event
+    // times when the finger moves (events can arrive late on a busy device)
+    const id = e.pointerId;
+    this._long = setTimeout(() => this.longCue(id), this.longPressMs);
+  }
+  longCue(id) {
+    this._long = 0;
+    const G = this.gesture;
+    if (!G || G.state !== 'pending' || !this.pointers.has(id) || this.pointers.size !== 1) return;
+    G.cued = true;
+    try { navigator.vibrate && navigator.vibrate(12); } catch (err) { /* not allowed */ }
+  }
+  // when (event time) the finger first left the tap slop
+  slopTime(e, ptr) {
+    const list = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
+    for (const c of list) if (Math.hypot(c.clientX - ptr.sx, c.clientY - ptr.sy) > TOUCH_SLOP) return c.timeStamp;
+    return e.timeStamp;
+  }
+  touchMove(e, ptr) {
+    const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
+    ptr.x = e.clientX; ptr.y = e.clientY;
+    const G = this.gesture, g = this.game;
+    if (!G) return;
+    if (G.state === 'pinch') { this.pinchMove(); return; }
+    if (G.state === 'pending') {
+      // any drift before the hold time is up means this is no long press
+      if (!G.moved) {
+        const list = typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length ? e.getCoalescedEvents() : [e];
+        for (const c of list) if (c.timeStamp - G.t0 < this.longPressMs && Math.hypot(c.clientX - ptr.sx, c.clientY - ptr.sy) > LONG_STILL) { G.moved = true; break; }
+      }
+      if (Math.hypot(ptr.x - ptr.sx, ptr.y - ptr.sy) > TOUCH_SLOP) {
+        this.clearLong();
+        // held still long enough first: draw from where the finger went down
+        const C = g.construction;
+        if (C.touchLongPressTool() && !G.moved && this.slopTime(e, ptr) - G.t0 >= this.longPressMs) {
+          const at = this.tileAt(ptr.sx, ptr.sy);
+          if (C.touchLongPress(at.tile, at.p)) {
+            G.state = 'build'; G.handle = 'b'; this.mode = 'tool';
+            const cur = this.tileAt(ptr.x, ptr.y);
+            C.touchDrag('b', cur.tile, cur.p);
+            return;
+          }
+        }
+        // otherwise this finger pans, whatever tool is active
+        G.state = 'pan'; this.mode = 'pan';
+        g.ui.followId = null;
+        g.camera.panPixels(ptr.x - ptr.sx, ptr.y - ptr.sy, true);
+      }
+      return;
+    }
+    if (G.state === 'pan') { g.ui.followId = null; g.camera.panPixels(dx, dy, true); return; }
+    if (G.state === 'build') {
+      const { tile, p } = this.tileAt(ptr.x, ptr.y);
+      g.construction.touchDrag(G.handle, tile, p);
+      g.ui.pointerMoved(ptr.x, ptr.y);
+    }
+  }
+  touchUp(e, cancelled) {
+    this.pointers.delete(e.pointerId);
+    this.clearLong();
+    const G = this.gesture, C = this.game.construction;
+    if (!G) return;
+    if (G.state === 'pinch') {
+      // the finger left on the glass keeps panning; nothing is tapped or built
+      if (this.pointers.size === 1) { const [rest] = [...this.pointers.values()]; rest.sx = rest.x; rest.sy = rest.y; this.gesture = { state: 'pan' }; this.mode = 'pan'; }
+      else if (!this.pointers.size) { this.gesture = null; this.mode = null; }
+      return;
+    }
+    if (this.pointers.size) return;
+    this.gesture = null; this.mode = null;
+    if (G.state === 'build') { C.touchDragEnd(cancelled); return; }
+    if (G.state === 'pending' && !cancelled) this.touchTap(e.clientX, e.clientY);
+  }
+  touchTap(x, y) {
+    const C = this.game.construction;
+    if (C.tool === 'select' || C.tool === 'train') { this.tap(x, y); return; }
+    const { tile, p } = this.tileAt(x, y);
+    C.touchTap(tile, p);
+  }
+
   tap(x, y) {
     const g = this.game;
+    const lbl = g.ui.labelAt ? g.ui.labelAt(x, y) : null;
+    if (lbl) { g.ui.labelSelect(lbl); return; }
     const trainId = this.pickTrain(x, y);
     if (trainId != null) { g.select({ type: 'train', id: trainId }); return; }
     const gp = this.groundAt(x, y);
@@ -238,7 +396,8 @@ export class Input {
       }
     }
     switch (k) {
-      case 'escape': if (g.ui.driveId != null) g.ui.stopDrive(); else if (!g.ui.closeTop()) g.construction.setTool('select'); break;
+      case 'escape': if (g.ui.driveId != null) g.ui.stopDrive(); else if (g.construction.drag) g.construction.touchCancel(); else if (!g.ui.closeTop()) g.construction.setTool('select'); break;
+      case 'enter': if (g.construction.drag && g.construction.drag.touch && g.construction.touchReady()) { e.preventDefault(); g.construction.touchCommit(); } break;
       case ' ': if (e.target === document.body || e.target === this.el) { e.preventDefault(); g.togglePause(); } break;
       case '1': g.construction.setTool('select'); break;
       case '2': g.construction.setTool('track'); break;

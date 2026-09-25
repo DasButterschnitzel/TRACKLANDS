@@ -275,7 +275,7 @@ body.building #topbar .speeds { opacity: .7; }
 
 /* ---------- world labels & floats ---------- */
 #labels, #floats { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
-.wlabel { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; background: rgba(246,241,231,.92); color: var(--ink); border-radius: 10px; padding: 3px 9px; font-size: .82em; box-shadow: 0 2px 8px rgba(0,0,0,.18); display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
+.wlabel { position: absolute; left: 0; top: 0; pointer-events: none; background: rgba(246,241,231,.92); color: var(--ink); border-radius: 10px; padding: 3px 9px; font-size: .82em; box-shadow: 0 2px 8px rgba(0,0,0,.18); display: flex; flex-direction: column; align-items: center; white-space: nowrap; }
 .wlabel b { font-size: 1.05em; letter-spacing: .02em; }
 .wlabel.station, .wlabel.industry { flex-direction: row; gap: 4px; background: rgba(31,42,58,.8); color: #fff; padding: 2px 8px; font-size: .75em; }
 .wlabel.station .ic, .wlabel.industry .ic { width: 1.1em; height: 1.1em; }
@@ -804,3 +804,20 @@ textarea.inp.code { width: 100%; box-sizing: border-box; font-family: ui-monospa
 .news-filter .seg { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .news-filter .seg::-webkit-scrollbar { display: none; }
 .news-filter .seg button { flex: none; }
+
+/* ---------- touch construction: mode, handles, confirm ---------- */
+#subbar .sub-mode { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 4px; font-size: .86em; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; color: rgba(255,255,255,.92); align-self: center; flex: none; }
+#subbar .sub-mode .ic { width: 18px; height: 18px; }
+#subbar .sub-exit { flex: none; align-self: center; margin-left: 2px; }
+#subbar .btn.small { min-height: 44px; flex: none; align-self: center; white-space: nowrap; }
+#subbar .bb-go:disabled { opacity: .45; }
+#subbar .bb-cancel { color: #fff; border-color: rgba(255,255,255,.35); }
+#subbar.confirm { box-shadow: 0 0 0 2px var(--teal), var(--shadow); }
+#subbar .sub-hint.bb { min-width: 0; flex: 1 1 auto; white-space: normal; font-size: .84em; opacity: .9; }
+@media (max-width: 760px) { #subbar.confirm .sub-hint.bb { display: none; } }
+#cursorinfo.hint { background: rgba(31,42,58,.82); font-weight: 600; }
+#bhandles { position: fixed; inset: 0; pointer-events: none; z-index: 15; }
+.bhandle { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(63,200,184,.88); border: 3px solid #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); display: grid; place-items: center; }
+.bhandle i { width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.bhandle.a { background: rgba(233,185,73,.92); }
+.bhandle[hidden] { display: none; }

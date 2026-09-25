@@ -26,6 +26,13 @@ async function touchDrag(page, cdp, from, to, steps = 12) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
+async function touchTap(page, cdp, at) {
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: at[0], y: at[1], id: 1 }] });
+  await page.waitForTimeout(60);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(60);
+}
+
 export async function run({ browser, base }) {
   const lines = [];
   let ok = true;
@@ -60,12 +67,18 @@ export async function run({ browser, base }) {
     const p0 = await screenOf(page, a), p4 = await screenOf(page, a + 4);
     let info = '';
     if (cdp) {
-      // hold mid-drag to read the ghost text, then finish
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p0[0], y: p0[1], id: 1 }] });
-      for (let i = 1; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: p0[0] + (p4[0] - p0[0]) * i / 10, y: p0[1] + (p4[1] - p0[1]) * i / 10, id: 1 }] }); await page.waitForTimeout(16); }
+      // touch: tap the start (a handle appears there), drag the handle to the
+      // end, read the ghost text, then confirm with Build in the sub bar
+      await touchTap(page, cdp, p0);
+      const handle = await page.waitForSelector('#bhandles .bhandle', { timeout: 3000 }).then(() => true, () => false);
+      check(handle, `${label}: a tap sets the start and shows a drag handle`);
+      await touchDrag(page, cdp, p0, p4, 10);
+      await page.waitForTimeout(150);
       info = await page.evaluate(() => document.querySelector('#cursorinfo').textContent);
+      const none = await page.evaluate((a) => !window.__tracklands.game.stations.stationAt(a), a);
+      check(none, `${label}: nothing is built before confirming`);
       await page.screenshot({ path: path.join(out, `build-${label}-drag.png`) });
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.click('#subbar [data-act=buildConfirm]');
     } else {
       await page.mouse.move(p0[0], p0[1]); await page.mouse.down();
       for (let i = 1; i <= 10; i++) { await page.mouse.move(p0[0] + (p4[0] - p0[0]) * i / 10, p0[1] + (p4[1] - p0[1]) * i / 10); await page.waitForTimeout(16); }
@@ -83,7 +96,7 @@ export async function run({ browser, base }) {
       const endTile = await page.evaluate((id) => { const s = window.__tracklands.game.stations.byId(id); const tk = s.tracks[0].tiles; return tk[tk.length - 1]; }, st.id);
       const e0 = await screenOf(page, endTile), e1 = await screenOf(page, endTile + 1);
       const c0 = await page.evaluate(() => window.__tracklands.game.economy.coins);
-      if (cdp) await touchDrag(page, cdp, e0, e1);
+      if (cdp) { await touchTap(page, cdp, e0); await touchDrag(page, cdp, e0, e1); await page.waitForTimeout(150); await page.click('#subbar [data-act=buildConfirm]'); }
       else { await page.mouse.move(e0[0], e0[1]); await page.mouse.down(); await page.mouse.move(e1[0], e1[1], { steps: 8 }); await page.mouse.up(); }
       await page.waitForTimeout(300);
       const after = await page.evaluate((id) => window.__tracklands.game.stations.byId(id).tracks.map((t) => t.tiles.length), st.id);
