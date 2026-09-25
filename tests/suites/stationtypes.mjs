@@ -74,6 +74,9 @@ export async function run({ browser, base }) {
     ov[m] = await page.waitForFunction((mode) => { const O = window.__tracklands.game.overlays; const n = O.quads.count + O.cols.count; return O.mode === mode && n > 0 ? n : false; }, m, { polling: 100, timeout: 10000 }).then((h) => h.jsonValue()).catch(() => 0);
     await page.evaluate(() => window.__tracklands.game.overlays.set(null));
   }
+  // the rail graph of the production save is sound; the track check overlay draws
+  const gv = await page.evaluate(() => { const g = window.__tracklands.game; g.overlays.set('trackcheck'); g.overlays._t = 0; g.overlays.update(1); const n = g.overlays.quads.count; g.overlays.set(null); return { graph: g.net.validateGraph(50), headings: g.trains.validateHeadings(), notes: g.net.validateGraph(50, true).length, drawn: n }; });
+  check(gv.graph.length === 0 && gv.headings.length === 0 && gv.drawn >= gv.notes, `production save: rail graph sound, train paths continuous; track check shows ${gv.notes} notes (${JSON.stringify(gv.graph.slice(0, 2))} ${JSON.stringify(gv.headings.slice(0, 2))})`);
   check(ov.towns > 0 && ov.ratings > 0 && ov.industry > 0, `town, rating and industry overlays draw (${JSON.stringify(ov)})`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
   await ctx.close();

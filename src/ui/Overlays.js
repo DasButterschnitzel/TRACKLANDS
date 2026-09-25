@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'trackcheck'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
@@ -141,6 +141,18 @@ export class Overlays {
         this.cols.count = n;
         this.cols.instanceMatrix.needsUpdate = true;
         if (this.cols.instanceColor) this.cols.instanceColor.needsUpdate = true;
+        break;
+      }
+      case 'trackcheck': {
+        // the graph validator: errors red, angled track ends amber, open track ends grey
+        const seen = new Set();
+        for (const x of net.validateGraph(400, true)) { if (seen.has(x.tile)) continue; seen.add(x.tile); this.quad(k++, x.tile, x.kind === 'sharp' ? 0xf0b040 : 0xe04a3a, 0.6); }
+        for (let i = 0; i < N * N && k < N * N; i++) {
+          if (!net.conn[i] || seen.has(i) || net.special.has(i)) continue;
+          let n = 0; for (let d = 0; d < 8; d++) if ((net.conn[i] >> d) & 1) n++;
+          if (n === 1) this.quad(k++, i, 0x9aa3ad, 0.5);
+        }
+        this._check = { issues: seen.size };
         break;
       }
       case 'signals': {

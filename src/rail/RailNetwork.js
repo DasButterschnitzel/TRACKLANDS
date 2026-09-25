@@ -144,6 +144,38 @@ export class RailNetwork {
     return { pairs: res, stubs, dirs };
   }
 
+  // ---------- graph validation ----------
+  // The directed rail graph must be consistent: every connection has its
+  // reverse on the neighbour and points inside the map; station platforms sit
+  // on track; signals face a connection. Returns a list of {kind, tile, dir};
+  // empty when the graph is sound. With notes, also lists 'sharp' ends: arms
+  // that no other arm of their tile continues (two track ends sharing a tile
+  // at an angle, e.g. after a junction's third arm was removed) - valid, but
+  // worth showing to the player.
+  validateGraph(max = 50, notes = false) {
+    const out = [];
+    const add = (kind, tile, dir = null) => { if (out.length < max) out.push({ kind, tile, dir }); };
+    for (let i = 0; i < N * N; i++) {
+      const m = this.conn[i];
+      if (!m) continue;
+      let n = 0;
+      for (let d = 0; d < 8; d++) {
+        if (!((m >> d) & 1)) continue;
+        n++;
+        const j = step(i, d);
+        if (j < 0) { add('outside', i, d); continue; }
+        if (!((this.conn[j] >> opp(d)) & 1)) add('oneway', i, d);
+      }
+      // (a station or depot tile may end tracks at an angle: trains stop there and reverse)
+      if (notes && n >= 2 && !this.special.has(i)) { const { stubs } = this.tilePairs(i); for (const d of stubs) add('sharp', i, d); }
+    }
+    for (const [t, sp] of this.special) {
+      if (sp.type === 'station' && !this.conn[t] && this.game.stations.byId(sp.id) && this.game.stations.byId(sp.id).tracks.some((tk) => tk.tiles.length > 1)) add('station_off_track', t);
+    }
+    for (const key of this.signals.keys()) { const t = Math.floor(key / 8), d = key % 8; if (!((this.conn[t] >> d) & 1)) add('signal_no_track', t, d); }
+    return out;
+  }
+
   // ---------- buildability ----------
   isUnlocked(i) { return this.game.progression.regionUnlocked(this.world.region[i]); }
   tileBlockedReason(i) {

@@ -12,7 +12,7 @@ async function runSeeds(browser, base, seeds, minutes) {
     const r = await page.evaluate(([s, m]) => { const t0 = performance.now(); const r = window.__tracklands.game.runRailFuzz(s, m); r.ms = Math.round(performance.now() - t0); delete r.trace; return r; }, [seed, minutes]);
     if (!r.ok) ok = false;
     lines.push(`${r.ok ? 'ok  ' : 'FAIL'} seed ${seed} ${r.skipped ? '(no network) ' : ''}${r.detail} ${r.ms}ms`);
-    for (const k of ['firstGeo', 'firstGap', 'firstOverlap', 'stuckInfo', 'lastError', 'states']) if (!r.ok && r[k]) lines.push('     ' + k + ': ' + String(r[k]).slice(0, 700));
+    for (const k of ['firstGraph', 'firstHeading', 'firstGeo', 'firstGap', 'firstOverlap', 'stuckInfo', 'lastError', 'states']) if (!r.ok && r[k]) lines.push('     ' + k + ': ' + String(r[k]).slice(0, 700));
     if (errors.length) { ok = false; lines.push('     page errors: ' + errors.splice(0).slice(0, 3).join(' | ')); }
   }
   await ctx.close();

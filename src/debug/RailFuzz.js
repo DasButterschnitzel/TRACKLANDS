@@ -232,6 +232,12 @@ export class RailFuzz extends RailTests {
       }
       if (i > 0 && i % mutEvery === 0) { try { this.mutate(); } catch (e) { res.errors++; this.note('mutate error ' + e.message); console.error(e); } }
       if (i % check) continue;
+      // the rail graph and every train's path stay consistent (checked after edits and every 5 s)
+      if (i % mutEvery === 1 || i % Math.round(5 / dt) === 0) {
+        const gi = g.net.validateGraph(3), hi = T.validateHeadings();
+        if (gi.length) { res.graph = (res.graph || 0) + 1; if (!res.firstGraph) res.firstGraph = `t=${g.time.toFixed(1)} ${JSON.stringify(gi)} recent: ${this.events.slice(-4).join(' | ')}`; }
+        if (hi.length) { res.headings = (res.headings || 0) + 1; if (!res.firstHeading) res.firstHeading = `t=${g.time.toFixed(1)} ${JSON.stringify(hi.slice(0, 2))} recent: ${this.events.slice(-4).join(' | ')}`; }
+      }
       const pts = [];
       for (const t of T.trains) {
         if (!t.steps.length || t.state === 'spawnwait') continue;
@@ -306,9 +312,9 @@ export class RailFuzz extends RailTests {
     res.trains = T.trains.length;
     res.saveErr = this.saveRoundTrip();
     res.deadlocks = T.incidents.length;
-    res.ok = !res.geoBad && !res.jumps && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)));
+    res.ok = !res.graph && !res.headings && !res.geoBad && !res.jumps && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)));
     if (!res.trips) res.states = T.trains.map((t) => `${t.name}:${t.state}/${t.problem}/${t.mode} tgt=${t.target} route=${(t.route || []).length}`).join(' ') + ` stations=${g.stations.list.length} sites=${this.sites.length}`;
-    res.detail = `${res.jumps ? 'JUMPS ' + res.jumps + ' (' + res.firstJump + ') ' : ''}gaps ${res.bodyGaps || 0} trains ${res.trains} trips ${res.trips} overlaps ${res.overlaps} keys ${res.keyConflicts} nan ${res.nan} errors ${res.errors} stuck ${res.stuck.join(',') || 0} deadlocks ${res.deadlocks} save ${res.saveErr || 'ok'}`;
+    res.detail = `${res.graph ? 'GRAPH ' + res.graph + ' ' : ''}${res.headings ? 'HEADINGS ' + res.headings + ' ' : ''}${res.jumps ? 'JUMPS ' + res.jumps + ' (' + res.firstJump + ') ' : ''}gaps ${res.bodyGaps || 0} trains ${res.trains} trips ${res.trips} overlaps ${res.overlaps} keys ${res.keyConflicts} nan ${res.nan} errors ${res.errors} stuck ${res.stuck.join(',') || 0} deadlocks ${res.deadlocks} save ${res.saveErr || 'ok'}`;
     return res;
   }
 }

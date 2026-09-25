@@ -476,6 +476,14 @@ export class TrainSystem {
     }
     t.steps = steps;
     t.s = Math.min(L, ss[ss.length - 1]);
+    // the mirrored trail ahead is the way the train came: track may have been
+    // rebuilt or removed there since. Keep it only as far as it still exists;
+    // the train stops at the break and finds a new way.
+    for (let k = this.stepAt(t, t.s); k < t.steps.length - 1; k++) {
+      const a = t.steps[k], b = t.steps[k + 1];
+      if (a.outH == null) continue;
+      if (!this.net.hasDir(a.tile, a.outH) || step(a.tile, a.outH) !== b.tile) { this.truncateAfter(t, Math.max(t.s, a.s1)); break; }
+    }
     t.veh = t.veh.slice().reverse().map((v) => ({ k: v.k, id: v.id, r: !v.r, anim: v.anim, ...(v.lv ? { lv: v.lv } : {}) }));
     // lanes are relative to the direction of travel: mirrored, the body is now
     // on the far lane (-1) and crosses over ahead of the new head
@@ -1440,6 +1448,9 @@ export class TrainSystem {
       const k = t.resvEnd + 1;
       if (S[k].s0 > t.s + lookahead) break;
       const e = this.groupEnd(t, k);
+      // never reserve onto track that no longer exists (it may have been
+      // removed while the train was in a state that does not re-plan)
+      if (this.pathBroken(t, k - 1, e)) { this.repairPath(t); return { limitS: Math.min(t.stopS, t.ss[t.ss.length - 1]), blocker: 0, kind: null }; }
       const r = this.tryReserve(t, k, e);
       if (r === true) { t.resvEnd = e; t.waitKeys = null; continue; }
       blocker = r.blocker; kind = r.kind;
@@ -1575,6 +1586,33 @@ export class TrainSystem {
       if (st.rid >= 0) { net.runLockAdd(st.rid, net.runSense(st), t.id); t.runs.add(st.rid); }
     }
     return true;
+  }
+
+  // heading assertions: the part of a train's path it occupies or has
+  // reserved must be continuous (each step leaves the way the next one
+  // enters, onto the neighbour in that direction) and run on connections that
+  // exist. (Planned steps beyond the reservation may still follow track that
+  // was just rebuilt; the train re-routes before it reserves them.)
+  validateHeadings() {
+    const out = [], net = this.net;
+    for (const t of this.trains) {
+      const S = t.steps;
+      if (!S.length) continue;
+      const L = this.trainLength(t);
+      let k0 = this.stepAt(t, t.s);
+      while (k0 > 0 && S[k0 - 1].s1 > t.s - L) k0--;
+      const k1 = Math.min(S.length - 1, Math.max(t.resvEnd, this.stepAt(t, t.s)));
+      for (let k = k0; k <= k1; k++) {
+        const a = S[k];
+        // (the last reserved step may point at track just removed: the train stops there and re-routes)
+        if (k < k1 && a.outH != null && !net.hasDir(a.tile, a.outH) && !(net.special.get(a.tile) || {}).type) { out.push({ train: t.id, k, kind: 'no_exit', tile: a.tile }); break; }
+        const b = k < k1 ? S[k + 1] : null;
+        if (!b) break;
+        if (a.outH == null || b.inH == null) continue;
+        if (a.outH !== b.inH || step(a.tile, a.outH) !== b.tile) { out.push({ train: t.id, k, kind: 'discontinuous', tile: a.tile }); break; }
+      }
+    }
+    return out;
   }
 
   move(t, dt) {
@@ -1956,29 +1994,39 @@ export class TrainSystem {
       this.resetReservation(t);
       if (t.state === 'idle' || t.state === 'lost') { t.stateT = 3; continue; }
       if (t.state !== 'run' || !removedTiles) continue;
-      let bad = false;
-      for (let k = this.stepAt(t, t.s); k < t.steps.length; k++) {
-        const s = t.steps[k];
-        if (!net.conn[s.tile]) { bad = true; break; }
-        if (s.inH != null && !net.hasDir(s.tile, opp(s.inH))) { bad = true; break; }
-        if (s.outH != null && k < t.steps.length - 1 && !net.hasDir(s.tile, s.outH)) { bad = true; break; }
-      }
-      if (bad) {
-        const tgt = t.plat ? { tile: t.plat.tile, heading: t.plat.heading } : null;
-        const opts = tgt ? this.planOptions(t, tgt, false) : [];
-        if (opts.length) this.applyRoute(t, opts[0]);
-        else {
-          const { st } = this.headInfo(t);
-          this.truncateAfter(t, st ? st.s1 : t.s);
-          // (short of the tile edge: the next tile is not ours)
-          t.stopS = Math.max(t.s, Math.min(t.ss[t.ss.length - 1], st ? st.s1 : t.s) - 0.4);
-          t.problem = 'no_route';
-          t.v = Math.min(t.v, 1);
-          t.state = 'run'; t.pendingLost = true;
-          this.resetReservation(t);
-        }
-      }
+      this.repairPath(t);
     }
+  }
+
+  // Is the path ahead of the head still on existing track?
+  pathBroken(t, from = this.stepAt(t, t.s), to = t.steps.length - 1) {
+    const net = this.net;
+    for (let k = Math.max(0, from); k <= to && k < t.steps.length; k++) {
+      const s = t.steps[k];
+      if (!net.conn[s.tile]) return true;
+      if (s.inH != null && !net.hasDir(s.tile, opp(s.inH))) return true;
+      if (s.outH != null && k < t.steps.length - 1 && !net.hasDir(s.tile, s.outH)) return true;
+    }
+    return false;
+  }
+  // track ahead was removed or rebuilt: plan again to the platform, or stop
+  // short of the break and find a new way from there
+  repairPath(t) {
+    if (!this.pathBroken(t)) return false;
+    const tgt = t.plat ? { tile: t.plat.tile, heading: t.plat.heading } : null;
+    const opts = tgt ? this.planOptions(t, tgt, false) : [];
+    if (opts.length) this.applyRoute(t, opts[0]);
+    else {
+      const { st } = this.headInfo(t);
+      this.truncateAfter(t, st ? st.s1 : t.s);
+      // (short of the tile edge: the next tile is not ours)
+      t.stopS = Math.max(t.s, Math.min(t.ss[t.ss.length - 1], st ? st.s1 : t.s) - 0.4);
+      t.problem = 'no_route';
+      t.v = Math.min(t.v, 1);
+      t.state = 'run'; t.pendingLost = true;
+      this.resetReservation(t);
+    }
+    return true;
   }
 
   sell(t) {
