@@ -18,6 +18,7 @@ export const HANDBOOK = [
   { id: 'transport', icon: 'bus', n: 5 },
   { id: 'buslines', icon: 'route', n: 6 },
   { id: 'overview', icon: 'trains', n: 4 },
+  { id: 'cities', icon: 'town', n: 5 },
   { id: 'world', icon: 'weather', n: 5 },
 ];
 

@@ -911,3 +911,11 @@ h4.psev.bad { color: #9a3a36; }
   .tmode-card .bstats, .bstats.tstats.t4 { grid-template-columns: repeat(4, 1fr); font-size: .9em; }
   .tmode-card .bstats > div { padding: 3px 5px; }
 }
+
+/* ---------- town identity ---------- */
+.card.identity { background: linear-gradient(180deg, #fbf7ee, #fff); }
+.card.identity .id-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card.identity .id-head b { font-size: 1.05em; }
+.card.identity .id-head small { color: var(--ink2); }
+.card.identity p { margin: 4px 0 6px; }
+.card.identity .kv-list button.link { background: none; border: 0; padding: 0; color: var(--teal2); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }

@@ -26,7 +26,7 @@ const LIGHT_GREEN = 5;            // seconds of green per axis
 const GIVE_UP = 15;               // seconds of waiting (not at red) before squeezing through
 const HOLD_T = 1.6;               // a junction reservation lapses unless refreshed
 const CAR_COLORS = [0xc94f4f, 0x3f6e9a, 0xe0a33a, 0xe8e2d4, 0x5aa66a, 0x2b2b2b, 0x8a8f96, 0x6a4a8a];
-const DENSE = { apartment: 1, block: 1, office: 1, tower: 1, skyscraper: 1, shop: 1, townhouse: 0.4 };
+const DENSE = { apartment: 1, block: 1, office: 1, tower: 1, skyscraper: 1, shop: 1, townhouse: 0.4, terrace: 0.5, hotel: 1, glasstower: 1, factory: 0.6, boathouse: 0.4, stadium: 1, convention: 1, market_hall: 1, university: 1 };
 const bump = (t, c, w) => Math.exp(-((t - c) ** 2) / (2 * w * w));
 const axisOf = (a, b) => (tx(b) !== tx(a) ? 0 : 1);
 

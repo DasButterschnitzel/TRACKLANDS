@@ -36,6 +36,7 @@ export class News {
     const g = this.game;
     const tname = (t) => t.name;
     E.on('townLevel', (t) => this.add('towns', 'news_town_stage', { town: tname(t), stage: 'stage_' + g.towns.stageName(t) }, { type: 'town', id: t.id }));
+    E.on('townLandmark', (t, arch) => this.add('towns', 'news_town_landmark', { town: tname(t), what: 'bld_' + arch }, { type: 'town', id: t.id }));
     E.on('industryLevel', (ind) => this.add('industry', 'news_ind_level', { name: g.industries.displayName(ind), level: 'ilvl_' + ind.level }, { type: 'industry', id: ind.id }));
     E.on('industryFounded', (ind) => this.add('industry', 'news_ind_founded', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
     E.on('eventStart', (ev) => this.add('economy', 'news_event', { ev: 'ev_' + ev.id }));

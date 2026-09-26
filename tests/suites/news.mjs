@@ -76,8 +76,8 @@ export async function run({ browser, base }) {
   await page.waitForTimeout(250);
   await page.click('#panel .fin-head [data-act=help]');
   await page.waitForTimeout(250);
-  const hb = await page.evaluate(() => ({ panel: window.__tracklands.ui.panel, topic: window.__tracklands.ui.handbookTopic, n: document.querySelectorAll('#panel .hb-topics .chip').length }));
-  check(hb.panel === 'handbook' && hb.topic === 'tycoon' && hb.n === 12, `the finance "?" opens the handbook at the new topic (${JSON.stringify(hb)})`);
+  const hb = await page.evaluate(async () => ({ panel: window.__tracklands.ui.panel, topic: window.__tracklands.ui.handbookTopic, n: document.querySelectorAll('#panel .hb-topics .chip').length, all: (await import('./src/ui/Handbook.js')).HANDBOOK.length }));
+  check(hb.panel === 'handbook' && hb.topic === 'tycoon' && hb.n === hb.all && hb.n >= 12, `the finance "?" opens the handbook at the new topic, every topic listed (${JSON.stringify(hb)})`);
   await page.evaluate(() => window.__tracklands.ui.closePanel());
   // news panel with the mouse
   await page.waitForTimeout(400);

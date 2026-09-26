@@ -30,6 +30,7 @@ import { TransportUIMixin } from './TransportUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
+import { LANDMARKS, LANDMARK_STAGE } from '../world/CityStyle.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -1189,6 +1190,7 @@ export class UI {
         ${b('scrollTo', '#tw-transport', 'bus', this.tr('tm_transport'))}${b('scrollTo', '#tw-growth', 'up', this.tr('growth'))}${b('scrollTo', '#tw-districts', 'town', this.tr('tm_districts'))}${b('scrollTo', '#tw-auth', 'company', this.tr('tm_authority'))}
       </div>
       <div class="pill-row"><span class="pill">${this.tr('stage_' + g.towns.stageName(t))}</span><span class="pill">${icon('town', 'mini')} ${fmt(t.pop)}</span>${t.tourist ? `<span class="pill">${this.tr('tourist_town')}</span>` : ''}</div>
+      ${this.townIdentity(t)}
       ${!g.progression.regionUnlocked(t.region) ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
       <h4 id="tw-growth">${next ? this.tr('growth_to', { name: next }) : this.tr('growth')}</h4>${bars}
       <p class="muted small">${this.tr('town_growth_help')}</p>
@@ -1198,6 +1200,31 @@ export class UI {
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
       <span id="tw-districts"></span>${this.townGrowthBlock(t)}
       <span id="tw-auth"></span>${this.authBlock(t)}`;
+  }
+  // what kind of place this is: archetype, architecture, landmarks, the
+  // transport it has, its largest station, the industry around it
+  townIdentity(t) {
+    const g = this.game, T = g.towns, R = g.roads;
+    const A = T.arch(t);
+    const lms = t.buildings.filter((b) => LANDMARKS.includes(b.arch) || b.arch === 'civic');
+    const sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id));
+    const stops = R ? R.stops.filter((s) => !s.owner && s.links && s.links.towns.includes(t.id)) : [];
+    const modes = [];
+    if (sts.length) modes.push(`${icon('train', 'mini')} ${sts.length}`);
+    for (const k of ['bus', 'tram', 'dock', 'airport']) { const n = stops.filter((s) => s.kind === k).length; if (n) modes.push(`${icon(k, 'mini')} ${n}`); }
+    const big = sts.slice().sort((a, b) => b.level - a.level || (b.stats.arrivals || 0) - (a.stats.arrivals || 0))[0];
+    const inds = g.industries.list.filter((i) => Math.max(Math.abs(i.x - t.x), Math.abs(i.z - t.z)) <= 8).sort((a, b) => b.level - a.level || b.produced - a.produced).slice(0, 3);
+    const nextLm = A.landmarks.find((id, k) => t.stage < LANDMARK_STAGE[k]);
+    return `<div class="card identity"><div class="id-head"><b>${this.tr('arch_' + t.kind)}</b><small>${this.tr('fam_' + A.family)}</small></div>
+      <p class="small">${this.tr('arch_' + t.kind + '_desc')}</p>
+      <div class="kv-list">
+        <div><span>${this.tr('town_landmarks')}</span><b>${lms.map((b) => this.tr('bld_' + b.arch)).join(', ') || '—'}</b></div>
+        ${nextLm ? `<div><span>${this.tr('town_next_landmark')}</span><b>${this.tr('bld_' + nextLm)} · ${this.tr('stage_' + ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'][LANDMARK_STAGE[A.landmarks.indexOf(nextLm)]])}</b></div>` : ''}
+        <div><span>${this.tr('town_modes')}</span><b>${modes.join(' · ') || this.tr('town_no_station')}</b></div>
+        ${big ? `<div><span>${this.tr('town_largest_station')}</span><b><button class="link" data-act="jump" data-arg="station:${big.id}">${esc(big.name)}</button></b></div>` : ''}
+        ${inds.length ? `<div><span>${this.tr('town_industries')}</span><b>${inds.map((i) => `<button class="link" data-act="jump" data-arg="industry:${i.id}">${esc(g.industries.displayName(i))}</button>`).join(', ')}</b></div>` : ''}
+        ${g.authority ? `<div><span>${this.tr('town_relationship')}</span><b>${this.tr('band_' + g.authority.band(t))} · ${this.tr('policy_' + g.authority.policy(t))}</b></div>` : ''}
+      </div></div>`;
   }
   // how the town is served: stations, stops and lines, the share of the
   // town within walking distance, the largest part without a stop

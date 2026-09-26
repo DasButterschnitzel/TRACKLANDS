@@ -6,6 +6,7 @@
 // changes with their reasons and every permit with its threshold.
 import { hashStr, tx, tz } from '../util.js';
 import { MONTH_S } from '../economy/Ledger.js';
+import { ARCHETYPES, PROTECTED } from './CityStyle.js';
 
 export const POLICIES = ['growth', 'heritage', 'green', 'industrial', 'commuter', 'tourism'];
 export const BANDS = [[0, 'hostile'], [20, 'unfriendly'], [40, 'neutral'], [60, 'favourable'], [75, 'supportive'], [90, 'partner']];
@@ -16,6 +17,13 @@ export const BUILDING = {
   shop: { jobs: 6, comp: 500 }, apartment: { pop: 40, comp: 1500 }, block: { pop: 80, comp: 2500 }, office: { jobs: 120, comp: 4000 },
   tower: { pop: 160, comp: 6000 }, skyscraper: { pop: 300, jobs: 200, comp: 12000 }, warehouse: { jobs: 20, comp: 800 },
   civic: { jobs: 10, comp: 5000, heritage: true }, plaza: { comp: 3000, heritage: true },
+  terrace: { pop: 20, comp: 900 }, chalet: { pop: 6, comp: 400 }, farmhouse: { pop: 5, jobs: 3, comp: 350 }, factory: { jobs: 60, comp: 1800 },
+  hotel: { pop: 30, jobs: 40, comp: 3000 }, glasstower: { pop: 60, jobs: 260, comp: 14000 }, bungalow: { pop: 4, comp: 300 }, boathouse: { jobs: 25, comp: 900 },
+  // landmarks: heritage permit; some are protected and never demolished
+  cathedral: { comp: 20000, heritage: true }, museum: { jobs: 20, comp: 12000, heritage: true }, monument: { comp: 8000, heritage: true },
+  stadium: { jobs: 30, comp: 15000, heritage: true }, clocktower: { jobs: 15, comp: 9000, heritage: true }, tv_tower: { jobs: 10, comp: 10000, heritage: true },
+  park: { comp: 5000, heritage: true }, convention: { jobs: 60, comp: 14000, heritage: true }, lighthouse: { comp: 6000, heritage: true },
+  market_hall: { jobs: 30, comp: 7000, heritage: true }, university: { pop: 40, jobs: 80, comp: 18000, heritage: true },
 };
 
 // permits: rating needed (per policy adjustments below)
@@ -53,7 +61,9 @@ export class Authority {
   ensure(town) {
     if (!town.auth) {
       const h = hashStr('policy:' + town.seed + ':' + town.name);
-      town.auth = { rating: 50, log: [], policy: town.tourist ? 'tourism' : POLICIES[h % POLICIES.length], trees: 0, served: 0 };
+      // the council's policy follows the town's character (archetype), with exceptions
+      const A = ARCHETYPES[town.kind];
+      town.auth = { rating: 50, log: [], policy: town.tourist ? 'tourism' : A && h % 5 !== 0 ? A.policy : POLICIES[h % POLICIES.length], trees: 0, served: 0 };
     }
     return town.auth;
   }
@@ -104,17 +114,20 @@ export class Authority {
     if (!hit) return null;
     const { town, b } = hit;
     const B = BUILDING[b.arch] || { comp: 300 };
-    const land = 1 + town.stage * 0.3;
+    // land value: the town's size and its character (a historic core or a
+    // tech city costs more than a market town)
+    const land = (1 + town.stage * 0.3) * ((ARCHETYPES[town.kind] || {}).land || 1);
     const cost = Math.round(B.comp * land * this.game.economy.costs.mul());
-    const heritage = !!B.heritage;
+    const heritage = !!B.heritage, prot = PROTECTED.has(b.arch);
     const permit = heritage ? 'demolish_heritage' : B.pop ? 'demolish_home' : 'demolish_business';
     const impact = -Math.round((heritage ? 14 : B.pop >= 40 ? 8 : B.pop ? 4 : 3) * this.weight(town, 'demolish'));
-    return { town, b, arch: b.arch, pop: B.pop || 0, jobs: B.jobs || 0, cost, heritage, permit, need: this.permitNeed(town, permit), rating: this.rating(town), impact, allowed: this.allowed(town, permit) };
+    return { town, b, arch: b.arch, pop: B.pop || 0, jobs: B.jobs || 0, cost, heritage, protected: prot, permit, need: prot ? 101 : this.permitNeed(town, permit), rating: this.rating(town), impact, allowed: !prot && this.allowed(town, permit) };
   }
   demolish(tile, silent) {
     const g = this.game;
     const info = this.demolishInfo(tile);
     if (!info) return { error: 'err_unknown' };
+    if (info.protected) return { error: 'err_protected', info };
     if (!info.allowed) return { error: 'err_permit_denied', info };
     if (!g.economy.canAfford(info.cost)) return { error: 'err_no_money', info };
     g.economy.spend(info.cost, 'compensation', { type: 'tile', id: tile }, `~bld_${info.arch}:1`);

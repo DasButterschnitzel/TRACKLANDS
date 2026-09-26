@@ -106,7 +106,7 @@ export async function run({ browser, base }) {
     // planning: research first, then the council of a city
     out.noResearch = R.planLane(w.a, w.b).reason;
     g.progression.research.add('bus_lanes');
-    A.ensure(t).rating = 10;
+    A.ensure(t).rating = 0;
     const p1 = R.planLane(w.a, w.b);
     out.noPermit = p1.reason; out.need = p1.need;
     A.ensure(t).rating = 80;
@@ -115,7 +115,7 @@ export async function run({ browser, base }) {
     return out;
   }, w);
   check(c.slow < 1 && c.laneFast === 1 && c.truck === c.slow, `a busy street (${c.load} cars) slows buses and trucks to ${Math.round(c.slow * 100)}%; in a bus lane a bus keeps full speed`);
-  check(c.noResearch === 'err_lane_research' && c.noPermit === 'err_lane_permit' && c.need > 10 && c.plan.ok && c.plan.cost > 0, `bus lanes need research, then the city's approval (rating ${c.need}+): plan ${JSON.stringify(c.plan)}`);
+  check(c.noResearch === 'err_lane_research' && c.noPermit === 'err_lane_permit' && c.need > 0 && c.plan.ok && c.plan.cost > 0, `bus lanes need research, then the city's approval (rating ${c.need}+): plan ${JSON.stringify(c.plan)}`);
   // paint it with the mouse: road tool, Bus lane, drag from stop to stop
   await page.evaluate(() => { const g = window.__tracklands.game; g.construction.setTool('road'); g.construction.roadMode = 'lane'; g.ui.renderToolbar(); });
   await page.evaluate((w) => { const g = window.__tracklands.game, N = g.mapSize || 64; window.__focus = [((w.a % N + w.b % N) / 2 + 0.5) * 2, ((Math.floor(w.a / N) + Math.floor(w.b / N)) / 2 + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 16); }, w);

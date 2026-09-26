@@ -48,14 +48,14 @@ export const AuthorityUIMixin = {
     if (!d) return;
     const who = d.pop ? this.tr('dem_pop', { n: d.pop }) : d.jobs ? this.tr('dem_jobs', { n: d.jobs }) : '';
     const w = this.modal(`<h3>${icon('bulldoze')} ${this.tr('dem_title', { what: this.tr('bld_' + d.arch) })}</h3>
-      ${d.heritage ? `<div class="card warn">${icon('warn')} ${this.tr('dem_heritage')}</div>` : ''}
+      ${d.protected ? `<div class="card warn">${icon('lock')} ${this.tr('dem_protected')}</div>` : d.heritage ? `<div class="card warn">${icon('warn')} ${this.tr('dem_heritage')}</div>` : ''}
       <div class="kv-list">
         <div><span>${this.tr('dem_town')}</span><b>${esc(d.town.name)}</b></div>
         <div><span>${this.tr('dem_comp')}</span><b>${fmt(d.cost)} ●</b></div>
         ${who ? `<div><span>${this.tr('dem_affected')}</span><b>${who}</b></div>` : ''}
         <div><span>${this.tr('auth_heading')}</span><b class="neg">${d.impact}</b></div>
         <div><span>${this.tr('dem_current')}</span><b>${d.rating} · ${this.tr('band_' + A.band(d.town))}</b></div>
-        <div><span>${this.tr('permit_' + d.permit)}</span><b class="${d.allowed ? 'pos' : 'neg'}">${this.tr(d.allowed ? 'permit_ok' : 'permit_no')} (${d.need}+)</b></div>
+        ${d.protected ? '' : `<div><span>${this.tr('permit_' + d.permit)}</span><b class="${d.allowed ? 'pos' : 'neg'}">${this.tr(d.allowed ? 'permit_ok' : 'permit_no')} (${d.need}+)</b></div>`}
       </div>
       <div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn danger" data-mbtn="ok" ${d.allowed && g.economy.canAfford(d.cost) ? '' : 'disabled'}>${this.tr('dem_confirm')}</button></div>`, { cls: 'demolish', onCancel: () => {} });
     w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
