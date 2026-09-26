@@ -247,7 +247,8 @@ export const FinanceUIMixin = {
     const at = M.serviceAt(t);
     const rule = M.rules.find((r) => r.from === t.model);
     const P = g.progression, cur = locoModel(t.model);
-    const newer = LOCOS.filter((m) => m.id !== t.model && m.era >= cur.era && P.locoUnlocked(m) && m.role !== 'shunter');
+    // (a multiple unit is replaced by a multiple unit, a locomotive by a locomotive)
+    const newer = LOCOS.filter((m) => m.id !== t.model && m.era >= cur.era && P.locoUnlocked(m) && m.duty !== 'shunter' && !!m.mu === !!cur.mu);
     const state = t.broken > 0 ? `<span class="neg">${this.tr('st_broken_down', { s: Math.ceil(t.broken) })}</span>` : c < at ? `<span class="warnc">${this.tr('cond_due')}</span>` : `<span class="pos">${this.tr('cond_ok')}</span>`;
     return `<h4>${this.tr('cond_heading')}</h4>
       <div class="cond"><div class="cond-bar" role="meter" aria-valuenow="${Math.round(c * 100)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.round(c * 100)}%"></i><b style="left:${Math.round(at * 100)}%" title="${this.tr('svc_at')}"></b></div>

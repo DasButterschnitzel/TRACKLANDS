@@ -9,6 +9,9 @@ import {
 import { validToken } from './Livery.js';
 
 export function locoModel(id) { return LOCOS.find((m) => m.id === id) || LOCOS[0]; }
+// what a stats wagon entry can hold: a wagon, or the seats of a multiple
+// unit's power car (entries '@<model>' after the wagons)
+export function carriesOf(id) { return WAGONS[id] ? WAGONS[id].carries : id[0] === '@' ? (locoModel(id.slice(1)).mu || {}).carries || [] : []; }
 
 export const GAP = CONSIST.gap;
 
@@ -83,7 +86,7 @@ export function computeStats(vs, upg, fx) {
   if (!locos.length) { locoSpeed = 0; loadF = 1; }
   const era = eraFactor(lead);
   const capMul = (1 + E.capacity * u.capacity) * (1 + fx.capacity);
-  let emptyMass = 0, wagonVmax = Infinity, brake = 0, revMul = {}, trainRev = 0, paxLoadMul = 0, paxW = 0;
+  let emptyMass = 0, wagonVmax = Infinity, brake = 0, revMul = {}, trainRev = 0, paxLoadMul = 0, paxW = 0, longRev = 0, tall = false;
   const wagons = [];
   const caps = {};
   let capFull = 0, fullMass = 0;
@@ -94,6 +97,8 @@ export function computeStats(vs, upg, fx) {
     wagonVmax = Math.min(wagonVmax, w.vmax * era);
     brake = Math.max(brake, w.brake || 0);
     trainRev += w.trainRev || 0;
+    longRev = Math.max(longRev, w.longRev || 0);
+    if (w.tall) tall = true;
     const freight = w.cls !== 'pax';
     const cap = Math.round(w.cap * capMul * (freight && lead.trait === 'cargo_master' && w.cap ? 1.2 : 1));
     wagons.push({ id: v.id, cap });
@@ -104,6 +109,19 @@ export function computeStats(vs, upg, fx) {
     let hm = 0; for (const c of w.carries) hm = Math.max(hm, CARGO[c].mass);
     fullMass += cap * hm;
     if (w.revMul) for (const c of w.carries) revMul[c] = Math.max(revMul[c] || 0, w.revMul);
+  }
+  // multiple units: the power cars carry passengers (or parcels) themselves
+  let mu = false;
+  for (const m of locos) {
+    if (!m.mu) continue;
+    mu = true;
+    const cap = Math.round(m.mu.cap * capMul);
+    wagons.push({ id: '@' + m.id, cap });
+    for (const c of m.mu.carries) caps[c] = (caps[c] || 0) + cap;
+    if (m.mu.carries.includes('PASSENGERS')) { paxLoadMul += m.mu.loadMul || 1; paxW++; }
+    capFull += cap;
+    let hm = 0; for (const c of m.mu.carries) hm = Math.max(hm, CARGO[c].mass);
+    fullMass += cap * hm;
   }
   const ratioFull = power / Math.max(1, emptyMass + fullMass);
   const ratioEmpty = power / Math.max(1, emptyMass);
@@ -122,16 +140,18 @@ export function computeStats(vs, upg, fx) {
   else if (capFull) prio = 'freight';
   return {
     model: lead, locos, power, emptyMass, ratioFull, ratioEmpty, rating: ratingKey(ratioFull),
-    speed, baseAccel, accel: baseAccel * perfFactor(ratioFull), load, op, minTier, reliability,
-    wagons, caps, capFull, brake: brake + (fx.brake || 0), revMul, trainRev, length: consistLength(vs),
+    speed, baseAccel, accel: baseAccel * tractionFactor(ratioFull, mu), load, op, minTier, reliability,
+    wagons, caps, capFull, brake: brake + (fx.brake || 0), revMul, trainRev, longRev, tall, mu, length: consistLength(vs),
     priority: prio, prioRank: PRIORITY[prio], vehicles: vs.length, freight: capFull - pax, pax,
   };
 }
 
 // Performance with the current load (used by the physics every tick).
+// distributed traction: a multiple unit keeps most of its acceleration when full
+export function tractionFactor(ratio, mu) { return mu ? Math.max(0.85, perfFactor(ratio)) : perfFactor(ratio); }
 export function livePerf(st, cargoMass) {
   const ratio = st.power / Math.max(1, st.emptyMass + cargoMass);
-  const accel = st.baseAccel * perfFactor(ratio);
+  const accel = st.baseAccel * tractionFactor(ratio, st.mu);
   const speedMul = ratio >= CONSIST.ratingHeavy ? 1 : 0.6 + 0.4 * (ratio / CONSIST.ratingHeavy);
   const slopeMul = Math.max(0.5, Math.min(2.5, 4 / Math.max(0.5, ratio)));
   return { ratio, accel, speedMul, slopeMul };
@@ -150,8 +170,8 @@ export function assignLoads(st, lots) {
   for (const c of order) {
     let left = tot[c];
     // most specialised wagons first
-    const idxs = W.map((w, i) => i).filter((i) => W[i].cap > 0 && WAGONS[W[i].id].carries.includes(c))
-      .sort((a, b) => WAGONS[W[a].id].carries.length - WAGONS[W[b].id].carries.length);
+    const idxs = W.map((w, i) => i).filter((i) => W[i].cap > 0 && carriesOf(W[i].id).includes(c))
+      .sort((a, b) => carriesOf(W[a].id).length - carriesOf(W[b].id).length);
     for (const i of idxs) {
       if (left <= 0) break;
       const w = W[i];
@@ -171,7 +191,7 @@ export function roomFor(st, lots, c) {
   if (overflow[c]) return 0;
   let room = 0;
   for (const w of wagons) {
-    if (!WAGONS[w.id].carries.includes(c)) continue;
+    if (!carriesOf(w.id).includes(c)) continue;
     if (w.c === c) room += w.cap - w.n;
     else if (!w.c) room += w.cap;
   }
@@ -180,13 +200,14 @@ export function roomFor(st, lots, c) {
 export function canCarry(st, c) { return (st.caps[c] || 0) > 0; }
 
 // ---------- building ----------
-export function bestWagonFor(cargos, research, preferPax) {
+export function bestWagonFor(cargos, research, preferPax, electric = false) {
   // wagon covering the most of the requested cargos, then highest capacity
   let best = null, bs = -1;
   for (const id of WAGON_IDS) {
     const w = WAGONS[id];
     if (!w.cap || !wagonUnlocked(id, research)) continue;
-    if (id === 'cab_car' || id === 'observation' || id === 'premium') continue;
+    if (id === 'cab_car' || id === 'observation' || id === 'premium' || w.mu || w.trainRev || w.longRev) continue;
+    if (w.tall && electric) continue;
     if (id === 'hs_coach' && !preferPax) continue;
     const cover = cargos.filter((c) => w.carries.includes(c)).length;
     if (!cover) continue;
@@ -202,6 +223,7 @@ export function autoBuild(locoId, cargos, opts = {}) {
   const m = locoModel(locoId);
   const research = opts.research || new Set();
   const fx = opts.fx || {};
+  if (m.mu) return muBuild(m, opts, research);
   const vs = [{ k: 'L', id: locoId, r: false }];
   cargos = (cargos && cargos.length ? cargos : (m.role === 'freight' ? ['WOOD', 'GOODS'] : ['PASSENGERS', 'MAIL'])).filter((c) => CARGO[c]);
   const pax = cargos.includes('PASSENGERS');
@@ -215,7 +237,7 @@ export function autoBuild(locoId, cargos, opts = {}) {
   // group freight cargos by a covering wagon
   const left = [...freight];
   while (left.length) {
-    const id = bestWagonFor(left, research, false);
+    const id = bestWagonFor(left, research, false, !!m.electric);
     if (!id) break;
     types.push(id);
     for (let i = left.length - 1; i >= 0; i--) if (WAGONS[id].carries.includes(left[i])) left.splice(i, 1);
@@ -245,6 +267,20 @@ export function autoBuild(locoId, cargos, opts = {}) {
   // bidirectional multiple units get a rear power car when allowed
   if ((m.kind === 'hst' || m.kind === 'maglev') && maxLocos(research) >= 2 && full.length >= 4) full.push({ k: 'L', id: locoId, r: true });
   return full.slice(0, CONSIST.maxVehicles);
+}
+
+// A multiple unit: power car, matching intermediate cars, and a second power
+// car at the rear when two may run together, so it drives from either end.
+export function muBuild(m, opts = {}, research = opts.research || new Set()) {
+  const pax = m.mu.carries.includes('PASSENGERS');
+  const trailer = !pax ? 'parcel_van' : m.kind === 'hst' && wagonUnlocked('hs_coach', research) ? 'hs_coach' : 'mu_car';
+  const two = maxLocos(research) >= 2;
+  const n = Math.max(0, Math.min(Math.max(1, opts.count || m.wagons) - (two ? 1 : 0), CONSIST.maxVehicles - 2));
+  const vs = [{ k: 'L', id: m.id, r: false }];
+  for (let i = 0; i < n; i++) vs.push({ k: 'W', id: trailer, r: false });
+  if (two) vs.push({ k: 'L', id: m.id, r: true });
+  while (opts.maxLen && consistLength(vs) > opts.maxLen && vs.some((v) => v.k === 'W')) vs.splice(vs.findIndex((v) => v.k === 'W'), 1);
+  return vs;
 }
 
 // Legacy (pre v3) trains: derive wagons from the model and what the train was doing.
@@ -294,6 +330,12 @@ export function validateConsist(vs, research) {
   for (const v of vs) if (v.k === 'W' && !wagonUnlocked(v.id, research)) return 'err_wagon_locked';
   const ms = locosOf(vs).map((v) => locoModel(v.id));
   if (ms.some((m) => m.maglev) && ms.some((m) => !m.maglev)) return 'err_mixed_traction';
+  // multiple units run as a set: power cars of their own kind, no freight wagons
+  const wg = vs.filter((v) => v.k === 'W').map((v) => WAGONS[v.id]);
+  if (ms.some((m) => m.mu) && ms.some((m) => !m.mu)) return 'err_mu_mixed';
+  if (ms.some((m) => m.mu) && wg.some((w) => w.cls === 'freight')) return 'err_mu_freight';
+  if (wg.some((w) => w.mu) && !ms.some((m) => m.mu)) return 'err_mu_car';
+  if (wg.some((w) => w.tall) && ms.some((m) => m.electric)) return 'err_tall_wires';
   return null;
 }
 

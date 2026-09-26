@@ -3,6 +3,7 @@
 // types from a pole to an interchange, the bus garage and a waiting person.
 // Every bus shape also says where its doors are (local x, on the kerb side)
 // and where its destination sign sits (it shows the line colour).
+import * as THREE from 'three';
 import { ModelBuilder } from '../core/ModelBuilder.js';
 
 const GLASS = 0x9fc8e6, DARKGLASS = 0x3a4a5a, TYRE = 0x2a2c30, LAMP = 0xfff2c0, TRIM = 0xd0d4d8, ROOF = 0xe8e8ea;
@@ -136,6 +137,52 @@ export const BUS_SHAPES = {
     },
   },
 };
+
+// trucks, trams, ships and aircraft: one model per kind (white takes the livery)
+export const VEHICLE_MODELS = {
+  truck(b) {
+    b.box(0.18, 0.22, 0.24, 0xffffff, { x: 0.22, y: 0.05 });
+    b.box(0.4, 0.2, 0.26, 0xd8d2c4, { x: -0.1, y: 0.07 });
+    b.box(0.04, 0.05, 0.18, 0xfff2c0, { x: 0.31, y: 0.1, glow: true });
+  },
+  tram(b) {
+    b.box(0.95, 0.26, 0.26, 0xffffff, { y: 0.06 });
+    b.box(0.85, 0.09, 0.27, 0xbfdcec, { y: 0.19 });
+    b.box(0.95, 0.03, 0.2, 0x3a4250, { y: 0.33 });
+    b.box(0.02, 0.2, 0.02, 0x3a4250, { x: 0.1, y: 0.44, rz: 0.5 });
+    b.box(0.04, 0.06, 0.2, 0xfff2c0, { x: 0.48, y: 0.12, glow: true });
+  },
+  dock(b) {
+    b.box(1.5, 0.22, 0.46, 0xffffff, { y: 0.0 });
+    b.box(0.22, 0.2, 0.3, 0xffffff, { x: 0.82, y: 0.0 });
+    b.box(0.46, 0.26, 0.36, 0xeef0f2, { x: -0.4, y: 0.22 });
+    b.box(0.4, 0.06, 0.3, 0x3a4a5a, { x: -0.4, y: 0.34, glow: true });
+    b.cyl(0.06, 0.07, 0.3, 6, 0x3a3d42, { x: -0.55, y: 0.48 });
+    b.box(0.7, 0.1, 0.34, 0x8a6f63, { x: 0.3, y: 0.16 });
+  },
+  airport(b) {
+    b.cyl(0.1, 0.1, 1.4, 8, 0xffffff, { rz: Math.PI / 2, center: true });
+    b.cone(0.1, 0.24, 8, 0xffffff, { x: 0.82, rz: -Math.PI / 2, center: true });
+    b.box(0.34, 0.03, 1.6, 0xffffff, { x: 0.05 });
+    b.box(0.18, 0.03, 0.6, 0xffffff, { x: -0.62, y: 0.04 });
+    b.box(0.2, 0.28, 0.03, 0xffffff, { x: -0.62, y: 0.16 });
+    b.box(0.5, 0.05, 0.2, 0x3a4a5a, { x: 0.25, y: 0.06 });
+  },
+};
+// geometry of one road/water/air vehicle model in its own colour (previews)
+export function roadVehicleGeometry(m) {
+  const b = new ModelBuilder();
+  if (m.kind === 'bus' && BUS_SHAPES[m.shape]) BUS_SHAPES[m.shape].build(b);
+  else (VEHICLE_MODELS[m.kind] || VEHICLE_MODELS.truck)(b);
+  const geo = b.build();
+  // the white livery parts take the model colour, like the instance colour in the world
+  const col = geo.getAttribute('color');
+  if (col) {
+    const c = new THREE.Color(m.color);
+    for (let i = 0; i < col.count; i++) if (col.getX(i) > 0.97 && col.getY(i) > 0.97 && col.getZ(i) > 0.97) col.setXYZ(i, c.r, c.g, c.b);
+  }
+  return geo;
+}
 
 // bus stop types; the kerb (road) is toward -z, the land side +z
 export function stopModel(type) {

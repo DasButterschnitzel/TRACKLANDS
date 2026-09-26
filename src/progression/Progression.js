@@ -2,9 +2,14 @@
 // cosmetics, legacy and the Railway Legend completion state.
 import { validToken } from '../trains/Livery.js';
 import {
-  MAX_LEVEL, xpForLevel, rpForLevel, RESEARCH, RESEARCH_UNLOCK_LEVEL, REGIONS, OBJECTIVES, ACHIEVEMENTS, LOCOS, ERA_RESEARCH,
-  LIVERIES, STATION_STYLES, REGION_PREV_OBJECTIVES, REGION_DEVELOPED_AT, LEGACY_LEVEL, LEGEND_REQ, COSTS,
+  MAX_LEVEL, xpForLevel, rpForLevel, RESEARCH, RESEARCH_UNLOCK_LEVEL, REGIONS, OBJECTIVES, ACHIEVEMENTS, LOCOS, ERA_RESEARCH, locoResearch,
+  LIVERIES, STATION_STYLES, REGION_PREV_OBJECTIVES, REGION_DEVELOPED_AT, LEGACY_LEVEL, LEGEND_REQ, COSTS, WAGONS, ROAD_VEHICLES,
 } from '../config.js';
+
+export function vehicleKeyValid(k) {
+  const [t, id] = k.split(':');
+  return t === 'L' ? LOCOS.some((m) => m.id === id) : t === 'W' ? !!WAGONS[id] : t === 'R' ? ROAD_VEHICLES.some((m) => m.id === id) : false;
+}
 
 const FX_KEYS = ['busPriority', 'trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
   'stationRadius', 'cargoIncome', 'mailIncome', 'paxIncome', 'paxProd', 'mailProd', 'townReq', 'industryProd', 'processing', 'industryGrowth',
@@ -22,6 +27,7 @@ export class Progression {
     this.developed = new Set();
     this.achievements = new Set();
     this.owned = new Set();
+    this.favs = new Set();   // favourite vehicle models: 'L:<loco>', 'W:<wagon>', 'R:<road vehicle>'
     this.defaultLivery = 'classic_green';
     this.defaultStationStyle = 'classic';
     this.legacy = { count: 0 };
@@ -203,7 +209,7 @@ export class Progression {
   // ---------- collection & cosmetics ----------
   locoUnlocked(m) {
     if (this.level < m.level) return false;
-    const req = ERA_RESEARCH[m.era];
+    const req = locoResearch(m);
     if (req && !this.research.has(req)) return false;
     return true;
   }
@@ -261,7 +267,7 @@ export class Progression {
       level: this.level, xp: this.xp, rp: this.rp, research: [...this.research], regions: [...this.regions], objectives: [...this.objectives],
       developed: [...this.developed], achievements: [...this.achievements], owned: [...this.owned], defaultLivery: this.defaultLivery,
       defaultStationStyle: this.defaultStationStyle, legacy: this.legacy, legend: this.legend, seenUnlocks: [...this.seenUnlocks],
-      templates: this.templates || [],
+      templates: this.templates || [], favs: [...this.favs],
     };
   }
   deserialize(d) {
@@ -278,6 +284,8 @@ export class Progression {
     this.achievements = new Set(arr(d.achievements));
     this.owned = new Set(arr(d.owned).filter((id) => LOCOS.some((m) => m.id === id)));
     this.templates = arr(d.templates).filter((tp) => tp && typeof tp.name === 'string' && Array.isArray(tp.veh)).slice(0, 12);
+    // (older saves: no favourites)
+    this.favs = new Set(arr(d.favs).filter((k) => typeof k === 'string' && vehicleKeyValid(k)).slice(0, 200));
     this.defaultLivery = validToken(d.defaultLivery) || 'classic_green';
     this.defaultStationStyle = STATION_STYLES.some((s) => s.id === d.defaultStationStyle) ? d.defaultStationStyle : 'classic';
     this.legacy = d.legacy && typeof d.legacy.count === 'number' ? { count: d.legacy.count } : { count: 0 };

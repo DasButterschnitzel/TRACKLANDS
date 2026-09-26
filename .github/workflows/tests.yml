@@ -23,7 +23,7 @@ jobs:
       - name: Railway scenarios + regression seeds
         run: node tests/run.mjs rail seeds
       - name: Production save, economy balance, persistence, import, offline PWA, tutorial
-        run: node tests/run.mjs prodsave economy persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes transport mapsize company scenarios rivals touch buses overview traffic cities chains
+        run: node tests/run.mjs prodsave economy persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes transport mapsize company scenarios rivals touch buses overview traffic cities chains rollingstock
       - name: Save fuzz, monkey, UI layout (quick)
         run: node tests/run.mjs savefuzz monkey ui --quick
       - name: Upload screenshots

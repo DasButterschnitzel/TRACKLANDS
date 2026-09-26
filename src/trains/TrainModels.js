@@ -136,33 +136,55 @@ function drivers(mb, n, x0, x1, r, rodCol) {
   if (n > 1) for (const z of [0.285, -0.285]) mb.box(x1 - x0 + 0.08, 0.025, 0.018, rodCol, { x: (x0 + x1) / 2, y: r * 0.75, z });
   return xs;
 }
+// Steam silhouettes (config LOCOS[].shape): boiler radius r, coupled drivers
+// n of radius dr, leading axles lead, trailing truck, side tanks (no tender),
+// streamlined casing, smoke deflectors, pilot or snow plough, sand domes and
+// articulated (two engine units under one boiler)
+const STEAM = {
+  tank_small: { r: 0.19, n: 2, dr: 0.14, lead: 0, trail: false, tank: true },
+  mogul: { r: 0.21, n: 3, dr: 0.15, lead: 1, trail: false, pilot: true },
+  tank: { r: 0.21, n: 2, dr: 0.15, lead: 1, trail: true, tank: true },
+  heavy: { r: 0.25, n: 4, dr: 0.17, lead: 1, trail: true, deflect: true },
+  stream: { r: 0.25, n: 4, dr: 0.17, lead: 1, trail: true, stream: true },
+  // span / rear: driver range as fractions of the engine length from its centre
+  decapod: { r: 0.24, n: 5, dr: 0.1, lead: 1, trail: false, plough: true, domes: 2, chim: 0.12, span: [-0.4, 0.15] },
+  pacific: { r: 0.24, n: 3, dr: 0.16, lead: 2, trail: false, deflect: true, long: true, span: [-0.415, 0.043] },
+  mallet: { r: 0.26, n: 3, dr: 0.105, lead: 1, trail: false, artic: true, domes: 2, pilot: true, efrac: 0.72, span: [-0.007, 0.23], rear: [-0.449, -0.212] },
+};
 function steamLoco(mb, m, L, P, detail) {
   const body = P.body, trim = P.trim;
+  const S = STEAM[m.shape] || (m.kind === 'steam2' ? STEAM.heavy : STEAM.mogul);
   const big = m.kind === 'steam2';
   const tender = L >= 1.9;
-  const tank = m.id === 'meadow_tank' || m.id === 'pioneer';
-  const stream = m.id === 'silverline';
-  const Le = tender ? L * 0.62 : L;                 // engine part
+  const tank = !!S.tank, stream = !!S.stream;
+  const Le = tender ? L * (S.efrac || 0.62) : L;   // engine part
   const ex = L / 2 - Le / 2;                        // engine centre x
-  const r = big ? 0.25 : m.id === 'pioneer' ? 0.19 : 0.21;  // boiler radius
+  const r = S.r;                                    // boiler radius
   const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
   const front = ex + Le / 2;
   const by = 0.3 + r;                               // boiler centre height
-  const nDrive = m.id === 'pioneer' ? 2 : m.id === 'meadow_tank' ? 2 : big ? 4 : 3;
-  const dr = big ? 0.17 : m.id === 'pioneer' ? 0.14 : 0.15;
+  const dr = S.dr;
   // frame + running board
   mb.box(Le, 0.08, 0.5, DARK, { x: ex, y: 0.2 });
   mb.box(Le * 0.8, 0.02, W + 0.06, shade(DARK, 1.2), { x: ex + Le * 0.05, y: 0.3 });
-  const dx0 = ex - Le * 0.26, dx1 = ex + Le * (big ? 0.18 : 0.12);
-  drivers(mb, nDrive, dx0, dx1, dr, STEEL);
-  if (big || m.id === 'ironhill' || m.id === 'meadow_tank') wheelset(mb, front - 0.2, 0.09);         // leading truck
-  if (m.id === 'meadow_tank' || big) wheelset(mb, ex - Le / 2 + 0.16, 0.09);                          // trailing truck
+  const [f0, f1] = S.span || [-0.26, big ? 0.18 : 0.12];
+  const dx0 = ex + Le * f0, dx1 = ex + Le * f1;
+  if (S.rear) {
+    // articulated: a rear engine unit under the firebox, a front one under the smokebox
+    const rx0 = ex + Le * S.rear[0], rx1 = ex + Le * S.rear[1];
+    drivers(mb, S.n, rx0, rx1, dr, STEEL);
+    for (const z of [0.27, -0.27]) mb.hcyl(0.065, 0.16, 8, DARK, { x: rx1 + dr + 0.1, y: 0.23, z });
+    mb.box(0.08, 0.06, 0.46, shade(DARK, 1.3), { x: (rx1 + dx0) / 2 + 0.06, y: 0.14 });   // hinge between the units
+  }
+  drivers(mb, S.n, dx0, dx1, dr, STEEL);
+  for (let k = 0; k < S.lead; k++) wheelset(mb, front - 0.2 - k * 0.2, 0.09);                     // leading truck
+  if (S.trail) wheelset(mb, ex - Le / 2 + 0.16, 0.09);                                                // trailing truck
   // cylinders + main rod to the first driver
   for (const z of [0.27, -0.27]) {
-    mb.hcyl(0.07, 0.24, 8, stream ? shade(body, 0.8) : DARK, { x: front - 0.3, y: 0.24, z });
-    mb.box(front - 0.3 - dx1, 0.03, 0.02, STEEL, { x: (front - 0.3 + dx1) / 2, y: dr * 0.8 + 0.02, z: z + Math.sign(z) * 0.03 });
+    mb.hcyl(0.07, 0.24, 8, stream ? shade(body, 0.8) : DARK, { x: front - 0.3 - (S.lead > 1 ? 0.1 : 0), y: 0.24, z });
+    mb.box(Math.max(0.05, front - 0.3 - dx1), 0.03, 0.02, STEEL, { x: (front - 0.3 + dx1) / 2, y: dr * 0.8 + 0.02, z: z + Math.sign(z) * 0.03 });
   }
-  const bl = Le * 0.62, bx = ex + Le * 0.14;
+  const bl = Le * (S.long ? 0.68 : 0.62), bx = ex + Le * (S.long ? 0.1 : 0.14);
   if (stream) {
     // streamlined casing: full-width shroud with a rounded nose and skirts
     const s0 = ex - Le / 2 + 0.46, s1 = front - 0.32, sc = (s0 + s1) / 2, sl = s1 - s0;
@@ -178,21 +200,26 @@ function steamLoco(mb, m, L, P, detail) {
     // smokebox + door
     mb.hcyl(r + 0.01, 0.2, 12, shade(DARK, 1.15), { x: front - 0.16, y: by });
     mb.cyl(r * 0.8, r * 0.8, 0.03, 12, shade(DARK, 1.4), { x: front - 0.05, y: by, rz: Math.PI / 2, center: true });
-    // chimney, steam dome, sand dome
-    const chH = (big ? 0.16 : 0.22) + detail * 0.02;
+    // chimney, steam dome, sand domes
+    const chH = (S.chim ?? (big ? 0.16 : 0.22)) + detail * 0.02;
     mb.cyl(0.06, 0.05, chH, 8, DARK, { x: front - 0.17, y: by + r - 0.03 });
     mb.cyl(0.085, 0.065, 0.045, 8, DARK, { x: front - 0.17, y: by + r - 0.03 + chH - 0.02 });
     mb.cyl(0.075, 0.08, 0.1, 8, accent, { x: bx + bl * 0.02, y: by + r - 0.04 });
     mb.sphere(0.075, 0, accent, { x: bx + bl * 0.02, y: by + r + 0.06, sy: 0.6 });
-    mb.cyl(0.06, 0.065, 0.07, 8, body, { x: bx + bl * 0.25, y: by + r - 0.04 });
-    mb.sphere(0.06, 0, body, { x: bx + bl * 0.25, y: by + r + 0.03, sy: 0.6 });
+    for (let k = 0; k < (S.domes || 1); k++) {
+      const x = bx + bl * (0.25 - k * 0.5);
+      mb.cyl(0.06, 0.065, 0.07, 8, body, { x, y: by + r - 0.04 });
+      mb.sphere(0.06, 0, body, { x, y: by + r + 0.03, sy: 0.6 });
+    }
     mb.cyl(0.02, 0.02, 0.07, 6, BRASS, { x: bx - bl * 0.3, y: by + r - 0.02 });                              // whistle
     headlights(mb, front - 0.02, by + r * 0.7, 0, 1);
-    if (big) for (const z of [0.29, -0.29]) mb.box(0.34, 0.3, 0.02, shade(body, 0.75), { x: front - 0.26, y: by - 0.12, z }); // smoke deflectors
+    if (S.deflect) for (const z of [0.29, -0.29]) mb.box(0.34, 0.3, 0.02, shade(body, 0.75), { x: front - 0.26, y: by - 0.12, z }); // smoke deflectors
+    if (S.artic) mb.hcyl(0.05, bl * 0.8, 6, DARK, { x: bx, y: by - r - 0.02, z: 0.2 });              // steam pipe to the front unit
   }
   // buffer beam (livery trim, classic red when trim is dark)
   mb.box(0.05, 0.09, W, trim === 0x2b2b2b ? PAL.freightRed : trim, { x: front, y: BUF - 0.045 });
-  if (m.id === 'ironhill') mb.taper(0.1, W, 0.16, W * 0.84, 0.04, DARK, { x: front + 0.02, y: 0.02 });   // pilot
+  if (S.pilot) mb.taper(0.1, W, 0.16, W * 0.84, 0.04, DARK, { x: front + 0.02, y: 0.02 });   // pilot
+  if (S.plough) mb.taper(0.16, W + 0.04, 0.22, W * 0.3, 0.06, shade(PAL.freightRed, 0.9), { x: front + 0.05, y: 0.01 });   // snow plough
   if (tank) for (const z of [0.25, -0.25]) mb.box(bl * 0.72, 0.28, 0.1, body, { x: bx - 0.05, y: 0.3, z });   // side tanks
   // cab with overhanging roof, spectacle and side windows
   const cabX = ex - Le / 2 + 0.24;
@@ -219,33 +246,140 @@ function steamLoco(mb, m, L, P, detail) {
   }
 }
 
+// ---------- multiple-unit car bodies ----------
+// Full-height car with a window band, doors and, for power cars, a driving
+// cab at +X: 'flat' (commuter), 'round' (intercity), 'wedge' (modern
+// regional). Shared by the DMU/EMU power cars and the mu_car trailer.
+function unitCar(mb, L, P, o = {}) {
+  const body = P.body, trim = P.trim, accent = P.accent ?? trim;
+  const H = o.H || 0.54;
+  const cabL = o.cab === 'round' ? 0.34 : o.cab === 'wedge' ? 0.26 : o.cab === 'flat' ? 0.06 : 0;
+  const x0 = -L / 2, x1 = L / 2 - cabL;
+  mb.box(x1 - x0, H, W, body, { x: (x0 + x1) / 2, y: FLOOR });
+  mb.box(L - 0.12, 0.07, W - 0.04, shade(DARK, 1.1), { y: FLOOR - 0.07 });                          // underfloor equipment
+  mb.box(x1 - x0, 0.045, W + 0.006, accent, { x: (x0 + x1) / 2, y: FLOOR + 0.1 });
+  // window band (dark for parcel vans: none)
+  if (!o.blind) for (const z of [GZ, -GZ]) mb.box(x1 - x0 - 0.14, 0.12, 0.02, GLASS, { x: (x0 + x1) / 2 - 0.02, y: FLOOR + H - 0.24, z, glow: true });
+  // doors: evenly spread, in the accent colour
+  const nd = o.doors ?? 2;
+  for (let k = 0; k < nd; k++) {
+    const x = x0 + (x1 - x0) * ((k + 0.5) / nd);
+    for (const z of [GZ + 0.004, -GZ - 0.004]) {
+      mb.box(o.blind ? 0.3 : 0.13, H - 0.08, 0.02, shade(o.blind ? body : accent, o.blind ? 0.8 : 0.9), { x, y: FLOOR + 0.02, z });
+      if (!o.blind) mb.box(0.08, 0.1, 0.022, GLASS, { x, y: FLOOR + H - 0.24, z, glow: true });
+    }
+  }
+  mb.box(L - 0.08, 0.04, W - 0.06, P.roof ?? shade(body, 0.82), { y: FLOOR + H });
+  if (o.cab === 'flat') {
+    mb.box(cabL, H, W, body, { x: x1 + cabL / 2, y: FLOOR });
+    mb.box(0.02, 0.17, W - 0.08, GLASS, { x: L / 2 + 0.002, y: FLOOR + H - 0.26, glow: true });
+    mb.box(0.03, 0.18, W - 0.1, shade(accent, 0.9), { x: L / 2, y: FLOOR + 0.04 });
+  } else if (o.cab === 'round') {
+    mb.taper(cabL, W, H, W * 0.78, H * 0.62, body, { x: x1 + cabL / 2, y: FLOOR, yb1: 0.03 });
+    mb.taper(cabL * 0.7, W - 0.02, 0.13, W * 0.72, 0.1, GLASS, { x: x1 + cabL * 0.35, y: FLOOR + H - 0.16, yb1: -H * 0.2, glow: true });
+  } else if (o.cab === 'wedge') {
+    mb.taper(cabL, W, H, W * 0.94, H * 0.5, body, { x: x1 + cabL / 2, y: FLOOR });
+    mb.taper(cabL * 0.92, W - 0.02, 0.2, W * 0.9, 0.06, GLASS, { x: x1 + cabL * 0.46, y: FLOOR + H - 0.22, yb1: 0.02, glow: true });
+  }
+  if (o.cab) { headlights(mb, L / 2 - (o.cab === 'round' ? 0.03 : 0.005), FLOOR + 0.1, 0.13, 1); gangway(mb, L, H); }
+  else gangway(mb, L, H);
+  return H;
+}
+
 // ---------- diesel ----------
 function dieselLoco(mb, m, L, P, detail) {
   const body = P.body, trim = P.trim;
   const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
-  const heavy = m.id === 'cargoking';
-  const cabUnit = m.id === 'metrorunner';
+  const shape = m.shape || 'hood';
+  if (shape === 'dmu') {
+    // diesel railcar: cab at the front, exhaust stack and radiator on the roof
+    underframe(mb, L, DARK); bogiesAt(mb, L);
+    const H = unitCar(mb, L, P, { cab: 'flat', doors: 2 });
+    mb.box(0.28, 0.06, W * 0.6, shade(DARK, 1.4), { x: -L / 2 + 0.3, y: FLOOR + H });
+    mb.cyl(0.03, 0.03, 0.1 + detail * 0.02, 6, DARK, { x: -L / 2 + 0.18, y: FLOOR + H });
+    mb.box(0.3, 0.1, W - 0.12, shade(DARK, 0.9), { x: 0.1, y: FLOOR - 0.16 });                       // underfloor engine
+    return;
+  }
+  const heavy = shape === 'cabfwd';
+  const axles = shape === 'cabfwd' || shape === 'hood2' || shape === 'twin' ? 3 : 2;
+  if (shape === 'shunter') {
+    // yard shunter: rod-coupled wheels, low narrow hood and a tall end cab
+    mb.box(L - 0.06, 0.1, W - 0.06, DARK, { y: 0.16 });
+    buffers(mb, L); bufferBeam(mb, L, PAL.freightRed);
+    drivers(mb, 3, -L / 2 + 0.3, L / 2 - 0.3, 0.12, STEEL);
+    const cabX = -L / 2 + 0.26, hw = W - 0.2;
+    mb.box(L - 0.62, 0.3, hw, body, { x: 0.18, y: 0.26 });
+    for (let k = 0; k < 4; k++) mb.box(0.02, 0.2, hw + 0.01, shade(body, 0.8), { x: -0.05 + k * 0.14, y: 0.3 });   // hood doors
+    mb.box(0.4, 0.58, W, body, { x: cabX, y: 0.26 });
+    mb.box(0.46, 0.04, W + 0.04, P.roof ?? shade(body, 0.7), { x: cabX, y: 0.84 });
+    for (const s of [1, -1]) mb.box(0.02, 0.14, W - 0.12, GLASS, { x: cabX + s * 0.205, y: 0.62, glow: true });
+    for (const z of [GZ, -GZ]) mb.box(0.24, 0.14, 0.02, GLASS, { x: cabX, y: 0.62, z, glow: true });
+    for (let k = 0; k < 5; k++) mb.box(0.03, 0.02, W + 0.01, k % 2 ? 0x2a2a2a : 0xe8c040, { x: L / 2 - 0.05, y: 0.28 + k * 0.02 });   // warning stripes
+    mb.cyl(0.028, 0.028, 0.1, 6, DARK, { x: 0.4, y: 0.56 });
+    headlights(mb, L / 2 - 0.03, 0.5, 0, 1); headlights(mb, -L / 2 + 0.05, 0.62, 0.12, -1, true);
+    return;
+  }
   underframe(mb, L, DARK, shade(DARK, 1.3));
-  bogiesAt(mb, L, heavy ? 3 : 2);
+  bogiesAt(mb, L, axles);
   mb.box(L - 0.1, 0.03, W + 0.06, shade(DARK, 1.2), { y: FLOOR });                      // walkway
-  if (cabUnit) {
-    // passenger cab unit: full-width carbody with rounded nose at both ends
-    const bodyL = L - 0.5;
-    mb.box(bodyL, 0.5, W, body, { y: FLOOR + 0.02 });
+  if (shape === 'cab' || shape === 'late' || shape === 'twin') {
+    // full-width carbody: rounded (cab), angular wedge (late) or flat twin-cab (twin)
+    const noseL = shape === 'cab' ? 0.25 : shape === 'late' ? 0.22 : 0.08;
+    const bodyL = L - 2 * noseL;
+    const H = shape === 'twin' ? 0.54 : 0.5;
+    mb.box(bodyL, H, W, body, { y: FLOOR + 0.02 });
     for (const s of [1, -1]) {
-      mb.taper(0.25, W, 0.5, W * 0.8, 0.3, body, { x: s * (bodyL / 2 + 0.125), y: FLOOR + 0.02, yb1: 0.04, flip: s < 0 });
-      mb.taper(0.12, W - 0.06, 0.1, W * 0.74, 0.1, GLASS, { x: s * (bodyL / 2 + 0.06), y: FLOOR + 0.43, yb1: -0.07, flip: s < 0, glow: true });
+      const x = s * (bodyL / 2 + noseL / 2);
+      if (shape === 'cab') {
+        mb.taper(noseL, W, 0.5, W * 0.8, 0.3, body, { x, y: FLOOR + 0.02, yb1: 0.04, flip: s < 0 });
+        mb.taper(0.12, W - 0.06, 0.1, W * 0.74, 0.1, GLASS, { x: s * (bodyL / 2 + 0.06), y: FLOOR + 0.43, yb1: -0.07, flip: s < 0, glow: true });
+      } else if (shape === 'late') {
+        mb.taper(noseL, W, H, W * 0.96, H * 0.64, body, { x, y: FLOOR + 0.02, flip: s < 0 });
+        mb.taper(noseL * 0.9, W - 0.03, 0.15, W * 0.9, 0.05, GLASS, { x: x - s * noseL * 0.04, y: FLOOR + H - 0.18, yb1: 0.02, flip: s < 0, glow: true });
+      } else {
+        mb.box(noseL, H, W, body, { x, y: FLOOR + 0.02 });
+        mb.box(0.02, 0.15, W - 0.08, GLASS, { x: s * (L / 2 + 0.002), y: FLOOR + H - 0.2, glow: true });
+        for (let k = 0; k < 4; k++) mb.box(0.022, 0.03, W * 0.7, k % 2 ? body : 0xe8c040, { x: s * (L / 2 + 0.004), y: FLOOR + 0.1 + k * 0.035 });   // chevrons
+      }
       headlights(mb, s * (L / 2 - 0.02), FLOOR + 0.12, 0.13, s, s < 0);
     }
     mb.box(bodyL + 0.3, 0.05, W + 0.02, accent, { y: FLOOR + 0.16 });
-    sideWindows(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + 0.32, 0.1, 4, 0.14);
-    for (const x of [-0.25, 0.1]) roofFan(mb, x, FLOOR + 0.52);
-    grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, GZ + 0.005, body); grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, -GZ - 0.005, body);
+    if (shape === 'cab') {
+      sideWindows(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + 0.32, 0.1, 4, 0.14);
+      for (const x of [-0.25, 0.1]) roofFan(mb, x, FLOOR + 0.52);
+      grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, GZ + 0.005, body); grille(mb, -bodyL / 2 + 0.25, FLOOR + 0.06, 0.3, 0.1, -GZ - 0.005, body);
+    } else {
+      // engine room: louvres along the sides, big radiator fans on the roof
+      const n = shape === 'twin' ? 5 : 4;
+      for (let k = 0; k < n; k++) { const x = -bodyL / 2 + 0.2 + k * ((bodyL - 0.4) / (n - 1)); grille(mb, x, FLOOR + 0.24, 0.14, 0.2, GZ, body); grille(mb, x, FLOOR + 0.24, 0.14, 0.2, -GZ, body); }
+      for (let k = 0; k < (shape === 'twin' ? 3 : 2); k++) roofFan(mb, -0.3 + k * 0.3, FLOOR + H + 0.02);
+      mb.box(bodyL * 0.3, 0.05, W * 0.5, shade(DARK, 1.3), { x: bodyL * 0.2, y: FLOOR + H + 0.02 });
+      for (const z of [W / 2 + 0.02, -W / 2 - 0.02]) handrail(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + 0.28, z);
+    }
+    return;
+  }
+  if (shape === 'center') {
+    // centre cab between two low hoods (branch line diesel)
+    const cabW = 0.36, hoodH = 0.3, hw = W - 0.14;
+    for (const s of [1, -1]) {
+      const a = s * (cabW / 2), b = s * (L / 2 - 0.08);
+      mb.box(Math.abs(b - a), hoodH, hw, body, { x: (a + b) / 2, y: FLOOR + 0.02 });
+      grille(mb, (a + b) / 2, FLOOR + 0.1, 0.2, hoodH - 0.14, s * (hw / 2 + 0.005), body);
+      roofFan(mb, (a + b) / 2, FLOOR + hoodH + 0.02);
+      headlights(mb, b, FLOOR + hoodH - 0.06, 0.08, s, s < 0);
+    }
+    mb.box(cabW, 0.56, W, body, { y: FLOOR + 0.02 });
+    mb.box(cabW + 0.08, 0.04, W + 0.04, P.roof ?? shade(body, 0.7), { y: FLOOR + 0.58 });
+    for (const s of [1, -1]) mb.box(0.02, 0.13, W - 0.1, GLASS, { x: s * (cabW / 2 + 0.005), y: FLOOR + 0.4, glow: true });
+    for (const z of [GZ, -GZ]) mb.box(cabW * 0.7, 0.12, 0.02, GLASS, { y: FLOOR + 0.4, z, glow: true });
+    mb.box(L - 0.16, 0.04, W + 0.005, accent, { y: FLOOR + 0.1 });
+    mb.cyl(0.028, 0.028, 0.1, 6, DARK, { x: 0.32, y: FLOOR + hoodH + 0.02 });
     return;
   }
   // hood unit: short hood - cab - long hood (cab-forward for the heavy unit)
-  const cabW = 0.34, cabX = heavy ? L / 2 - 0.3 : L / 2 - 0.55;
-  const hoodW = W - 0.12, hoodH = heavy ? 0.4 : 0.36;
+  const big = shape === 'hood2';
+  const cabW = 0.34, cabX = heavy ? L / 2 - 0.3 : L / 2 - (big ? 0.5 : 0.55);
+  const hoodW = W - 0.12, hoodH = heavy || big ? 0.4 : 0.36;
   const longX0 = -L / 2 + 0.1, longX1 = cabX - cabW / 2;
   mb.box(longX1 - longX0, hoodH, hoodW, body, { x: (longX0 + longX1) / 2, y: FLOOR + 0.02 });
   if (!heavy) { const sx0 = cabX + cabW / 2, sx1 = L / 2 - 0.1; mb.box(sx1 - sx0, hoodH * 0.8, hoodW, body, { x: (sx0 + sx1) / 2, y: FLOOR + 0.02 }); headlights(mb, sx1, FLOOR + hoodH * 0.8 - 0.05, 0.1, 1); }
@@ -257,9 +391,10 @@ function dieselLoco(mb, m, L, P, detail) {
   for (const z of [GZ, -GZ]) mb.box(cabW * 0.7, 0.12, 0.02, GLASS, { x: cabX, y: FLOOR + 0.38, z, glow: true });
   // livery stripe, grilles, fans, exhaust, handrails
   mb.box(L - 0.12, 0.04, W + 0.005, accent, { y: FLOOR + 0.12 });
-  const nG = heavy ? 4 : 3;
+  const nG = heavy || big ? 4 : 3;
   for (let k = 0; k < nG; k++) { const x = longX0 + 0.15 + k * ((longX1 - longX0 - 0.3) / Math.max(1, nG - 1)); grille(mb, x, FLOOR + 0.16, 0.14, hoodH - 0.22, hoodW / 2 + 0.005, body); grille(mb, x, FLOOR + 0.16, 0.14, hoodH - 0.22, -hoodW / 2 - 0.005, body); }
-  for (let k = 0; k < (heavy ? 3 : 2); k++) roofFan(mb, longX0 + 0.18 + k * 0.22, FLOOR + hoodH + 0.02);
+  for (let k = 0; k < (heavy || big ? 3 : 2); k++) roofFan(mb, longX0 + 0.18 + k * 0.22, FLOOR + hoodH + 0.02);
+  if (big) mb.box(0.3, 0.06, hoodW * 0.9, shade(body, 0.85), { x: longX1 - 0.3, y: FLOOR + hoodH + 0.02 });   // dynamic brake blister
   mb.cyl(0.03, 0.03, 0.08 + detail * 0.02, 6, DARK, { x: longX1 - 0.12, y: FLOOR + hoodH + 0.02 });
   for (const z of [W / 2 + 0.02, -W / 2 - 0.02]) handrail(mb, longX0, longX1, FLOOR + 0.3, z);
   headlights(mb, -L / 2 + 0.08, FLOOR + hoodH - 0.05, 0.1, -1, true);
@@ -269,12 +404,65 @@ function dieselLoco(mb, m, L, P, detail) {
 function electricLoco(mb, m, L, P, detail) {
   const body = P.body, trim = P.trim;
   const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
-  const heavy = m.id === 'voltstream_e3';
-  const sleek = m.id === 'falcon';
+  const shape = m.shape || 'box';
+  if (shape === 'emu' || shape === 'icemu' || shape === 'regio' || shape === 'parcel') {
+    // electric multiple unit power car: cab at the front, pantograph mid roof
+    underframe(mb, L, DARK); bogiesAt(mb, L);
+    const cab = shape === 'icemu' ? 'round' : shape === 'regio' ? 'wedge' : 'flat';
+    const H = unitCar(mb, L, P, { cab, doors: shape === 'emu' ? 3 : shape === 'icemu' ? 1 : 2, blind: shape === 'parcel' });
+    if (shape === 'parcel') { for (const z of [GZ + 0.012, -GZ - 0.012]) mb.box(0.12, 0.07, 0.01, 0xe8c040, { x: -L / 4, y: FLOOR + 0.3, z }); mb.box(0.02, 0.17, W - 0.08, GLASS, { x: L / 2 + 0.003, y: FLOOR + H - 0.26, glow: true }); }
+    if (shape === 'icemu') mb.box(L - 0.5, 0.02, W + 0.008, shade(accent, 1.2), { x: -0.17, y: FLOOR + 0.2 });
+    mb.box(0.4, 0.05, W * 0.55, shade(DARK, 1.3), { x: -0.1, y: FLOOR + H });                              // roof equipment
+    pantograph(mb, -L / 2 + 0.42, FLOOR + H + 0.02, true, -1);
+    return;
+  }
+  const heavy = shape === 'box3';
+  const sleek = shape === 'sleek';
+  if (shape === 'early') {
+    // "crocodile": tall central cab, two low sloping bonnets on rod-driven wheel groups
+    mb.box(L - 0.06, 0.08, W - 0.06, DARK, { y: 0.16 });
+    buffers(mb, L); bufferBeam(mb, L, shade(body, 0.7));
+    const cabL = L * 0.42, bon = (L - cabL) / 2;
+    for (const s of [1, -1]) {
+      const cx = s * (cabL / 2 + bon / 2);
+      drivers(mb, 3, cx - bon * 0.32, cx + bon * 0.32, 0.12, STEEL);
+      mb.taper(bon - 0.04, W - 0.12, 0.34, W - 0.2, 0.22, body, { x: cx + s * 0.02, y: 0.3, flip: s < 0 });
+      for (let k = 0; k < 3; k++) mb.box(0.02, 0.16, W - 0.11, shade(body, 0.75), { x: cx - bon * 0.25 + k * bon * 0.25, y: 0.34 });   // bonnet louvres
+      headlights(mb, s * (L / 2 - 0.04), 0.46, 0.12, s, s < 0);
+      handrail(mb, cx - bon * 0.4, cx + bon * 0.4, 0.44, W / 2 - 0.02);
+    }
+    mb.box(cabL, 0.48, W, body, { y: 0.26 });
+    mb.box(cabL + 0.06, 0.04, W + 0.04, P.roof ?? shade(body, 0.7), { y: 0.74 });
+    for (const s of [1, -1]) mb.box(0.02, 0.14, W - 0.12, GLASS, { x: s * (cabL / 2 + 0.005), y: 0.55, glow: true });
+    sideWindows(mb, -cabL / 2 + 0.12, cabL / 2 - 0.12, 0.54, 0.12, 3, 0.12);
+    mb.box(cabL, 0.04, W + 0.005, accent, { y: 0.38 });
+    pantograph(mb, 0, 0.78, true, 1);
+    return;
+  }
+  if (shape === 'twin_e') {
+    // two permanently coupled halves, each with an outer cab: eight axles
+    underframe(mb, L, DARK, shade(DARK, 1.2));
+    const half = L / 2 - 0.03, H = 0.54;
+    for (const s of [1, -1]) {
+      const hx = s * (half / 2 + 0.03);
+      bogie(mb, hx - half * 0.28, 2); bogie(mb, hx + half * 0.28, 2);
+      mb.box(half - 0.14, H, W, body, { x: hx - s * 0.05, y: FLOOR });
+      mb.taper(0.12, W, H, W - 0.04, H - 0.06, body, { x: s * (L / 2 - 0.06), y: FLOOR, yb1: 0.02, flip: s < 0 });
+      mb.box(0.02, 0.14, W - 0.1, GLASS, { x: s * (L / 2 - 0.01), y: FLOOR + H - 0.22, glow: true });
+      for (let k = 0; k < 3; k++) { const x = hx - s * 0.05 - half * 0.3 + k * half * 0.26; grille(mb, x, FLOOR + 0.24, 0.14, 0.18, GZ, body); grille(mb, x, FLOOR + 0.24, 0.14, 0.18, -GZ, body); }
+      headlights(mb, s * (L / 2 - 0.01), FLOOR + 0.1, 0.15, s, s < 0);
+      pantograph(mb, s * (L / 2 - 0.45), FLOOR + H + 0.02, s < 0, s);
+      mb.box(half * 0.4, 0.04, W * 0.6, shade(DARK, 1.3), { x: hx, y: FLOOR + H });
+    }
+    mb.box(0.1, H - 0.1, W - 0.12, DARK, { y: FLOOR + 0.05 });                                             // connecting gangway
+    mb.box(L - 0.1, 0.05, W + 0.005, accent, { y: FLOOR + 0.14 });
+    return;
+  }
   underframe(mb, L, DARK, shade(DARK, 1.2));
   bogiesAt(mb, L, heavy ? 3 : 2);
   const H = heavy ? 0.56 : 0.52;
-  const noseL = sleek ? 0.32 : 0.12;
+  const modern = shape === 'modern';
+  const noseL = sleek ? 0.32 : modern ? 0.2 : 0.12;
   const bodyL = L - 2 * noseL - 0.02;
   mb.box(bodyL, H, W, body, { y: FLOOR });
   for (const s of [1, -1]) {
@@ -282,6 +470,11 @@ function electricLoco(mb, m, L, P, detail) {
     if (sleek) {
       mb.taper(noseL, W, H, W * 0.86, H * 0.72, body, { x, y: FLOOR, flip: s < 0 });
       mb.taper(noseL * 0.8, W - 0.04, 0.13, W * 0.74, 0.13, GLASS, { x: x - s * noseL * 0.1, y: FLOOR + H - 0.12, yb1: -H * 0.224, flip: s < 0, glow: true });
+    } else if (modern) {
+      // raked windscreen over a crash-proof lower front
+      mb.box(noseL, H * 0.55, W, body, { x, y: FLOOR });
+      mb.taper(noseL, W, H * 0.45, W * 0.96, H * 0.12, body, { x, y: FLOOR + H * 0.55, flip: s < 0 });
+      mb.taper(noseL * 0.9, W - 0.03, 0.14, W * 0.92, 0.04, GLASS, { x: x + s * 0.005, y: FLOOR + H * 0.58, yb1: 0.04, flip: s < 0, glow: true });
     } else {
       mb.taper(noseL, W, H, W - 0.04, H - 0.06, body, { x, y: FLOOR, yb1: 0.02, flip: s < 0 });
       mb.box(0.02, 0.14, W - 0.1, GLASS, { x: s * (L / 2 - 0.02), y: FLOOR + H - 0.22, glow: true });
@@ -292,6 +485,7 @@ function electricLoco(mb, m, L, P, detail) {
   // livery band + window band / louvre grilles
   mb.box(L - 0.06, 0.05, W + 0.005, accent, { y: FLOOR + 0.14 });
   if (sleek) { mb.box(bodyL * 0.94, 0.02, W + 0.006, shade(accent, 1.2), { y: FLOOR + 0.2 }); sideWindows(mb, -bodyL / 2 + 0.1, bodyL / 2 - 0.1, FLOOR + H - 0.2, 0.1, 5, 0.12); }
+  else if (modern) { mb.box(bodyL * 0.8, 0.2, 0.02, shade(body, 0.8), { y: FLOOR + 0.22, z: GZ + 0.004 }); mb.box(bodyL * 0.8, 0.2, 0.02, shade(body, 0.8), { y: FLOOR + 0.22, z: -GZ - 0.004 }); for (const z of [GZ + 0.012, -GZ - 0.012]) mb.box(bodyL * 0.5, 0.05, 0.01, 0xe8e8ec, { y: FLOOR + 0.3, z }); }
   else { const n = heavy ? 5 : 4; for (let k = 0; k < n; k++) { const x = -bodyL / 2 + 0.2 + k * ((bodyL - 0.4) / (n - 1)); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, GZ, body); grille(mb, x, FLOOR + 0.24, 0.16, 0.18, -GZ, body); } }
   // roof: equipment, insulators, two pantographs (rear one raised)
   const ry = FLOOR + H;
@@ -304,19 +498,33 @@ function electricLoco(mb, m, L, P, detail) {
 }
 
 // ---------- high speed power car ----------
+// nose profiles per shape: [share of nose length, width at start, width at
+// end, lift of the lower edge, height at end (× H)]
+const HST_NOSE = {
+  nose: { len: 0.7, segs: [[0.4, 1, 0.9, 0, 0.8], [0.3, 0.9, 0.66, 0.02, 0.52], [0.3, 0.66, 0.36, 0.05, 0.22]] },
+  longnose: { len: 0.9, segs: [[0.4, 1, 0.9, 0, 0.8], [0.3, 0.9, 0.66, 0.02, 0.52], [0.3, 0.66, 0.36, 0.05, 0.22]] },
+  freightnose: { len: 0.55, segs: [[0.4, 1, 0.9, 0, 0.8], [0.3, 0.9, 0.66, 0.02, 0.52], [0.3, 0.66, 0.36, 0.05, 0.22]], freight: true },
+  duck: { len: 0.9, segs: [[0.35, 1, 0.94, 0, 0.9], [0.3, 0.94, 0.76, 0.02, 0.62], [0.25, 0.76, 0.5, 0.04, 0.3]] },
+  hsmu: { len: 0.75, segs: [[0.45, 1, 0.92, 0, 0.84], [0.3, 0.92, 0.7, 0.03, 0.5], [0.25, 0.7, 0.34, 0.07, 0.2]], unit: true },
+  tilt: { len: 0.6, segs: [[0.5, 1, 0.84, 0, 0.74], [0.3, 0.84, 0.6, 0.04, 0.44], [0.2, 0.6, 0.4, 0.09, 0.26]], unit: true, tilt: true },
+};
 function hstLoco(mb, m, L, P, detail) {
   const body = P.body, trim = P.trim;
   const accent = P.accent ?? (detail >= 2 ? BRASS : trim);
-  const freight = m.id === 'novarail';
-  const duck = m.id === 'vector_hst';
-  const noseL = m.id === 'arrowline_300' || duck ? 0.9 : freight ? 0.55 : 0.7;
-  const H = 0.5, x0 = -L / 2, xn = L / 2 - noseL;   // body from x0 to xn, nose from xn to L/2
+  const N = HST_NOSE[m.shape] || HST_NOSE.nose;
+  const freight = !!N.freight;
+  const noseL = N.len;
+  const H = N.tilt ? 0.48 : 0.5, x0 = -L / 2, xn = L / 2 - noseL;   // body from x0 to xn, nose from xn to L/2
   mb.box(L - 0.1, 0.06, W - 0.08, DARK, { y: FLOOR - 0.06 });
   bogie(mb, x0 + 0.34); bogie(mb, xn - 0.1);
-  mb.box(xn - x0, H, W, body, { x: (x0 + xn) / 2, y: FLOOR });
+  if (N.tilt) {
+    // tilting train: sides lean in above the waist
+    mb.box(xn - x0, H * 0.55, W, body, { x: (x0 + xn) / 2, y: FLOOR });
+    mb.box(xn - x0, H * 0.45, W - 0.04, body, { x: (x0 + xn) / 2, y: FLOOR + H * 0.55 });
+    mb.box(xn - x0, 0.04, W * 0.78, P.roof ?? shade(body, 0.85), { x: (x0 + xn) / 2, y: FLOOR + H - 0.01 });
+  } else mb.box(xn - x0, H, W, body, { x: (x0 + xn) / 2, y: FLOOR });
   // nose in three tapered sections for a smooth low-poly profile
-  const segs = duck ? [[0.35, 1, 0.94, 0, 0.9], [0.3, 0.94, 0.76, 0.02, 0.62], [0.25, 0.76, 0.5, 0.04, 0.3]]
-    : [[0.4, 1, 0.9, 0, 0.8], [0.3, 0.9, 0.66, 0.02, 0.52], [0.3, 0.66, 0.36, 0.05, 0.22]];
+  const segs = N.segs;
   let x = xn, prevH = H, prevLift = 0;
   const tot = segs.reduce((a, s) => a + s[0], 0);
   for (const [f, w0, w1, lift, h1] of segs) {
@@ -333,19 +541,24 @@ function hstLoco(mb, m, L, P, detail) {
   mb.taper(noseL * 0.9, W + 0.006, 0.05, W * 0.4, 0.03, accent, { x: xn + noseL * 0.45, y: FLOOR + 0.12, yb1: 0.04 });
   headlights(mb, L / 2 - noseL * 0.2, FLOOR + 0.14, 0.12, 1);
   headlights(mb, x0, FLOOR + 0.2, 0.15, -1, true);
-  if (!freight) sideWindows(mb, x0 + 0.15, xn - 0.05, FLOOR + H - 0.2, 0.1, 3, 0.14);
+  if (N.unit) {
+    // multiple unit: passengers ride in the power car too - one long window band and a door
+    const gz = N.tilt ? (W - 0.04) / 2 + 0.005 : GZ;
+    for (const z of [gz, -gz]) mb.box(xn - x0 - 0.12, 0.1, 0.02, GLASS, { x: (x0 + xn) / 2 - 0.02, y: FLOOR + H - 0.2, z, glow: true });
+    for (const z of [GZ + 0.004, -GZ - 0.004]) mb.box(0.12, H - 0.12, 0.02, shade(accent, 0.9), { x: x0 + 0.3, y: FLOOR + 0.04, z });
+  } else if (!freight) sideWindows(mb, x0 + 0.15, xn - 0.05, FLOOR + H - 0.2, 0.1, 3, 0.14);
   else for (let k = 0; k < 3; k++) { grille(mb, x0 + 0.25 + k * 0.25, FLOOR + 0.2, 0.16, 0.18, GZ, body); grille(mb, x0 + 0.25 + k * 0.25, FLOOR + 0.2, 0.16, 0.18, -GZ, body); }
   // rear gangway bellows to the coaches
   mb.box(0.06, H - 0.08, W - 0.14, DARK, { x: x0 - 0.02, y: FLOOR + 0.04 });
   pantograph(mb, x0 + 0.4, FLOOR + H, true, -1);
-  mb.box(0.4, 0.03, W * 0.5, shade(DARK, 1.3), { x: x0 + 0.85, y: FLOOR + H });
+  if (!N.unit) mb.box(0.4, 0.03, W * 0.5, shade(DARK, 1.3), { x: x0 + 0.85, y: FLOOR + H });
 }
 
 // ---------- maglev ----------
 function maglevLoco(mb, m, L, P, detail) {
   const body = P.body, trim = P.trim;
   const accent = P.accent ?? (detail >= 2 ? 0x9ff6ff : trim);
-  const needle = m.id === 'magna_m3';
+  const needle = m.shape === 'needle';
   const noseL = needle ? 0.95 : 0.7, H = 0.5, x0 = -L / 2, xn = L / 2 - noseL;
   // guideway skirt wrapping down around the beam, no wheels
   mb.box(L * 0.94, 0.16, W * 0.72, DARK, { x: -noseL * 0.2, y: 0.02 });
@@ -448,6 +661,8 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, paint, trimArg, v
   const V = variant | 0;
   switch (w) {
     case 'coach':
+    case 'short_coach':
+    case 'long_coach':
     case 'commuter':
     case 'premium':
     case 'cab_car': {
@@ -641,6 +856,153 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, paint, trimArg, v
           for (const x of [-L * 0.2, L * 0.2]) mb.box(0.02, 0.3, 0.02, 0xb8a060, { x, y: 0.2, z: 0.24 });   // chains
         }
       }
+      break;
+    }
+    case 'sleeper':
+    case 'dining': {
+      // sleeping car: a row of small high windows; dining car: big windows and table lamps
+      frame(mb, L, eraKind);
+      const H = ROOF - FLOOR - 0.04, sl = w === 'sleeper';
+      const body = sl ? shade(liveryBody, 0.7) : liveryBody;
+      mb.box(L - 0.02, H, W, body, { y: FLOOR });
+      mb.box(L - 0.02, 0.04, W + 0.006, sl ? PAL.cream : trimCol, { y: FLOOR + 0.1 });
+      if (modern) mb.box(L - 0.06, 0.06, W - 0.06, P.roof ?? shade(body, 0.8), { y: FLOOR + H });
+      else mb.cyl(0.3, 0.3, L - 0.04, 12, P.roof ?? shade(body, 0.62), { y: FLOOR + H - 0.03, rz: Math.PI / 2, center: true, sx: 0.28, sz: 0.87 });
+      if (sl) { sideWindows(mb, -L / 2 + 0.12, L / 2 - 0.12, FLOOR + 0.32, 0.08, 7, 0.1); mb.box(L * 0.9, 0.02, W + 0.008, PAL.cream, { y: FLOOR + H - 0.06 }); }
+      else {
+        sideWindows(mb, -L / 2 + 0.3, L / 2 - 0.12, FLOOR + 0.24, 0.17, 4, 0.2);
+        for (let k = 0; k < 4; k++) for (const z of [0.12, -0.12]) mb.box(0.03, 0.03, 0.03, 0xffe6a8, { x: -L / 2 + 0.3 + (k + 0.5) * ((L - 0.42) / 4), y: FLOOR + 0.28, z, glow: true });
+        mb.box(0.24, H - 0.1, 0.02, shade(body, 0.8), { x: -L / 2 + 0.16, y: FLOOR + 0.04, z: GZ + 0.004 });   // kitchen end
+        mb.cyl(0.025, 0.025, 0.08, 6, DARK, { x: -L / 2 + 0.16, y: FLOOR + H });
+      }
+      gangway(mb, L, H);
+      break;
+    }
+    case 'mu_car': {
+      // intermediate car of a multiple unit, styled after its power car
+      frame(mb, L, eraKind);
+      if (eraKind === 'hst' || eraKind === 'maglev') {
+        const H = 0.5;
+        mb.box(L, H, W, liveryBody, { y: FLOOR });
+        mb.box(L, 0.05, W + 0.006, trimCol, { y: FLOOR + 0.12 });
+        for (const z of [GZ, -GZ]) mb.box(L - 0.12, 0.1, 0.02, GLASS, { y: FLOOR + H - 0.2, z, glow: true });
+        mb.box(L - 0.1, 0.04, W - 0.1, P.roof ?? shade(liveryBody, 0.85), { y: FLOOR + H });
+        gangway(mb, L, H);
+      } else unitCar(mb, L, P, { doors: 2 });
+      stripes(mb, L - 0.04, FLOOR + 0.2, P);
+      break;
+    }
+    case 'parcel_van': {
+      // parcel van: livery body, roller doors, no windows
+      frame(mb, L, eraKind);
+      const c = modern ? liveryBody : variantTint(PAL.mailRed, V & 1), H = ROOF - FLOOR - 0.03;
+      mb.box(L - 0.04, H, W, c, { y: FLOOR });
+      mb.box(L, 0.05, W + 0.04, shade(c, 0.65), { y: FLOOR + H });
+      for (const z of [GZ + 0.005, -GZ - 0.005]) for (const x of [-L / 4, L / 4]) {
+        mb.box(0.3, H - 0.1, 0.02, shade(c, 0.78), { x, y: FLOOR + 0.03, z });
+        for (let k = 1; k < 5; k++) mb.box(0.3, 0.008, 0.024, shade(c, 0.62), { x, y: FLOOR + 0.03 + k * (H - 0.1) / 5, z });
+      }
+      mb.box(L - 0.04, 0.035, W + 0.006, trimCol === c ? PAL.cream : trimCol, { y: FLOOR + H - 0.08 });
+      gangway(mb, L, H);
+      break;
+    }
+    case 'hc_boxcar': {
+      // high-cube boxcar: taller than the roof line, plug doors, no roof walk
+      frame(mb, L, eraKind);
+      const c = variantTint(modern ? 0x2f5f8a : 0x6a4a3a, V), H = ROOF - FLOOR + 0.08;
+      mb.box(L - 0.03, H, W, c, { y: FLOOR });
+      mb.box(L, 0.04, W + 0.03, shade(c, 0.7), { y: FLOOR + H });
+      for (const z of [GZ + 0.005, -GZ - 0.005]) {
+        for (const x of [-0.22, 0.22]) mb.box(0.4, H - 0.12, 0.02, shade(c, 0.85), { x, y: FLOOR + 0.05, z });
+        for (let k = 0; k < 9; k++) mb.box(0.018, H - 0.04, 0.024, shade(c, 0.72), { x: -L / 2 + 0.08 + k * (L - 0.16) / 8, y: FLOOR + 0.02, z });
+      }
+      if (loaded) for (const z of [GZ + 0.014, -GZ - 0.014]) mb.box(0.1, 0.06, 0.01, cc, { x: L / 2 - 0.16, y: FLOOR + H - 0.14, z });
+      break;
+    }
+    case 'open_wagon': {
+      // low open wagon with planked sides and a bulk heap
+      frame(mb, L, eraKind);
+      const c = variantTint(modern ? 0x5a4a3a : 0x6b4a33, V), h = 0.26;
+      mb.box(L - 0.04, 0.05, W, shade(c, 0.8), { y: FLOOR });
+      for (const z of [W / 2 - 0.02, -W / 2 + 0.02]) mb.box(L - 0.04, h, 0.04, c, { y: FLOOR + 0.04, z });
+      for (const x of [L / 2 - 0.04, -L / 2 + 0.04]) mb.box(0.04, h, W, c, { x, y: FLOOR + 0.04 });
+      for (let k = 1; k < 3; k++) for (const z of [W / 2, -W / 2]) mb.box(L - 0.04, 0.012, 0.012, shade(c, 0.7), { y: FLOOR + 0.04 + k * h / 3, z });
+      for (let k = 0; k < 4; k++) for (const z of [W / 2 + 0.005, -W / 2 - 0.005]) mb.box(0.03, h + 0.02, 0.02, DARK, { x: -L / 2 + 0.12 + k * (L - 0.24) / 3, y: FLOOR + 0.03, z });
+      if (loaded) {
+        if (cargoId === 'WOOD') for (let k = 0; k < 3; k++) mb.hcyl(0.07, L * 0.86, 7, shade(cc, 1 - k * 0.08), { y: FLOOR + 0.2 + (k % 2) * 0.08, z: -0.14 + k * 0.14 });
+        else heap(mb, L - 0.14, W - 0.1, FLOOR + h - 0.04, cc, fill);
+      }
+      break;
+    }
+    case 'hc_hopper':
+    case 'grain_hopper':
+    case 'cement': {
+      // covered and high-capacity hoppers: sloped ends, hatches along the roof
+      frame(mb, L, eraKind);
+      const base = w === 'grain_hopper' ? 0xc8b890 : w === 'cement' ? 0xb8b4ac : (modern ? 0x4a5a6a : 0x5a4a3a);
+      const c = variantTint(base, V);
+      const h = w === 'hc_hopper' ? 0.5 : 0.44;
+      for (const x of [-L / 3, 0, L / 3]) mb.taper(0.22, W - 0.16, 0.1, W - 0.3, 0.04, shade(c, 0.8), { x, y: FLOOR - 0.13 });   // discharge chutes
+      if (w === 'hc_hopper') {
+        mb.box(L - 0.06, h, W, c, { y: FLOOR });
+        mb.box(L - 0.06, 0.04, W + 0.03, shade(c, 0.7), { y: FLOOR + h });
+        for (let k = 1; k < 6; k++) for (const z of [GZ, -GZ]) mb.box(0.025, h, 0.02, shade(c, 0.7), { x: -L / 2 + k * (L / 6), y: FLOOR, z });
+        if (loaded) heap(mb, L - 0.14, W - 0.06, FLOOR + h, cc, fill);
+      } else {
+        mb.box(L - 0.3, h, W, c, { y: FLOOR });
+        for (const s of [1, -1]) mb.taper(0.14, W, h, W, h * 0.45, c, { x: s * (L / 2 - 0.08), y: FLOOR, flip: s < 0 });   // sloped ends
+        mb.box(L - 0.3, 0.05, W * 0.86, shade(c, 0.9), { y: FLOOR + h });
+        const nH = w === 'cement' ? 3 : 4;
+        for (let k = 0; k < nH; k++) mb.cyl(0.06, 0.06, 0.04, 8, shade(c, 0.75), { x: -L / 2 + 0.3 + k * (L - 0.6) / Math.max(1, nH - 1), y: FLOOR + h + 0.04 });   // hatches
+        for (const z of [GZ + 0.004, -GZ - 0.004]) for (let k = 0; k < 5; k++) mb.box(0.02, h - 0.04, 0.02, shade(c, 0.82), { x: -L / 2 + 0.3 + k * (L - 0.6) / 4, y: FLOOR + 0.02, z });
+        if (loaded) for (const z of [GZ + 0.012, -GZ - 0.012]) mb.box(0.12, 0.05, 0.01, cc, { x: 0, y: FLOOR + h - 0.12, z });
+      }
+      break;
+    }
+    case 'chem_tank': {
+      // pressure tank: white barrel, orange hazard band, walkway and valves
+      frame(mb, L, eraKind);
+      const c = variantTint(0xe4e2dc, V & 1);
+      mb.box(L - 0.1, 0.04, W - 0.1, DARK, { y: FLOOR });
+      mb.hcyl(0.23, L * 0.84, 14, c, { y: FLOOR + 0.27 });
+      for (const f of [-0.5, 0.5]) mb.sphere(0.23, 1, c, { x: f * L * 0.84, y: FLOOR + 0.27, sx: 0.35 });
+      for (const z of [0.232, -0.232]) mb.box(L * 0.78, 0.05, 0.012, 0xd87a2a, { y: FLOOR + 0.25, z });   // hazard band
+      mb.hcyl(0.236, 0.08, 14, cargoId ? cc : 0x888888, { x: L * 0.2, y: FLOOR + 0.27 });
+      mb.cyl(0.1, 0.1, 0.06, 8, DARK, { y: FLOOR + 0.48 });
+      for (const x of [-0.08, 0.08]) mb.cyl(0.02, 0.02, 0.08, 6, 0xd87a2a, { x, y: FLOOR + 0.52 });
+      mb.box(0.16, 0.08, 0.01, 0xe8a030, { x: -L / 4, y: FLOOR + 0.28, z: 0.235 });
+      handrail(mb, -L * 0.3, L * 0.3, FLOOR + 0.52, 0.16);
+      break;
+    }
+    case 'double_stack': {
+      // well car: containers sit low between the bogies, stacked two high
+      mb.box(L, 0.08, W, DARK, { y: FLOOR - 0.02 });
+      bogiesAt(mb, L);
+      buffers(mb, L);
+      mb.box(L * 0.72, 0.06, W - 0.02, 0x4a4f55, { y: 0.1 });                         // well floor
+      for (const z of [W / 2 - 0.02, -W / 2 + 0.02]) mb.box(L * 0.74, 0.16, 0.04, 0x3a3d42, { y: 0.1, z });
+      if (loaded) {
+        const cols = [0x2f6fa8, 0xc0502f, 0x3a8a5a, 0xd8a030, 0x7a7f86, 0x8a3a6a];
+        const tiers = fill >= 2 ? 2 : 1, cl = L * 0.7;
+        for (let k = 0; k < tiers; k++) {
+          const col = cols[(k * 2 + V + (cargoId || '').length) % cols.length];
+          const y = 0.16 + k * 0.44;
+          mb.box(cl - k * 0.1, 0.42, 0.48, col, { y });
+          for (let r = 0; r < 5; r++) mb.box(0.015, 0.4, 0.49, shade(col, 0.8), { x: -cl / 2 + 0.06 + r * (cl - 0.12) / 4, y: y + 0.01 });
+        }
+      }
+      break;
+    }
+    case 'coil': {
+      // coil car: steel coils in cradles under sliding hoods
+      frame(mb, L, eraKind);
+      const c = variantTint(modern ? 0x8a3a2a : 0x5a5f66, V);
+      mb.box(L - 0.04, 0.06, W, shade(c, 0.7), { y: FLOOR });
+      for (const x of [-L * 0.2, L * 0.2]) {
+        mb.box(L * 0.36, 0.3, W - 0.06, c, { x, y: FLOOR + 0.06 });
+        mb.hcyl(0.22, L * 0.36, 10, c, { x, y: FLOOR + 0.32 });   // rounded hood
+      }
+      if (loaded) mb.box(0.1, 0.06, 0.01, cc, { x: 0, y: FLOOR + 0.2, z: W / 2 - 0.02 });
       break;
     }
     case 'brake_van':

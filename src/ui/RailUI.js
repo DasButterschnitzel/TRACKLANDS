@@ -119,7 +119,7 @@ export const RailUIMixin = {
       const deps = g.stations.depots;
       const dep = g.stations.depotById(opts.depotId) || deps.find((d) => g.net.conn[d.tile]) || deps[0];
       b.depotId = dep ? dep.id : null;
-      const m = opts.model || LOCOS.filter((x) => g.progression.locoUnlocked(x)).pop()?.id || 'pioneer';
+      const m = opts.model || LOCOS.filter((x) => g.progression.locoUnlocked(x) && !x.mu && x.duty !== 'shunter').pop()?.id || 'pioneer';
       b.veh = g.trains.defaultConsist(m, dep);
       for (const v of b.veh) if (v.k === 'W') for (const c of WAGONS[v.id].carries) b.cargos.add(c);
     }
@@ -181,21 +181,28 @@ export const RailUIMixin = {
     const cats = ['loco', 'pax', 'freight', 'service'];
     const tabs = `<div class="seg">${cats.map((c) => `<button class="${b.cat === c ? 'on' : ''}" data-act="bldCat" data-arg="${c}">${this.tr('bld_cat_' + c)}</button>`).join('')}</div>`;
     let items = '';
+    // favourites first, then what can be bought, then the locked models; the
+    // search matches names and roles
+    const F = P.favs, q = (b.q || '').trim().toLowerCase();
+    const order = (arr, key, ok) => arr.map((x, i) => ({ x, i, f: F.has(key(x)), ok: ok(x) })).sort((a, c) => (c.f - a.f) || (c.ok - a.ok) || a.i - c.i).map((e) => e.x);
     if (b.cat === 'loco') {
-      items = LOCOS.map((m) => {
-        const ok = P.locoUnlocked(m);
-        return `<button class="pitem ${ok ? '' : 'locked'}" data-act="bldAdd" data-arg="L:${m.id}" ${ok ? '' : 'disabled'} data-tip="${ok ? esc(this.tr('trait_' + m.trait)) : esc(this.locoUnlockText(m))}">
-          ${ok ? '' : icon('lock', 'mini')}<b>${esc(m.name)}</b><small>${m.speed} km/h · ${fmt(m.power)} kW · ${(locoLen(m) / TILE).toFixed(1)} ${this.tr('tiles')}</small><span class="price">${fmt(g.economy.costs.train(m))}●</span></button>`;
+      const list = order(LOCOS.filter((m) => !q || m.name.toLowerCase().includes(q) || this.tr('duty_' + (m.duty || 'mixed')).toLowerCase().includes(q)), (m) => 'L:' + m.id, (m) => P.locoUnlocked(m));
+      items = list.map((m) => {
+        const ok = P.locoUnlocked(m), fav = F.has('L:' + m.id);
+        return `<button class="pitem ${ok ? '' : 'locked'} ${fav ? 'fav' : ''}" data-act="bldAdd" data-arg="L:${m.id}" ${ok ? '' : 'disabled'} data-tip="${ok ? esc(this.tr('duty_' + (m.duty || 'mixed')) + ' · ' + this.tr('trait_' + m.trait)) + (m.mu ? ' · ' + esc(this.tr('mu_badge')) : '') : esc(this.locoUnlockText(m))}">
+          ${ok ? '' : icon('lock', 'mini')}<b>${esc(m.name)}</b><small>${this.tr('duty_' + (m.duty || 'mixed'))}${m.mu ? ' · ' + this.tr('mu_badge') : ''} · ${m.speed} km/h · ${fmt(m.power)} kW · ${(locoLen(m) / TILE).toFixed(1)} ${this.tr('tiles')}</small><span class="price">${fmt(g.economy.costs.train(m))}●</span></button>`;
       }).join('');
     } else {
       const grp = WAGON_GROUPS.find(([k]) => k === b.cat);
-      items = WAGON_IDS.filter(grp[1]).map((id) => {
+      const list = order(WAGON_IDS.filter(grp[1]).filter((id) => !q || this.tr('wag_' + id).toLowerCase().includes(q) || WAGONS[id].carries.some((c) => this.cargoName(c).toLowerCase().includes(q))), (id) => 'W:' + id, (id) => wagonUnlocked(id, R));
+      items = list.map((id) => {
         const w = WAGONS[id];
-        const ok = wagonUnlocked(id, R);
-        return `<button class="pitem ${ok ? '' : 'locked'}" data-act="bldAdd" data-arg="W:${id}" ${ok ? '' : 'disabled'} data-tip="${esc(ok ? this.tr('wag_' + id + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + w.research))}">
+        const ok = wagonUnlocked(id, R), fav = F.has('W:' + id);
+        return `<button class="pitem ${ok ? '' : 'locked'} ${fav ? 'fav' : ''}" data-act="bldAdd" data-arg="W:${id}" ${ok ? '' : 'disabled'} data-tip="${esc(ok ? this.tr('wag_' + id + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + w.research))}">
           ${ok ? '' : icon('lock', 'mini')}<b>${this.tr('wag_' + id)}</b><small>${w.cap ? `${w.cap}× ` : ''}${w.carries.map((c) => cargoIcon(c, 'mini')).join('')}${w.brake ? this.tr('bld_brake') : ''} · ${(w.len / TILE).toFixed(1)} ${this.tr('tiles')}</small><span class="price">${fmt(Math.round(w.cost * g.economy.costs.mul()))}●</span></button>`;
       }).join('');
     }
+    const find = `<div class="bld-find"><input class="inp" type="search" placeholder="${this.tr('bld_search')}" aria-label="${this.tr('bld_search')}" value="${esc(b.q || '')}" data-input="bldQuery"/><button class="btn ghost small" data-act="panel" data-arg="collection">${icon('collection', 'mini')} ${this.tr('bld_catalog')}</button></div><p class="muted small">${this.tr('bld_fav_first')}</p>`;
     // auto build
     const cargoChips = CARGO_IDS.map((c) => `<button class="chip mini ${b.cargos.has(c) ? 'on' : ''}" data-act="bldCargo" data-arg="${c}" data-tip="${this.cargoName(c)}">${cargoIcon(c)}</button>`).join('');
     // templates
@@ -214,7 +221,7 @@ export const RailUIMixin = {
       ${stats}
       <div class="row wrap">${main}${t ? `<button class="btn ghost" data-act="bldDuplicate">${this.tr('bld_duplicate')}</button>` : ''}</div>
       ${t && t.pendingVeh ? `<p class="muted small">${this.tr('bld_pending')}</p>` : ''}
-      <h4>${this.tr('bld_add')}</h4>${tabs}<div class="palette">${items}</div>
+      <h4>${this.tr('bld_add')}</h4>${tabs}${find}<div class="palette">${items}</div>
       <h4>${icon('auto', 'mini')} ${this.tr('bld_auto')}</h4><p class="muted small">${this.tr('bld_auto_desc')}</p><div class="chips wrap">${cargoChips}</div>
       <div class="row wrap"><button class="btn" data-act="bldAuto">${icon('auto')} ${this.tr('bld_auto_btn')}</button><button class="btn ghost" data-act="bldAutoFit">${this.tr('bld_auto_fit')}</button></div>
       <h4>${this.tr('bld_details')}</h4>
@@ -313,7 +320,7 @@ export const RailUIMixin = {
     const rows = [...use.entries()].sort((a, b) => b[1].size - a[1].size).map(([id, set]) => {
       const m = locoModel(id);
       const ts = [...set];
-      const cands = unlocked.filter((x) => x.id !== id).sort((a, b) => b.speed - a.speed);
+      const cands = unlocked.filter((x) => x.id !== id && !!x.mu === !!m.mu).sort((a, b) => b.speed - a.speed);
       const pick = cands.find((x) => x.id === this.fleetPick[id]) || null;
       let cost = 0;
       if (pick) for (const t of ts) cost += g.trains.consistChangeCost(t, (t.pendingVeh || t.veh).map((v) => (v.k === 'L' && v.id === id ? { ...v, id: pick.id } : v))).net;
@@ -622,7 +629,7 @@ export const RailUIMixin = {
       bldCargo: (a) => { const s = b().cargos; if (s.has(a)) s.delete(a); else s.add(a); re(); },
       bldAuto: (a, el, e, fit) => {
         const B = b(), G = g();
-        const lead = B.veh.find((v) => v.k === 'L') || { id: LOCOS.filter((m) => G.progression.locoUnlocked(m)).pop().id };
+        const lead = B.veh.find((v) => v.k === 'L') || { id: LOCOS.filter((m) => G.progression.locoUnlocked(m) && !m.mu && m.duty !== 'shunter').pop().id };
         let maxLen = null;
         if (fit) { const f = this.builderPlatformFit(B.veh); if (f.shortest) maxLen = f.shortest * TILE + 0.6; }
         const t = B.trainId != null ? G.trains.byId(B.trainId) : null;
@@ -731,6 +738,15 @@ export const RailUIMixin = {
     const stop = (el) => { const t = g().trains.byId(+el.dataset.id); return t ? t.route[+el.dataset.i] : null; };
     return {
       bldName: (el) => { if (this.bld) this.bld.name = el.value.slice(0, 28); },
+      // typing keeps the focus: only the palette is redrawn
+      bldQuery: (el) => {
+        if (!this.bld) return;
+        this.bld.q = el.value.slice(0, 30);
+        const pal = document.querySelector('#panel .palette');
+        const html = this.pBuilder();
+        const m = html.match(/<div class="palette">([\s\S]*?)<\/div>\s*<h4>/);
+        if (pal && m) pal.innerHTML = m[1]; else this.refreshPanel();
+      },
       bldLivery: (el) => { if (this.bld) { this.bld.livery = el.value; this.refreshPanel(); } },
       bldDepot: (el) => { if (this.bld) { this.bld.depotId = +el.value; this.refreshPanel(); } },
       stopAct: (el) => { const r = stop(el); if (r) r.act = el.value; this.renderInspector(); },

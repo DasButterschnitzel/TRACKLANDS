@@ -1659,7 +1659,7 @@ export class TrainSystem {
       if (s.inH != null && s.outH != null && s.inH !== s.outH) {
         const tt = turnOf(s.inH, s.outH);
         let f = tt === 1 ? (tier === 3 ? 0.92 : 0.8) : tt === 2 ? (tier === 3 ? 0.72 : 0.5) : 0.22;
-        f = 1 - (1 - f) * (1 + fx.curvePenalty);
+        f = 1 - (1 - f) * (1 + fx.curvePenalty) * (st.model.trait === 'tilting' ? 0.5 : 1);
         if (s.jn) f *= Math.min(1, 0.75 * (1 + (fx.junctionSpeed || 0)));
         lim *= f;
       }

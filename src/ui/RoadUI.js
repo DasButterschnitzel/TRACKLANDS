@@ -27,15 +27,20 @@ export const RoadUIMixin = {
       <div class="card stype"><b>${this.tr('stype_' + s.type)}</b><small>${this.tr('stype_stats', { bays: P.bays, cap: fmt(g.stations.storage(s)), r: P.radius, b: Math.round(P.board * 100) })}</small></div>${up}
       ${facs.length ? `<h5>${this.tr('stop_facilities')}</h5><div class="facgrid">${facs.map((f) => { const n = (s.facilities || []).filter((x) => x === f).length, F = STOP_FACILITIES[f], e = R.facilityError(s, f); return `<button class="chip mini ${n ? 'on' : ''}" data-act="stopFac" data-arg="${s.id}:${f}" ${e ? 'disabled' : ''} data-tip="${this.tr('sfac_' + f + '_desc')}"><b>${this.tr('sfac_' + f)}${F.max > 1 ? ` ${n}/${F.max}` : n ? ' ✓' : ''}</b><small>${n >= F.max ? this.tr('built') : fmt(R.facilityCost(f)) + ' ●'}</small></button>`; }).join('')}</div>` : ''}`;
   },
+  // road vehicle models with the player's favourites first (catalogue stars)
+  favFirst(models) {
+    const F = this.game.progression.favs;
+    return models.map((m, i) => ({ m, i, f: F.has('R:' + m.id) })).sort((a, b) => (b.f - a.f) || a.i - b.i).map((e) => e.m);
+  },
   // a bus garage: buy, store, service and send out road vehicles
   iGarage(s) {
     const g = this.game, R = g.roads, P = g.progression;
     const stored = R.vehicles.filter((v) => v.state === 'stored' && !v.owner);
     const here = stored.filter((v) => v.tile === s.tile);
-    const models = ROAD_VEHICLES.filter((m) => (m.kind === 'bus' || m.kind === 'truck') && !m.retired);
+    const models = this.favFirst(ROAD_VEHICLES.filter((m) => (m.kind === 'bus' || m.kind === 'truck') && !m.retired));
     const buy = models.map((m) => {
       const locked = P.level < m.level, price = Math.round(m.price * g.difficulty.costMul);
-      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${esc(m.name)}</b> <small>${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
+      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
     }).join('');
     return `<p class="muted">${this.tr('garage_desc')}</p>
       <h4>${this.tr('garage_stored', { n: here.length })}</h4>
@@ -69,11 +74,11 @@ export const RoadUIMixin = {
     const rail = s.rail != null ? g.stations.byId(s.rail) : null;
     const stock = Object.keys(s.stock).filter((c) => s.stock[c] >= 1).map((c) => this.cargoRow(c, s.stock[c], g.stations.storage(s))).join('');
     const vehs = R.vehicles.filter((v) => v.stops.includes(s.id));
-    const models = ROAD_VEHICLES.filter((m) => m.kind === s.kind);
+    const models = this.favFirst(ROAD_VEHICLES.filter((m) => m.kind === s.kind));
     const buy = models.map((m) => {
       const locked = P.level < m.level, price = Math.round(m.price * g.difficulty.costMul);
       const caps = Object.keys(roadCaps(m)).slice(0, 4).map((c) => cargoIcon(c)).join('');
-      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
+      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
     }).join('');
     return `${this.stopActions(s)}<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
       <h4>${this.tr('stop_serves')}</h4>

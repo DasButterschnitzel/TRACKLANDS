@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
 import { ROAD_COSTS, ROAD_VEHICLES,
   CARGO, CARGO_IDS, bestModes, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
-  TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
+  TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, locoResearch, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
 import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
@@ -27,6 +27,7 @@ import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { LineUIMixin } from './LineUI.js';
 import { TransportUIMixin } from './TransportUI.js';
+import { CatalogUIMixin } from './CatalogUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
@@ -612,7 +613,7 @@ export class UI {
       research: { title: 'menu_research', render: () => this.pResearch(), after: () => this.drawResearchLines(), wide: true },
       objectives: { title: 'menu_objectives', render: () => this.pObjectives(), live: true },
       contracts: { title: 'menu_contracts', render: () => this.pContracts(), live: true },
-      collection: { title: 'menu_collection', render: () => this.pCollection() },
+      collection: { title: 'menu_collection', render: () => this.pCatalog(), wide: true },
       map: { title: 'menu_map', render: () => this.pMap(), after: () => this.drawMinimap(), live: true },
       stats: { title: 'menu_stats', render: () => this.pStats(), live: true },
       finance: { title: 'menu_finance', render: () => this.pFinance(), live: true, wide: true },
@@ -734,7 +735,7 @@ export class UI {
   // what a research node unlocks: locomotives, wagons, track types, signals
   researchUnlocks(id) {
     const out = [];
-    for (const m of LOCOS) if (ERA_RESEARCH[m.era] === id) out.push({ ic: 'train', t: m.name });
+    for (const m of LOCOS) if (locoResearch(m) === id) out.push({ ic: 'train', t: m.name });
     for (const w in WAGONS) if (WAGONS[w].research === id) out.push({ ic: 'builder', t: this.tr('wag_' + w) });
     for (const tt of TRACK_TIERS) if (tt.research === id) out.push({ ic: 'track', t: this.tr('tier_' + tt.id) });
     const sig = { block_signals: 'block', path_signals: 'path', one_way_signals: 'oneway' }[id];
@@ -915,26 +916,15 @@ export class UI {
   }
 
   locoUnlockText(m) {
-    const req = ERA_RESEARCH[m.era];
+    const req = locoResearch(m);
     const parts = [this.tr('unlock_level', { n: m.level })];
     if (req) parts.push(this.tr('res_' + req));
     return parts.join(' + ');
   }
 
-  pCollection() {
-    const g = this.game, P = g.progression;
-    const cards = LOCOS.map((m) => {
-      const unlocked = P.locoUnlocked(m), owned = P.owned.has(m.id);
-      const fleet = g.trains.trains.filter((t) => t.model === m.id);
-      const up = fleet.length ? Math.max(...fleet.map((t) => Object.values(t.upg).reduce((a, b) => a + b, 0))) : 0;
-      return `<div class="lcard ${unlocked ? '' : 'locked'} rar-${m.rarity}">
-        <img alt="" src="${this.locoPreview(m.id, !unlocked)}" loading="lazy"/>
-        <div class="lc-head"><b>${esc(m.name)}</b><span class="tag">${this.tr('era_' + m.era)}</span></div>
-        <div class="lc-sub"><span class="tag">${this.tr('role_' + m.role)}</span><span class="tag rar">${this.tr('rar_' + m.rarity)}</span>${m.electric ? `<span class="tag">${this.tr(m.maglev ? 'needs_hsr' : 'needs_electric')}</span>` : ''}</div>
-        <p class="trait">${icon('star')}<b>${this.tr('trait_' + m.trait)}</b> — ${this.tr('trait_' + m.trait + '_desc')}</p>
-        ${this.statBars(m)}
-        <div class="lc-foot">${owned ? `<span class="good">${icon('check')} ${this.tr('owned')} ×${fleet.length}${up ? ` · ${this.tr('upgrades')} ${up}` : ''}</span>` : unlocked ? `<span>${fmt(g.economy.costs.train(m))} ●</span>` : `<span class="muted">${icon('lock')} ${this.locoUnlockText(m)}</span>`}</div></div>`;
-    }).join('');
+  // liveries, station styles and decorations (catalogue tab)
+  pCosmetics() {
+    const P = this.game.progression;
     const liv = LIVERIES.map((l) => {
       const ok = P.isUnlocked(l.unlock);
       const c = '#' + new THREE.Color(l.body ?? 0x2f6b4a).getHexString(), t = '#' + new THREE.Color(l.trim).getHexString();
@@ -946,8 +936,7 @@ export class UI {
       return `<button class="swatch ${P.defaultStationStyle === s.id ? 'on' : ''} ${ok ? '' : 'locked'}" ${ok ? '' : 'disabled'} data-act="defaultStyle" data-arg="${s.id}" data-tip="${ok ? '' : this.unlockReqText(s.unlock)}"><i style="background:linear-gradient(180deg, ${r} 45%, ${c} 45%)"></i><span>${this.tr('sty_' + s.id)}</span></button>`;
     }).join('');
     const dec = DECORATIONS.map((d) => `<span class="tag ${P.isUnlocked(d.unlock) ? '' : 'locked'}">${P.isUnlocked(d.unlock) ? '' : icon('lock')}${this.tr('dec_' + d.id)}</span>`).join('');
-    return `<p class="muted">${this.tr('collection_desc', { n: P.owned.size, total: LOCOS.length })}</p><div class="lgrid">${cards}</div>
-      <h3>${this.tr('liveries')}</h3><p class="muted">${this.tr('liveries_desc')}</p><div class="swatches">${liv}</div>
+    return `<h3>${this.tr('liveries')}</h3><p class="muted">${this.tr('liveries_desc')}</p><div class="swatches">${liv}</div>
       <h3>${this.tr('station_styles')}</h3><div class="swatches">${sty}</div>
       <h3>${this.tr('decorations')}</h3><div class="tags">${dec}</div>`;
   }
@@ -1339,6 +1328,7 @@ export class UI {
       ...this.roadActions(),
       ...this.lineActions(),
       ...this.transportActions(),
+      ...this.catalogActions(),
       ...this.industryActions(),
       ...this.newsActions(),
       ...this.driverActions(),
@@ -1403,6 +1393,7 @@ export class UI {
       ...this.driverInputs(),
       ...this.lineInputs(),
       ...this.transportInputs(),
+      ...this.catalogInputs(),
       companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
@@ -1437,4 +1428,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);
+Object.assign(UI.prototype, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);

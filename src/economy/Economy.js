@@ -2,7 +2,7 @@
 // random world events, daily challenges and the recovery grant.
 import { cheb, RNG, hashStr, dateKey, tx, tz } from '../util.js';
 import {
-  CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit } from '../config.js';
+  CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit, CARGO_CLASS } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
 
 export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
@@ -91,6 +91,9 @@ export class Economy {
       if (trait === 'long_hauler' && dist > 25) mul += 0.15;
       if (trait === 'heavy_freight' && HEAVY_CARGO.includes(c)) mul += 0.15;
       if (trait === 'express' && (isPax || isMail)) mul += 0.1;
+      if (trait === 'intermodal' && CARGO_CLASS[c] === 'valuable') mul += 0.15;
+      // sleeping cars: long journeys pay more
+      if (isPax && train._st.longRev && dist > 25) mul += train._st.longRev;
       // premium / observation / specialised wagons
       if (train._st.revMul && train._st.revMul[c]) mul += train._st.revMul[c] * Math.min(1, (train._st.caps[c] || 0) ? 1 : 0);
       if (isPax && train._st.trainRev) mul += train._st.trainRev;

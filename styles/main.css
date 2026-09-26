@@ -920,3 +920,35 @@ h4.psev.bad { color: #9a3a36; }
 .card.identity p { margin: 4px 0 6px; }
 .card.identity .kv-list button.link { background: none; border: 0; padding: 0; color: var(--teal2); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .fit { display: block; margin: 0 0 4px 28px; } .fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* ---------- vehicle catalogue (Phase 6) ---------- */
+.cat-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0; }
+.cat-filters input.inp { grid-column: 1 / -1; min-height: var(--touch-min); }
+.cat-filters select { min-height: var(--touch-min); }
+.cat-filters .chips { grid-column: 1 / -1; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.cat-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 4px; font-size: .9em; min-width: 0; }
+.cat-card.locked img { filter: grayscale(.7) brightness(1.05); }
+.cat-top { position: relative; }
+.cat-top img { width: 100%; aspect-ratio: 200/110; background: linear-gradient(180deg, #e8f2f6, #f6f1e7); border-radius: 10px; display: block; }
+.cat-fav { position: absolute; top: 4px; right: 4px; background: rgba(255,255,255,.85); color: #b8b2a6; min-width: var(--touch-min); min-height: var(--touch-min); }
+.cat-fav.on { color: var(--gold); }
+.cat-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 6px; }
+.cat-stats div { display: flex; flex-direction: column; min-width: 0; }
+.cat-stats small { color: var(--ink2); font-size: .74em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-stats b { font-size: .86em; white-space: nowrap; }
+.cat-carries { display: flex; flex-wrap: wrap; gap: 2px; }
+.cat-card .lc-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: auto; }
+.cat-card .chk { opacity: 1; min-height: var(--touch-min); }
+.warn-t { color: #a8641a; }
+.cat-tray { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--panel, #fbf8f2); border-top: 1px solid var(--line); padding: 8px 0; margin-top: 8px; }
+.cat-tray span { flex: 1; font-size: .9em; }
+.cmp-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.cmp { border-collapse: collapse; width: 100%; font-size: .88em; }
+table.cmp th, table.cmp td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; vertical-align: top; }
+table.cmp thead th, table.cmp tr:first-child th { vertical-align: bottom; }
+table.cmp tr:first-child th img { width: 120px; max-width: 100%; aspect-ratio: 200/110; border-radius: 8px; background: linear-gradient(180deg, #e8f2f6, #f6f1e7); display: block; }
+table.cmp th[scope=row] { color: var(--ink2); font-weight: 600; white-space: nowrap; }
+.pitem.fav b::before { content: '★ '; color: var(--gold); }
+.bld-find { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bld-find input { flex: 1; min-width: 120px; min-height: var(--touch-min); }
