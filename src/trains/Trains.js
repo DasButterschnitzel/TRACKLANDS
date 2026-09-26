@@ -260,9 +260,14 @@ export class TrainSystem {
   // can the body (at its current length) be held on the existing trail?
   bodyFits(t) {
     const net = this.net, L = this.trainLength(t);
-    for (let k = this.stepAt(t, t.s); k >= 0; k--) {
+    // the track behind must reach back the whole length and still exist
+    // (track removed behind a short train is not there for a longer one)
+    if (t.steps.length && t.steps[0].s0 > t.s - L + 0.05) return false;
+    const head = this.stepAt(t, t.s);
+    for (let k = head; k >= 0; k--) {
       const st = t.steps[k];
       if (st.s1 < t.s - L - 0.05) break;
+      if (!net.conn[st.tile] || (st.inH != null && !net.hasDir(st.tile, opp(st.inH))) || (k < head && st.outH != null && !net.hasDir(st.tile, st.outH))) return false;
       if (!net.canReserve(st.keys, t.id)) return false;
       if (st.rid >= 0 && !net.runLockOk(st.rid, net.runSense(st), t.id)) return false;
     }
