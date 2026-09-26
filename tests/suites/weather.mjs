@@ -65,7 +65,8 @@ export async function run({ browser, base }) {
     const top = (w) => {
       E.weather = w; E.nextWeather = 1e6; E.effects.speed = 1; E.effects.accel = 1;
       let vmax = 0;
-      for (let i = 0; i < 30 * 150; i++) { g.tick(1 / 30); vmax = Math.max(vmax, t.v || 0); }
+      // (the weather's effect eases in: only the top speed once it has settled counts)
+      for (let i = 0; i < 30 * 150; i++) { g.tick(1 / 30); if (i > 30 * 40) vmax = Math.max(vmax, t.v || 0); }
       return vmax;
     };
     out.vClear = top('clear');

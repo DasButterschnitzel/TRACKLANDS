@@ -41,9 +41,21 @@ function base(kind, a, b, c, d) {
 }
 
 export class ModelBuilder {
-  constructor() { this.parts = [[], []]; }
+  // lod: { minSize, noGlow } builds a simplified version of the same model
+  // for distant views: parts smaller than minSize (windows, trims, railings)
+  // and, with noGlow, the glowing parts are left out
+  constructor(lod = null) { this.parts = [[], []]; this.lod = lod; }
 
   add(geo, color, o = {}) {
+    if (this.lod) {
+      if (o.glow && this.lod.noGlow) return this;
+      if (this.lod.minSize) {
+        if (!geo.boundingBox) geo.computeBoundingBox();
+        const b = geo.boundingBox;
+        const ext = Math.max((b.max.x - b.min.x) * Math.abs(o.sx ?? 1), (b.max.y - b.min.y) * Math.abs(o.sy ?? 1), (b.max.z - b.min.z) * Math.abs(o.sz ?? 1));
+        if (ext < this.lod.minSize) return this;
+      }
+    }
     _e.set(o.rx || 0, o.ry || 0, o.rz || 0);
     _q.setFromEuler(_e);
     _p.set(o.x || 0, o.y || 0, o.z || 0);

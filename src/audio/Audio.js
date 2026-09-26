@@ -2,6 +2,28 @@
 // big networks never turn into noise, a continuous sound for the nearest
 // trains, and background music from creator-supplied files (MusicManager).
 import { MusicManager } from './MusicManager.js';
+import { TILE, tileCX, tileCZ } from '../util.js';
+
+// industry ambience by kind: filtered noise loop (gain, filter) and a low hum,
+// plus a typical one-shot now and then
+const AMB_PROFILE = {
+  mine: { noise: 0.05, freq: 160, filter: 'lowpass', hum: 0.004, humF: 42, shot: 'clank' },
+  factory: { noise: 0.03, freq: 900, filter: 'bandpass', hum: 0.008, humF: 55, shot: 'clank' },
+  heavy: { noise: 0.05, freq: 260, filter: 'lowpass', hum: 0.012, humF: 48, shot: 'clank' },
+  port: { noise: 0.05, freq: 520, filter: 'lowpass', hum: 0.002, humF: 70, shot: 'gull' },
+  farm: { noise: 0.018, freq: 700, filter: 'lowpass', hum: 0, humF: 0, shot: 'moo' },
+  forest: { noise: 0.02, freq: 1400, filter: 'highpass', hum: 0, humF: 0, shot: null },
+  hum: { noise: 0.008, freq: 3000, filter: 'highpass', hum: 0.01, humF: 100, shot: null },
+};
+export function industryKind(type) {
+  if (['MINE', 'COAL_MINE', 'QUARRY', 'COPPER_MINE', 'SAND_PIT', 'CLAY_PIT', 'OIL_FIELD'].includes(type)) return 'mine';
+  if (['STEEL_MILL', 'POWER_PLANT', 'REFINERY', 'GAS_PLANT', 'CHEM_PLANT', 'CEMENT_WORKS'].includes(type)) return 'heavy';
+  if (['PORT', 'FISHERY'].includes(type)) return 'port';
+  if (['FARM', 'LIVESTOCK_FARM', 'DAIRY_FARM', 'ORCHARD'].includes(type)) return 'farm';
+  if (type === 'FOREST') return 'forest';
+  if (type === 'DATA_CENTER') return 'hum';
+  return 'factory';
+}
 
 export class AudioEngine {
   constructor(game) {
@@ -174,6 +196,20 @@ export class AudioEngine {
       case 'announce': [659, 523, 784].forEach((f, k) => this.tone(f, 0.45, { gain: 0.03 * v, when: k * 0.28, rev: 0.5 })); break;
       case 'busEngine': case 'truckEngine': this.tone(name === 'truckEngine' ? 58 : 72, 0.8, { type: 'sawtooth', gain: 0.02 * v, attack: 0.1, glide: name === 'truckEngine' ? 90 : 110 }); this.noiseHit(0.6, { freq: 200, q: 0.8, type: 'lowpass', gain: 0.04 * v }); break;
       case 'tramBell': for (let k = 0; k < 2; k++) this.tone(1760, 0.3, { type: 'triangle', gain: 0.03 * v, when: k * 0.22, rev: 0.3 }); break;
+      // bus doors: an air hiss, the leaves sliding, a soft chime
+      case 'busDoor': this.noiseHit(0.32, { freq: 3600, q: 1.2, gain: 0.03 * v, attack: 0.02 }); this.noiseHit(0.25, { freq: 900, q: 2, gain: 0.025 * v, when: 0.12 }); this.tone(988, 0.1, { gain: 0.012 * v, when: 0.4 }); break;
+      case 'airBrake': this.noiseHit(0.5, { freq: 4200, q: 2.5, gain: 0.03 * v, attack: 0.01 }); this.noiseHit(0.2, { freq: 1500, q: 1, gain: 0.02 * v, when: 0.05 }); break;
+      // horns: a pitch per call so a street never sounds like one car
+      case 'hornCar': { const f = (opts.pitch || 1) * (400 + Math.random() * 120); this.tone(f, 0.18, { type: 'square', gain: 0.012 * v }); if (Math.random() < 0.5) this.tone(f, 0.12, { type: 'square', gain: 0.01 * v, when: 0.24 }); break; }
+      case 'hornBus': { const f = (opts.pitch || 1) * (230 + Math.random() * 40); this.tone(f, 0.45, { type: 'sawtooth', gain: 0.014 * v, attack: 0.02 }); this.tone(f * 1.26, 0.45, { type: 'sawtooth', gain: 0.01 * v, attack: 0.02 }); break; }
+      case 'heavyTruck': this.tone(46, 1.1, { type: 'sawtooth', gain: 0.025 * v, attack: 0.15, glide: 70 }); this.noiseHit(0.9, { freq: 160, q: 0.7, type: 'lowpass', gain: 0.06 * v }); for (let k = 0; k < 3; k++) this.noiseHit(0.05, { freq: 300, q: 2, gain: 0.03 * v, when: 0.5 + k * 0.07 }); break;
+      // pedestrian crossing: the steady ticking beeps of the push-button box
+      case 'pedCrossing': for (let k = 0; k < 6; k++) this.tone(2400, 0.03, { type: 'square', gain: 0.008 * v, when: k * 0.16 }); break;
+      case 'crowd': for (let k = 0; k < 5; k++) this.noiseHit(0.22, { freq: 500 + Math.random() * 900, q: 3, gain: 0.012 * v, when: k * 0.09 + Math.random() * 0.05 }); break;
+      case 'construction': for (let k = 0; k < 3; k++) { this.tone(1900 + Math.random() * 400, 0.05, { type: 'triangle', gain: 0.02 * v, when: k * 0.28 }); this.noiseHit(0.05, { freq: 2600, q: 5, gain: 0.02 * v, when: k * 0.28 }); } break;
+      case 'clank': this.noiseHit(0.08, { freq: 1200 + Math.random() * 600, q: 6, gain: 0.03 * v }); this.tone(310 + Math.random() * 80, 0.18, { type: 'triangle', gain: 0.012 * v, when: 0.01 }); break;
+      case 'gull': { const f = 1600 + Math.random() * 500; for (let k = 0; k < 3; k++) this.tone(f, 0.14, { gain: 0.01 * v, when: k * 0.2, glide: f * 0.72 }); break; }
+      case 'moo': this.tone(140 + Math.random() * 30, 0.9, { type: 'sawtooth', gain: 0.01 * v, attack: 0.12, glide: 110 }); break;
       case 'shipHorn': this.tone(98, 1.8, { type: 'sawtooth', gain: 0.03 * v, attack: 0.2, rev: 0.6 }); break;
       case 'takeoff': case 'landing': this.noiseHit(2.4, { freq: name === 'takeoff' ? 900 : 600, q: 0.7, gain: 0.05 * v, attack: 0.6 }); break;
       case 'cityGrow': this.tone(523, 0.3, { type: 'triangle', gain: 0.02 * v, rev: 0.4 }); this.tone(784, 0.4, { type: 'triangle', gain: 0.02 * v, when: 0.1, rev: 0.4 }); break;
@@ -232,6 +268,84 @@ export class AudioEngine {
     this.rainN = mk(2400, 'highpass', 0.4);
     this.hum = mk(90, 'lowpass', 2);
     this.birdT = 2;
+    // world ambience: a fixed pool of loops (created once, only their gains
+    // and filters move): town traffic, station crowds, the nearest industry
+    this.trafficL = mk(420, 'lowpass', 0.7);
+    this.crowdL = mk(900, 'bandpass', 0.9);
+    this.industryL = mk(300, 'lowpass', 1);
+    const o = c.createOscillator(), og = c.createGain();
+    o.type = 'sawtooth'; o.frequency.value = 55; og.gain.value = 0;
+    const of = c.createBiquadFilter(); of.type = 'lowpass'; of.frequency.value = 180;
+    o.connect(of).connect(og).connect(this.amb); o.start();
+    this.industryHum = { o, g: og };
+    this.ambT = 0; this.oneShotT = 3;
+    this.scene = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0 };
+  }
+
+  // What is around the camera, measured a few times a second: cars on the
+  // town streets, waiting passengers at stations and stops, buildings going
+  // up, the nearest industry and its kind. Everything fades with distance
+  // and with zooming out, so a large city is subtly alive up close and the
+  // map view stays quiet.
+  sceneAround() {
+    const g = this.game.g, out = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0 };
+    if (!g || !g.camera) return out;
+    const cam = g.camera, vs = cam.viewSize;
+    out.zoom = Math.max(0, Math.min(1, (42 - vs) / 30));
+    if (out.zoom <= 0) return out;
+    const T = g.traffic;
+    if (T) {
+      let n = 0, j = 0;
+      for (const car of T.cars) {
+        if (car.from == null || car.from < 0) continue;
+        const v = g.near({ x: tileCX(car.from), z: tileCZ(car.from) });
+        if (v <= 0) continue;
+        n += v;
+        if (car.wait > 1.5) j += v;
+      }
+      out.traffic = Math.min(1, n / 25); out.jam = Math.min(1, j / 6);
+      for (const tile of T.lights.keys()) out.lights = Math.max(out.lights, g.near({ x: tileCX(tile), z: tileCZ(tile) }));
+    }
+    const wait = (s) => (s.stock && s.stock.PASSENGERS) || 0;
+    for (const s of g.stations.list) if (s) out.crowd += g.near({ x: tileCX(s.tile), z: tileCZ(s.tile) }) * Math.min(80, wait(s));
+    if (g.roads) for (const s of g.roads.stops) if (!s.owner) out.crowd += g.near({ x: tileCX(s.tile), z: tileCZ(s.tile) }) * Math.min(40, wait(s)) * 0.6;
+    out.crowd = Math.min(1, out.crowd / 120);
+    if (g.towns && g.towns.animating) for (const b of g.towns.animating) out.build = Math.max(out.build, g.near({ x: b.pos[0], z: b.pos[2] }));
+    if (g.industries) for (const i of g.industries.list) {
+      const v = g.near({ x: (i.x + 1) * TILE, z: (i.z + 1) * TILE });
+      if (v > out.indV) { out.indV = v; out.ind = i; }
+    }
+    return out;
+  }
+  updateAmbience(dt) {
+    const t = this.ctx.currentTime;
+    this.ambT -= dt;
+    if (this.ambT <= 0) {
+      this.ambT = 0.25;
+      // (a half-built world must never break the frame: keep the last scene)
+      try { const sc = this.sceneAround(); for (const k in sc) if (typeof sc[k] === 'number' && !isFinite(sc[k])) sc[k] = 0; this.scene = sc; } catch (e) { this.scene.zoom = 0; }
+    }
+    const S = this.scene, z = S.zoom;
+    const pulse = 0.75 + 0.25 * Math.sin(t * 0.7) * Math.sin(t * 0.23);
+    this.trafficL.g.gain.setTargetAtTime(0.05 * S.traffic * z * pulse, t, 0.6);
+    this.trafficL.f.frequency.setTargetAtTime(320 + 260 * S.traffic, t, 0.6);
+    this.crowdL.g.gain.setTargetAtTime(0.035 * S.crowd * z * (0.8 + 0.2 * Math.sin(t * 1.9)), t, 0.5);
+    const prof = S.ind ? AMB_PROFILE[industryKind(S.ind.type)] : null;
+    const iv = prof ? S.indV * z : 0;
+    this.industryL.g.gain.setTargetAtTime(prof ? prof.noise * iv : 0, t, 0.6);
+    if (prof) { this.industryL.f.frequency.setTargetAtTime(prof.freq, t, 0.4); this.industryL.f.type = prof.filter; }
+    this.industryHum.g.gain.setTargetAtTime(prof ? prof.hum * iv : 0, t, 0.6);
+    if (prof && prof.humF) this.industryHum.o.frequency.setTargetAtTime(prof.humF, t, 0.5);
+    // occasional one-shots from the same scene (the voice budget still applies)
+    this.oneShotT -= dt;
+    if (this.oneShotT > 0 || z <= 0) return;
+    this.oneShotT = 1.2 + Math.random() * 2.5;
+    const r = Math.random();
+    if (prof && iv > 0.3 && prof.shot && r < 0.4) this.play(prof.shot, { vol: iv, world: true });
+    else if (S.build > 0.3 && r < 0.6) this.play('construction', { vol: S.build * z, world: true });
+    else if (S.jam > 0.25 && r < 0.75) this.play(Math.random() < 0.3 ? 'hornBus' : 'hornCar', { vol: Math.min(1, S.jam) * z * 0.8, world: true });
+    else if (S.lights > 0.5 && z > 0.5 && r < 0.9) this.play('pedCrossing', { vol: S.lights * z * 0.7, world: true, dur: 1 });
+    else if (S.crowd > 0.3) this.play('crowd', { vol: S.crowd * z * 0.8, world: true });
   }
 
   update(dt) {
@@ -255,6 +369,7 @@ export class AudioEngine {
         for (let k = 0; k < n; k++) this.tone(base, 0.08, { gain: 0.012, when: k * 0.11, glide: base * (1.2 + Math.random() * 0.3), dest: this.amb });
       }
     }
+    if (this.trafficL) this.updateAmbience(dt);
     this.updateTrainSound(dt);
     this.updateMusic();
   }

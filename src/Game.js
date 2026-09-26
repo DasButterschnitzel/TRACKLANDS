@@ -372,14 +372,18 @@ export class Game {
     E.on('buildingDemolished', (town, info) => { const v = this.near({ x: tileCX(info.b.tile), z: tileCZ(info.b.tile) }); A.play('demolish', { vol: Math.max(0.4, v) }); });
     E.on('roadDelivery', (d) => {
       const x = tileCX(d.stop.tile), z = tileCZ(d.stop.tile), v = this.near({ x, z });
-      if (v > 0.1) { ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin'); A.play(d.stop.kind === 'bus' ? 'doors' : 'truckEngine', { vol: v * 0.7, world: true }); }
+      if (v > 0.1) {
+        ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin');
+        if (d.stop.kind === 'bus') { A.play('airBrake', { vol: v * 0.5, world: true }); A.play('busDoor', { vol: v * 0.7, world: true }); } else A.play('truckEngine', { vol: v * 0.7, world: true });
+      }
     });
     // trams ring, ships sound their horn, aircraft take off and land (near the camera)
     const rvSnd = (v, dep) => {
       const o = this.roads.vehPos(v, {}), vol = this.near({ x: o.x, z: o.z });
       if (vol < 0.1) return;
       const k = roadModel(v.model).kind;
-      const name = k === 'tram' ? 'tramBell' : k === 'dock' ? 'shipHorn' : k === 'airport' ? (dep ? 'takeoff' : 'landing') : k === 'bus' ? 'busEngine' : 'truckEngine';
+      const heavy = k === 'truck' && /dump|logging|tanker/.test(v.model);
+      const name = k === 'tram' ? 'tramBell' : k === 'dock' ? 'shipHorn' : k === 'airport' ? (dep ? 'takeoff' : 'landing') : k === 'bus' ? 'busEngine' : heavy ? 'heavyTruck' : 'truckEngine';
       A.play(name, { vol: vol * 0.7, world: true, dur: k === 'airport' ? 2 : 0.8 });
     };
     E.on('rvDepart', (v) => rvSnd(v, true));

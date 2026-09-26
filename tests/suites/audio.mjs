@@ -40,7 +40,7 @@ export async function run({ browser, base }) {
     // voice budget and sound effect names
     const v = await page.evaluate(() => {
       const A = window.__tracklands.audio, bad = [];
-      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error']) {
+      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error', 'busDoor', 'airBrake', 'hornCar', 'hornBus', 'heavyTruck', 'pedCrossing', 'crowd', 'construction', 'clank', 'gull', 'moo']) {
         try { A.lastPlay = {}; A.voices = []; A.play(n); } catch (e) { bad.push(n + ': ' + e.message); }
       }
       A.voices = []; A.lastPlay = {};
@@ -60,6 +60,28 @@ export async function run({ browser, base }) {
       return { kind: t._st.model.kind, chuff: A.chuffT != null, voice: !!A.trainVoice, joints: A.jointT != null };
     });
     check(tsound.joints && (tsound.kind.startsWith('steam') ? tsound.chuff : tsound.voice), `nearest train sounds (${tsound.kind}: exhaust ${tsound.chuff}, engine ${tsound.voice}, rail joints ${tsound.joints})`);
+    // ambience around the camera: a busy street, waiting passengers, the
+    // nearest industry by kind, silent when zoomed out; the loops are a
+    // fixed pool (the same nodes before and after)
+    const amb = await page.evaluate(async () => {
+      const g = window.__tracklands.game, A = window.__tracklands.audio, { industryKind } = await import('./src/audio/Audio.js');
+      const pool = [A.trafficL, A.crowdL, A.industryL, A.industryHum];
+      const t = g.towns.list.slice().sort((a, b) => b.pop - a.pop)[0];
+      for (let i = 0; i < 90; i++) g.tick(1 / 30);
+      g.camera.target.set((t.x + 0.5) * 2, 0, (t.z + 0.5) * 2); g.camera.viewSize = 12;
+      const st = g.stations.list.find(Boolean); if (st) st.stock.PASSENGERS = 60;
+      A.ambT = 0; A.update(1 / 30);
+      const town = { ...A.scene, ind: A.scene.ind && A.scene.ind.type };
+      const mine = g.industries.list.find((i) => industryKind(i.type) === 'mine') || g.industries.list[0];
+      g.camera.target.set((mine.x + 1) * 2, 0, (mine.z + 1) * 2);
+      A.ambT = 0; A.update(1 / 30);
+      const near = { ind: A.scene.ind && A.scene.ind.type, v: A.scene.indV };
+      g.camera.viewSize = 70; A.ambT = 0; A.update(1 / 30);
+      const far = A.scene.zoom;
+      const same = [A.trafficL, A.crowdL, A.industryL, A.industryHum].every((x, i) => x === pool[i]);
+      return { town, near, mineType: mine.type, kind: industryKind(mine.type), far, same };
+    });
+    check(amb.town.traffic > 0 && amb.near.ind === amb.mineType && amb.near.v > 0.8 && amb.far === 0 && amb.same, `ambience: town street traffic ${amb.town.traffic.toFixed(2)}, crowd ${amb.town.crowd.toFixed(2)}, next to a ${amb.mineType} the ${amb.kind} loop, zoomed out silent, pooled loops`);
     if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
     await ctx.close();
   }

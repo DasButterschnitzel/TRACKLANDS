@@ -32,6 +32,7 @@ class InstancePool {
     this.mesh.frustumCulled = false;
     this.owners = [];
     this.cap = cap;
+    this.hidden = false;   // (a detail layer switched off at a distance)
     this._m = new THREE.Matrix4(); this._c = new THREE.Color();
     this.mesh.setColorAt(0, this._c.set(0xffffff));
   }
@@ -39,7 +40,7 @@ class InstancePool {
     if (this.mesh.count >= this.cap) return -1;
     const i = this.mesh.count++;
     this.owners[i] = owner;
-    this.mesh.visible = true;
+    this.mesh.visible = !this.hidden;
     return i;
   }
   remove(owner) {
@@ -56,7 +57,7 @@ class InstancePool {
     }
     this.owners.length = last;
     this.mesh.count = last;
-    this.mesh.visible = last > 0;
+    this.mesh.visible = last > 0 && !this.hidden;
     owner[key] = -1;
     this.dirty();
   }
@@ -64,8 +65,8 @@ class InstancePool {
   dirty() { this.mesh.instanceMatrix.needsUpdate = true; if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true; }
 }
 
-function buildArch(name) {
-  const w = new ModelBuilder(), r = new ModelBuilder();
+function buildArch(name, lod = null) {
+  const w = new ModelBuilder(lod), r = new ModelBuilder(lod);
   const win = (mb, x, y, z, ry = 0, sx = 0.13, sy = 0.14) => mb.box(sx, sy, 0.02, GL, { x, y, z, ry, glow: true });
   switch (name) {
     case 'cottage':
@@ -364,11 +365,18 @@ export class TownSystem {
     game.scene.add(this.group);
     this.pools = {};
     this.roofPools = {};
+    // building LOD by zoom (the camera is orthographic: zoom is distance):
+    // near full detail, mid without windows and small trims, far only the
+    // main volumes without night lights or shadows. The instances stay the
+    // same, only each pool's shared geometry changes.
+    this.lodGeo = {};
+    this.lod = 0;
     for (const a of ARCH) {
       const g = buildArch(a);
       const cap = a === 'house' || a === 'house2' || a === 'cottage' || a === 'townhouse' ? 900 : a === 'plaza' ? 80 : LANDMARKS.includes(a) ? 40 : ARCH.indexOf(a) >= 13 ? 300 : 500;
       this.pools[a] = new InstancePool(g.walls, MATS, cap);
       this.roofPools[a] = new InstancePool(g.roof, MATS, cap, true, 'rslot');
+      this.lodGeo[a] = [g];
       this.group.add(this.pools[a].mesh, this.roofPools[a].mesh);
     }
     // street lamps (the town's cars: road/Traffic.js)
@@ -950,6 +958,43 @@ export class TownSystem {
       if (done.length) this.animating = this.animating.filter((b) => !done.includes(b));
     }
     void time;
+    this.updateLod();
+  }
+  // zoom band with a little hysteresis so the level never flickers
+  lodBand(vs) {
+    const cur = this.lod, up = [30, 52], down = [26, 46];
+    if (cur === 0) return vs > up[0] ? (vs > up[1] ? 2 : 1) : 0;
+    if (cur === 1) return vs < down[0] ? 0 : vs > up[1] ? 2 : 1;
+    return vs < down[1] ? (vs < down[0] ? 0 : 1) : 2;
+  }
+  lodLevels() { return [null, { minSize: 0.2 }, { minSize: 0.34, noGlow: true }]; }
+  updateLod(force) {
+    const cam = this.game.camera;
+    if (!cam) return;
+    const band = this.lodBand(cam.viewSize);
+    if (band === this.lod && !force) return;
+    this.lod = band;
+    const L = this.lodLevels()[band];
+    for (const a of ARCH) {
+      const set = this.lodGeo[a];
+      if (!set[band]) set[band] = buildArch(a, L);
+      this.pools[a].mesh.geometry = set[band].walls;
+      this.roofPools[a].mesh.geometry = set[band].roof;
+      this.pools[a].mesh.castShadow = this.roofPools[a].mesh.castShadow = band < 2;
+    }
+    this.lamps.hidden = band >= 2;
+    this.lamps.mesh.visible = !this.lamps.hidden && this.lamps.mesh.count > 0;
+  }
+  // triangles per LOD level over all building types (performance check)
+  lodStats() {
+    const tri = (geo) => geo.attributes.position.count / 3;
+    const out = [0, 0, 0];
+    for (let band = 0; band < 3; band++) for (const a of ARCH) {
+      const set = this.lodGeo[a];
+      if (!set[band]) set[band] = buildArch(a, this.lodLevels()[band]);
+      out[band] += (tri(set[band].walls) + tri(set[band].roof)) * this.pools[a].mesh.count;
+    }
+    return out.map(Math.round);
   }
 
   nextRoad(t, from, prev) {
