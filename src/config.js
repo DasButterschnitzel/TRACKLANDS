@@ -281,6 +281,7 @@ export const ROAD_VEHICLES = [
   { id: 'car_transporter', name: 'Car Transporter', kind: 'truck', groups: ['vehicle'], cap: 8, speed: 60, price: 2400, op: 18, level: 10, color: 0xc0392b },
   // trams run on tram track laid along streets and company roads
   { id: 'tram', name: 'Tram Classic', kind: 'tram', pax: true, cap: 45, mail: 4, speed: 45, price: 1700, op: 9, level: 4, color: 0xd8483a },
+  { id: 'tram_lowfloor', name: 'Citylink Low-Floor Tram', kind: 'tram', pax: true, cap: 110, mail: 6, speed: 70, price: 5200, op: 20, level: 22, color: 0x3fae5a },
   { id: 'tram_lr', name: 'Light Rail Tram', kind: 'tram', pax: true, cap: 80, mail: 6, speed: 70, price: 3600, op: 16, level: 14, color: 0x2f8a9a },
   // ships sail on connected water between docks
   { id: 'ferry', name: 'Harbour Ferry', kind: 'dock', pax: true, cap: 70, mail: 10, speed: 30, price: 3200, op: 12, level: 6, color: 0xf0f0f0 },
@@ -289,6 +290,11 @@ export const ROAD_VEHICLES = [
   // aircraft fly straight between airports: fast, costly to run
   { id: 'propliner', name: 'Propliner 40', kind: 'airport', pax: true, cap: 40, mail: 12, speed: 320, price: 18000, op: 450, level: 12, color: 0xe8e8ee },
   { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
+  // cargo aircraft carry parcels, goods and electronics; the biggest aircraft
+  // need an international airport (airport size 2)
+  { id: 'freighter', name: 'Skyvan Freighter', kind: 'airport', groups: ['crate', 'mail'], cap: 36, speed: 300, price: 21000, op: 430, level: 14, color: 0xd8dde2 },
+  { id: 'cargo_jet', name: 'Cargojet 90', kind: 'airport', groups: ['crate', 'mail', 'vehicle'], cap: 110, speed: 620, price: 72000, op: 1250, level: 30, color: 0xe8c547, minAirport: 2 },
+  { id: 'jumbo', name: 'Skyliner 300', kind: 'airport', pax: true, cap: 300, mail: 60, speed: 700, price: 150000, op: 2700, level: 36, color: 0xf4f4f8, minAirport: 2 },
 ];
 // stop kind → how its vehicles move
 export const STOP_MODE = { bus: 'road', truck: 'road', tram: 'tram', dock: 'water', airport: 'air', garage: 'road' };
@@ -318,6 +324,9 @@ export const STOP_FACILITIES = {
   transfer: { max: 1, cost: 4, from: 'station' },       // transfer facility: easier changes
   turning: { max: 1, cost: 2, from: 'station' },        // turning area: buses turn off the road
 };
+// airport sizes: regional (built) and international (an upgrade): the
+// international airport reaches further and takes the biggest aircraft
+export const AIRPORT_SIZES = { 1: { id: 'regional', radius: 3, turn: 1 }, 2: { id: 'international', radius: 4, turn: 0.7, cost: 2.2 } };
 export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200, garage: 900, lane: 30 };
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express', 'intermodal', 'tilting'];
 // what a locomotive is best at (filters, compare, advisor); effects come from traits and stats

@@ -858,8 +858,9 @@ export class StationSystem {
     stn.delivered += n;
     // last mile: some travellers arriving by train continue by bus or tram
     if (c === 'PASSENGERS' && !stn.road && g.roads) g.roads.onward(stn, n);
-    if (TOWN_ACCEPTS.includes(c) && stn.links.towns.length) {
-      const town = g.towns.byId(stn.links.towns[0]);
+    const townId = stn.links.towns.length ? stn.links.towns[0] : stn.cargoTown;
+    if (TOWN_ACCEPTS.includes(c) && townId != null) {
+      const town = g.towns.byId(townId);
       if (town) { g.towns.receive(town, c, n); return { town }; }
     }
     for (const id of stn.links.industries) {

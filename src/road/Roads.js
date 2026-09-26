@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { N, TILE, idx, tx, tz, inMap, tileCX, tileCZ, cheb, WATER_LEVEL } from '../util.js';
 import { heightAt } from '../world/WorldGen.js';
-import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, modeFit } from '../config.js';
+import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, AIRPORT_SIZES, TOWN_ACCEPTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, modeFit } from '../config.js';
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
 import { RoadLines } from './Lines.js';
 import { BUS_SHAPES, VEHICLE_MODELS, stopModel, garageModel, personModel, doorModel, signModel } from './RoadModels.js';
@@ -274,7 +274,7 @@ export class Roads {
   // ---------- stops ----------
   stopAt(i) { return this.stops.find((s) => s.tile === i || (s.kind === 'airport' && cheb(s.tile, i) <= 1)) || null; }
   // walking distance around a stop (catchment for the town's travellers)
-  stopRadius(s) { return s.kind === 'airport' ? 4 : s.kind === 'dock' ? 3 : (this.stopProps ? this.stopProps(s).radius : 2); }
+  stopRadius(s) { return s.kind === 'airport' ? 3 + (s.size || 1) : s.kind === 'dock' ? 3 : (this.stopProps ? this.stopProps(s).radius : 2); }
   stopTiles(s) { return s.kind === 'airport' ? around(s.tile).filter((t) => t >= 0) : [s.tile]; }
   stopById(id) { return this.stops.find((s) => s.id === id) || null; }
   // ---------- stop types, expansions, garages ----------
@@ -323,6 +323,30 @@ export class Roads {
     if (!land) return 'err_stop_no_room';
     if (!g.economy.canAfford(this.upgradeCost(type) + this.landCost(land))) return 'err_no_money';
     return null;
+  }
+  // ---------- airport sizes ----------
+  // the smallest airport a vehicle would use (its stop and its line's stops)
+  airportSize(stop, line) {
+    let n = stop.kind === 'airport' ? stop.size || 1 : 9;
+    if (line) for (const id of line.stops) { const s = this.stopById(id); if (s && s.kind === 'airport') n = Math.min(n, s.size || 1); }
+    return n;
+  }
+  airportUpgradeCost() { return Math.round(ROAD_COSTS.airport * AIRPORT_SIZES[2].cost * this.game.economy.costs.mul()); }
+  upgradeAirport(s) {
+    const g = this.game;
+    if (!s || s.kind !== 'airport') return { error: 'err_unknown' };
+    if (s.owner) return { error: 'err_rival_stop' };
+    if ((s.size || 1) >= 2) return { error: 'err_max_level' };
+    const cost = this.airportUpgradeCost();
+    if (!g.economy.canAfford(cost)) return { error: 'err_no_money' };
+    g.economy.spend(cost, 'construction', { type: 'roadstop', id: s.id }, '~airport_international');
+    s.size = 2;
+    this.relink(s);
+    g.towns.onStationsChanged();
+    this.rebuildStopMesh();
+    g.audio.play('construct');
+    g.events.emit('stopUpgraded', s);
+    return { ok: true, cost };
   }
   upgradeStop(s, type = this.nextType(s)) {
     const g = this.game;
@@ -436,6 +460,7 @@ export class Roads {
       stats: { arrivals: 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false,
     };
     if (owner) s.owner = owner.id;
+    if (kind === 'airport') s.size = 1;
     if (kind === 'garage') s.land = this.findLand(s, 1, false) || [];
     this.relink(s);
     s.name = this.stopName(s);
@@ -482,13 +507,19 @@ export class Roads {
   relink(s) {
     const S = this.game.stations;
     // airports draw from further away; docks serve both towns and industries
-    const { towns, inds } = S.previewLinks(this.stopTiles(s), s.kind === 'airport' ? 3 : s.kind === 'dock' ? 1 : 0);
-    const people = s.kind === 'bus' || s.kind === 'tram' || s.kind === 'airport' || s.kind === 'dock';
+    const air = s.kind === 'airport';
+    const { towns, inds } = S.previewLinks(this.stopTiles(s), air ? AIRPORT_SIZES[s.size || 1].radius : s.kind === 'dock' ? 1 : 0);
+    const people = s.kind === 'bus' || s.kind === 'tram' || air || s.kind === 'dock';
     if (s.kind === 'garage') { s.links = { towns: [], industries: [] }; s.accepts = new Set(); s.supplies = new Set(); s.rail = null; return; }
-    const goods = s.kind === 'truck' || s.kind === 'dock';
+    const goods = s.kind === 'truck' || s.kind === 'dock' || air;
     s.links = { towns: people ? towns.map((t) => t.id) : [], industries: goods ? inds.map((i) => i.id) : [] };
     const acc = new Set(), sup = new Set();
     if (s.links.towns.length) { acc.add('PASSENGERS'); acc.add('MAIL'); sup.add('PASSENGERS'); sup.add('MAIL'); }
+    // an airport's cargo terminal and a lorry depot in town deliver what the
+    // town takes in (goods, food, fuel …); a lorry stop does not take the
+    // town's travellers, so it only remembers the town it delivers to
+    s.cargoTown = s.kind === 'truck' && towns.length ? towns[0].id : null;
+    if ((air && s.links.towns.length) || s.cargoTown != null) for (const c of TOWN_ACCEPTS) if (c !== 'PASSENGERS' && c !== 'MAIL') acc.add(c);
     for (const id of s.links.industries) {
       const ind = this.game.industries.byId(id);
       const cfg = ind && this.game.industries.cfg ? this.game.industries.cfg(ind) : null;
@@ -541,6 +572,7 @@ export class Roads {
     const price = Math.round(m.price * g.difficulty.costMul);
     if (owner ? owner.money < price : !g.economy.canAfford(price)) return { error: 'err_no_money' };
     if (stop.owner && !owner) return { error: 'err_rival_stop' };
+    if (m.kind === 'airport' && (m.minAirport || 1) > this.airportSize(stop, line)) return { error: 'err_airport_small' };
     let n = 1; while (this.vehicles.some((v) => v.name === `${m.name.split(' ')[0]} ${n}`)) n++;
     const v = { id: this.nextVeh++, model: m.id, name: `${m.name.split(' ')[0]} ${n}`, stops: [stop.id], idx: 0, tile: stop.tile, prev: -1, next: -1, f: 0, path: null, state: 'load', t: 2, cargo: [], earned: 0, trips: 0, bought: g.time, fin: null, v: 0 };
     this.vehicles.push(v);
@@ -798,7 +830,7 @@ export class Roads {
     // doors open, people get off and on (through every door of the model, faster at a better stop), doors close
     const moved = (n0 - n1) + (n2 - n1);
     const rate = BOARD_RATE * (m.doors || 1) * (m.board || 1) * this.stopProps(s).board;
-    v.dwell = v.t = Math.max(md === 'air' ? 4 : 1.6, DOOR * 2 + 0.4 + moved / rate);
+    v.dwell = v.t = Math.max(md === 'air' ? 4 : 1.6, DOOR * 2 + 0.4 + moved / rate) * (md === 'air' ? AIRPORT_SIZES[s.size || 1].turn : 1);
     v.boardLeft = v.boardN = n2 - n1;
     v.boardAt = s.id;
     const taken = new Set(this.vehicles.filter((o) => o !== v && o.state === 'load' && o.tile === v.tile).map((o) => o.bay || 0));
@@ -897,8 +929,16 @@ export class Roads {
     for (const c in caps) {
       const have = v.cargo.filter((l) => l.c === c).reduce((a, l) => a + l.n, 0);
       const room = caps[c] - have;
-      if (room <= 0 || !(s.stock[c] >= 1)) continue;
+      if (room <= 0) continue;
       const people = c === 'PASSENGERS' || c === 'MAIL';
+      // freight left at the railway station in reach (a transfer order)
+      // continues by lorry, ship or aircraft to a stop ahead that takes it
+      const rs = !people && s.rail != null && !v.owner && !(s.stock[c] >= room) ? g.stations.byId(s.rail) : null;
+      if (rs && rs.stock[c] >= 1 && ahead.some((o) => o.accepts && o.accepts.has(c))) {
+        const k = Math.min(room - Math.floor(s.stock[c] || 0), Math.floor(rs.stock[c]));
+        if (k > 0) { rs.stock[c] -= k; s.stock[c] = (s.stock[c] || 0) + k; s.stats.fromRail = (s.stats.fromRail || 0) + k; if (g.stations.noteTransfer) g.stations.noteTransfer(rs, c, k); }
+      }
+      if (!(s.stock[c] >= 1)) continue;
       const dests = [];
       for (const o of ahead) {
         const d = cheb(o.tile, s.tile);
@@ -1175,11 +1215,14 @@ export class Roads {
         }
         this._p.set(x, Math.max(heightAt(W, x, z), WATER_LEVEL) + 0.02, z);
         this._q.setFromAxisAngle(this._up, yaw);
-        this._s.set(1, 1, 1);
+        // an international airport: longer runway, bigger terminal (and a
+        // lighter concrete apron)
+        const big = s.kind === 'airport' && (s.size || 1) >= 2;
+        this._s.set(big ? 1.18 : 1, big ? 1.3 : 1, big ? 1.12 : 1);
         this._m.compose(this._p, this._q, this._s);
         const mesh = s.kind === 'dock' ? this.dockMesh : this.airMesh;
         const n = s.kind === 'dock' ? kd++ : ka++;
-        if (n < mesh.instanceMatrix.count) { mesh.setMatrixAt(n, this._m); mesh.setColorAt(n, this._c.set(0xffffff)); }
+        if (n < mesh.instanceMatrix.count) { mesh.setMatrixAt(n, this._m); mesh.setColorAt(n, this._c.set(big ? 0xf2f0ff : 0xffffff)); }
         continue;
       }
       if (s.kind === 'bus' || s.kind === 'garage') { this.placeTypedStop(s, cnt); continue; }
@@ -1379,7 +1422,7 @@ export class Roads {
     for (let i = 0; i < N * N; i++) { if (this.bits[i]) roads.push(i, this.bits[i]); if (this.tram[i]) tram.push(i); }
     return {
       roads, tram, lane: this.lane.some((x) => x) ? [...this.lane.keys()].filter((i) => this.lane[i]) : undefined, nextStop: this.nextStop, nextVeh: this.nextVeh,
-      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
+      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, size: s.kind === 'airport' && s.size > 1 ? s.size : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
       lines: this.lines.serialize(),
       vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: cleanFin(v.fin), dly: v.dly ? Math.round(v.dly * 10) / 10 : undefined, state: v.state === 'run' || v.state === 'broken' ? 'load' : v.state, rel: v.rel != null ? Math.round(v.rel * 1000) / 1000 : undefined, served: v.served != null ? Math.round(v.served) : undefined, goGarage: v.goGarage || undefined, service: v.service || undefined, color: v.color != null ? v.color : undefined, breakdowns: v.breakdowns || undefined })),
       rules: this.rules.length ? this.rules : undefined,
@@ -1400,6 +1443,7 @@ export class Roads {
       if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stop, s.ratings);
       if (typeof s.owner === 'string' && /^r\d{1,2}$/.test(s.owner)) stop.owner = s.owner;
       stop.type = stop.kind === 'bus' && STOP_TYPES[s.type] ? s.type : 'basic';
+      if (stop.kind === 'airport') stop.size = s.size === 2 ? 2 : 1;   // (older saves: regional)
       stop.level = stop.kind === 'bus' ? STOP_ORDER.indexOf(stop.type) : 0;
       stop.facilities = (Array.isArray(s.fac) ? s.fac : []).filter((f) => STOP_FACILITIES[f]).slice(0, 12);
       stop.land = (Array.isArray(s.land) ? s.land : []).filter((t) => okTile(t) && t !== stop.tile).slice(0, 2);
