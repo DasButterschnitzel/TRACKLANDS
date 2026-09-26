@@ -4,7 +4,7 @@
 // goods between airports into a town, freight continuing from a railway
 // station by lorry into a town (rail → road transfer), and a lorry depot in
 // town taking goods for the town (it counts for the town's deliveries).
-import { openPage, startTestGame, loadSave } from '../lib.mjs';
+import { openPage, startTestGame, loadSave, productionSave } from '../lib.mjs';
 
 export const name = 'audit';
 
@@ -116,7 +116,45 @@ export async function run({ browser, base }) {
     check(fr.rail && fr.cargoTown && fr.acc, 'the lorry stop feeds from the station; the town depot takes goods for its town');
     check(fr.fromRail > 0 && fr.left < 80 && fr.rev > 0, `goods left at the station continue by lorry into town: ${fr.fromRail} taken from the station (${fr.left} left), ${fr.rev} ● earned`);
   }
-  if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
-  await ctx.close();
+  // ---------- discoverability on the production save ----------
+  // every key feature is one or two taps away from the world or the menu,
+  // with a visible labelled button (desktop and phone)
+  for (const [label, opts] of [['desktop', { viewport: { width: 1280, height: 800 } }], ['phone', { viewport: { width: 412, height: 860 }, hasTouch: true, isMobile: true }]]) {
+    if (label === 'phone') { if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); } await ctx.close(); }
+    const O = label === 'desktop' ? null : await openPage(browser, base, opts);
+    const P = O ? O.page : page;
+    try { await loadSave(P, productionSave()); } catch (e) { lines.push('FAIL load: ' + e.message.split('\n')[0] + ' ' + errors.slice(0, 3).join(' | ')); ok = false; break; }
+    const vis = (sel) => P.evaluate((sel) => { const e = document.querySelector(sel); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }, sel);
+    const found = {};
+    // a train: edit, send to depot, livery
+    await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'train', id: g.trains.trains[0].id }); });
+    await P.waitForTimeout(200);
+    for (const [k, a] of [['train builder', 'builder'], ['send to depot', 'depotSend'], ['livery', 'livery']]) found[k] = await vis(`#inspector [data-act=${a}]`);
+    // a station: extend the platform, expand the station
+    await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'station', id: g.stations.list[0].id }); });
+    await P.waitForTimeout(200);
+    found['platform extension'] = await vis('#inspector [data-act=stExtendTool]');
+    found['station expansion'] = await P.evaluate(() => !!document.querySelector('#inspector [data-act=upgradeStation], #inspector [data-act=stAddTrack], #inspector [data-act=stFacility]'));
+    // a town: its relationship with the company
+    await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'town', id: g.towns.list[0].id }); });
+    await P.waitForTimeout(200);
+    found['city relationship'] = await P.evaluate(() => /Relationship|Beziehung|rating|Ansehen/i.test(document.querySelector('#inspector').textContent));
+    // an industry: buy a stake
+    await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'industry', id: g.industries.list[0].id }); });
+    await P.waitForTimeout(200);
+    found['industry ownership'] = await vis('#inspector [data-act=indBuy]');
+    await P.evaluate(() => window.__tracklands.game.select(null));
+    // the menu: finance, research, network map, vehicles; top bar: weather
+    for (const [k, a] of [['finance', 'finance'], ['research', 'research'], ['network map', 'map'], ['vehicle catalogue', 'collection'], ['bus lines and fleet', 'trains']]) found[k] = await P.evaluate((a) => !!document.querySelector(`#menu-rail [data-arg=${a}]`), a);
+    found['weather'] = await vis('[data-act=weatherInfo]');
+    // fleet replacement: Transport → Fleet
+    await P.evaluate(() => { const ui = window.__tracklands.ui; ui.trainsTab = 'fleet'; ui.openPanel('trains'); });
+    await P.waitForTimeout(300);
+    found['vehicle replacement'] = await P.evaluate(() => !!document.querySelector('#panel [data-act=fleetReplace], #panel [data-change=fleetPick], #panel [data-act=rvFleetReplace], #panel [data-change=rvFleetPick]'));
+    await P.evaluate(() => window.__tracklands.ui.closePanel());
+    const missing = Object.entries(found).filter(([, v]) => !v).map(([k]) => k);
+    check(!missing.length, `${label}: ${Object.keys(found).length} key features one or two taps away${missing.length ? ' — not found: ' + missing.join(', ') : ''}`);
+    if (O) { if (O.errors.length) { ok = false; lines.push('errors (phone): ' + O.errors.slice(0, 3).join(' | ')); } await O.ctx.close(); }
+  }
   return { ok, lines };
 }
