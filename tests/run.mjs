@@ -44,8 +44,9 @@ import * as rivals from './suites/rivals.mjs';
 import * as touch from './suites/touch.mjs';
 import * as buses from './suites/buses.mjs';
 import * as overview from './suites/overview.mjs';
+import * as traffic from './suites/traffic.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

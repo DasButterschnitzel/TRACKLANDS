@@ -153,6 +153,7 @@ export class Construction {
       if (ok) this.showCoverage([tile]);
     } else if (this.tool === 'road') {
       if (this.roadMode === 'tram') { ok = g.roads.hasRoad(tile); info = ok ? g.ui.tr('hint_drag_tram') : g.ui.tr('err_tram_needs_road'); }
+      else if (this.roadMode === 'lane') { ok = g.roads.hasRoad(tile); info = ok ? g.ui.tr('hint_drag_lane') : g.ui.tr('err_lane_needs_road'); }
       else { ok = g.roads.tileOk(tile); info = ok ? g.ui.tr('hint_drag_road') : g.ui.tr('err_road_blocked'); }
     } else if (this.tool === 'track') {
       const r = g.net.tileBlockedReason(tile);
@@ -271,9 +272,14 @@ export class Construction {
       this.drag = null;
       if (tile >= 0) d.b = tile;
       this.clearPreview();
-      const R = this.game.roads, tram = this.roadMode === 'tram';
-      if (d.a === d.b) this.game.ui.toast(this.game.ui.tr(tram ? 'hint_drag_tram' : 'hint_drag_road'), 'info');
-      else { const r = tram ? R.buildTram(R.planTram(d.a, d.b)) : R.build(R.plan(d.a, d.b)); if (r.error) this.game.ui.error(r.error); }
+      const R = this.game.roads, tram = this.roadMode === 'tram', lane = this.roadMode === 'lane';
+      if (d.a === d.b) this.game.ui.toast(this.game.ui.tr(tram ? 'hint_drag_tram' : lane ? 'hint_drag_lane' : 'hint_drag_road'), 'info');
+      else {
+        const r = tram ? R.buildTram(R.planTram(d.a, d.b)) : lane ? R.buildLane(R.planLane(d.a, d.b)) : R.build(R.plan(d.a, d.b));
+        if (r.error === 'err_lane_permit') this.game.ui.toast(this.game.ui.tr('err_lane_permit_town', { town: r.town, n: r.need }), 'bad', 'company');
+        else if (r.error) this.game.ui.error(r.error);
+        else if (lane) this.game.ui.toast(this.game.ui.tr('lane_built', { n: r.n }), 'good', 'bus');
+      }
       this.hover(this.hoverTile);
       return;
     }
@@ -579,6 +585,16 @@ export class Construction {
   // ---------- roads ----------
   previewRoad() {
     const g = this.game, R = g.roads;
+    if (this.roadMode === 'lane') {
+      const plan = R.planLane(this.drag.a, this.drag.b);
+      let k = 0;
+      for (const t of plan.tiles.length ? plan.tiles : [this.drag.a]) if (k < 400) this.putQuad(this.ghost, k++, t, !plan.ok ? 0xd0503f : R.lane[t] ? 0x9aa2a8 : 0xd07a5a);
+      this.ghost.count = k; this.flush(this.ghost);
+      const ui = g.ui;
+      if (plan.ok) ui.cursorInfo(`${ui.tr('lane_len', { n: plan.tiles.length })} · ${fmt(plan.cost)} ●`, g.economy.canAfford(plan.cost));
+      else ui.cursorInfo(plan.reason === 'err_lane_permit' ? ui.tr('err_lane_permit_town', { town: plan.town, n: plan.need }) : ui.tr(plan.reason || 'err_road_no_path'), false);
+      return;
+    }
     if (this.roadMode === 'tram') {
       const plan = R.planTram(this.drag.a, this.drag.b);
       let k = 0;
@@ -940,6 +956,9 @@ export class Construction {
       g.economy.earn(e.cost, 'refund', false);
     } else if (e.type === 'tram') {
       g.roads.undoTram(e);
+      g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'lane') {
+      g.roads.undoLane(e);
       g.economy.earn(e.cost, 'refund', false);
     } else if (e.type === 'roadstop') {
       const s = g.roads.stopById(e.id);

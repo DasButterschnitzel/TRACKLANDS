@@ -51,6 +51,7 @@ export class Roads {
     this.game = game;
     this.bits = new Uint8Array(N * N);   // company roads: links to E S W N
     this.tram = new Uint8Array(N * N);   // tram track on a road tile
+    this.lane = new Uint8Array(N * N);   // bus lane on a road tile (buses pass the town's cars)
     this._wpath = new Map();             // water routes between docks (water never changes)
     this.stops = [];
     this.vehicles = [];
@@ -258,7 +259,7 @@ export class Roads {
     if (this.stopAt(i)) return { error: 'err_road_stop_here' };
     for (const [dx, dz, b] of D4) { const X = tx(i) + dx, Z = tz(i) + dz; if (inMap(X, Z)) this.bits[idx(X, Z)] &= ~opp4(b); }
     this.bits[i] = 0;
-    if (!this.townRoads().has(i)) this.tram[i] = 0;
+    if (!this.townRoads().has(i)) { this.tram[i] = 0; this.lane[i] = 0; }
     g.economy.earn(Math.round(ROAD_COSTS.tile * g.economy.costs.mul() * 0.5), 'refund', false, { type: 'tile', id: i });
     this.changed();
     return { ok: true };
@@ -553,10 +554,44 @@ export class Roads {
     const g = this.game, m = roadModel(v.model);
     this.vehicles = this.vehicles.filter((x) => x !== v);
     if (v.line != null) this.lines.changed();
+    if (g.traffic) g.traffic.vehicleGone(v);
     const refund = Math.round((m ? m.price : 0) * g.difficulty.costMul * 0.5);
     g.economy.earn(refund, 'sale', false, null, v.name);
     return refund;
   }
+  // ---------- bus lanes ----------
+  // along existing roads and streets from a to b; in a city the council has
+  // to agree (authority permit 'bus_lane')
+  planLane(a, b) {
+    const g = this.game, res = { ok: false, tiles: [], cost: 0, reason: null };
+    if (!g.progression.research.has('bus_lanes')) { res.reason = 'err_lane_research'; return res; }
+    if (!this.hasRoad(a) || !this.hasRoad(b)) { res.reason = 'err_lane_needs_road'; return res; }
+    const p = this.path(a, b);
+    if (!p) { res.reason = 'err_road_no_path'; return res; }
+    if (p.some((i) => !g.progression.regionUnlocked(g.world.region[i]))) { res.reason = 'err_locked_region'; return res; }
+    const A = g.authority;
+    const towns = new Set();
+    for (const i of p) { const t = A && A.townAt(i); if (t && t.stage >= 4) towns.add(t); }
+    for (const t of towns) if (!A.allowed(t, 'bus_lane')) { res.reason = 'err_lane_permit'; res.town = t.name; res.need = A.permitNeed(t, 'bus_lane'); res.tiles = p; return res; }
+    res.tiles = p;
+    res.cost = Math.round(p.filter((i) => !this.lane[i]).length * ROAD_COSTS.lane * g.economy.costs.mul());
+    res.ok = true;
+    return res;
+  }
+  buildLane(plan) {
+    const g = this.game;
+    if (!plan || !plan.ok) return { error: plan ? plan.reason : 'err_unknown', town: plan && plan.town, need: plan && plan.need };
+    if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+    const prev = plan.tiles.filter((t) => !this.lane[t]);
+    for (const t of plan.tiles) this.lane[t] = 1;
+    if (plan.cost > 0) g.economy.spend(plan.cost, 'construction', { type: 'tile', id: plan.tiles[Math.floor(plan.tiles.length / 2)] }, `~fin_n_lane:${prev.length}`);
+    this.changed();
+    g.construction.pushUndo({ type: 'lane', tiles: prev, cost: plan.cost });
+    g.audio.play('road');
+    return { ok: true, n: prev.length };
+  }
+  undoLane(e) { for (const t of e.tiles) this.lane[t] = 0; this.changed(); }
+
   caps(v) { return roadCaps(roadModel(v.model)); }
   load(v) { return v.cargo.reduce((a, l) => a + l.n, 0); }
   // ref / _st so road vehicles can go through the shared delivery code
@@ -567,6 +602,9 @@ export class Roads {
     const mi = g.ledger ? g.ledger.monthIndex() : 0;
     if (this._month == null) this._month = mi;
     else if (mi !== this._month) { this._month = mi; this.monthly(); this.lines.closeMonth(); }
+    // the town's cars move first (they share the streets and junctions)
+    const T = g.traffic;
+    if (T) T.tick(dt);
     // who is where this step (blocking, queues at stops)
     const at = new Map();
     for (const v of this.vehicles) { if (v.state === 'run' || v.state === 'load' || v.state === 'broken') { let l = at.get(v.tile); if (!l) at.set(v.tile, l = []); l.push(v); } }
@@ -619,14 +657,24 @@ export class Roads {
       }
       // time lost standing in traffic (delay per trip, congestion)
       if (blocked) v.jam = (v.jam || 0) + dt;
-      const vmax = (m.speed / KMH_PER_TILE_S) * envSpeed * this.turnMul(v, m);
+      // streets busy with the town's cars slow buses and trucks (a bus lane does not)
+      const street = T && (mode === 'road' || mode === 'tram');
+      const busy = street && mode === 'road' ? T.speedMul(v.tile, m.kind === 'bus') : 1;
+      const vmax = (m.speed / KMH_PER_TILE_S) * envSpeed * this.turnMul(v, m) * busy;
+      if (busy < 1 && !blocked) v.jam = (v.jam || 0) + dt * (1 - busy);
       // brake for the stop at the end of the path, accelerate by the model
       const remain = v.path.length - 1 - v.pi - v.f;
       const vstop = mode === 'water' ? vmax : Math.sqrt(2 * 1.6 * (m.brake || 1) * Math.max(0, remain - 0.05)) + 0.05;
       v.v = blocked ? 0 : Math.min(vmax, vstop, v.v + dt * 1.2 * (m.accel || 1) * envAccel);
-      if (blocked && v.f > 0.35) v.f = Math.max(v.f, 0.35);
+      const f0 = v.f;
       v.f += v.v * dt;
-      if (blocked && v.f > 0.38) v.f = 0.38;
+      // (held before the tile edge, never pushed back)
+      if (blocked) v.f = Math.min(v.f, Math.max(f0, 0.38));
+      // lights, junctions and the cars ahead
+      else if (street) {
+        const lim = T.limitVehicle(v, v.tile, next, f0, v.f, m.kind, dt);
+        if (lim < v.f) { v.jam = (v.jam || 0) + dt * (v.f > f0 ? 1 - (lim - f0) / (v.f - f0) : 1); v.f = lim; v.v = Math.min(v.v, Math.max(0, (lim - f0) / Math.max(dt, 1e-6))); }
+      }
       while (v.f >= 1 && v.pi < v.path.length - 1) { v.f -= 1; v.pi++; v.prev = v.tile; v.tile = v.path[v.pi]; }
     }
   }
@@ -981,6 +1029,9 @@ export class Roads {
     if (this.tramRails) { this.group.remove(this.tramRails); this.tramRails.geometry.dispose(); this.tramRails = null; }
     const rp = [];
     const Hr = (x, z) => heightAt(W, x, z) + 0.06;
+    const lp = [];
+    const Hl = (x, z) => heightAt(W, x, z) + 0.052;
+    const lanes = (x0, z0, x1, z1) => { const a = Math.min(x0, x1), b = Math.max(x0, x1), c = Math.min(z0, z1), d = Math.max(z0, z1); lp.push(a, Hl(a, c), c, a, Hl(a, d), d, b, Hl(b, c), c, b, Hl(b, c), c, a, Hl(a, d), d, b, Hl(b, d), d); };
     const rail = (x0, z0, x1, z1) => { rp.push(x0, Hr(x0, z0), z0, x0, Hr(x0, z1), z1, x1, Hr(x1, z0), z0, x1, Hr(x1, z0), z0, x0, Hr(x0, z1), z1, x1, Hr(x1, z1), z1); };
     for (let i = 0; i < N * N; i++) {
       if (!this.tram[i]) continue;
@@ -991,6 +1042,26 @@ export class Roads {
         if (dx) for (const o of [-0.13, 0.13]) rail(cx, cz + o - 0.025, cx + dx * TILE / 2, cz + o + 0.025);
         else for (const o of [-0.13, 0.13]) rail(cx + o - 0.025, cz, cx + o + 0.025, cz + dz * TILE / 2);
       }
+    }
+    // bus lanes: a terracotta strip along the kerb on both sides
+    for (let i = 0; i < N * N; i++) {
+      if (!this.lane[i]) continue;
+      const cx = tileCX(i), cz = tileCZ(i);
+      for (const [dx, dz] of D4) {
+        const X = tx(i) + dx, Z = tz(i) + dz;
+        if (!inMap(X, Z) || !this.hasRoad(idx(X, Z)) || !this.hasRoad(i)) continue;
+        if (dx) for (const o of [-0.29, 0.29]) lanes(cx, cz + o - 0.07, cx + dx * TILE / 2, cz + o + 0.07);
+        else for (const o of [-0.29, 0.29]) lanes(cx + o - 0.07, cz, cx + o + 0.07, cz + dz * TILE / 2);
+      }
+    }
+    if (this.laneMesh) { this.group.remove(this.laneMesh); this.laneMesh.geometry.dispose(); this.laneMesh = null; }
+    if (lp.length) {
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+      lg.computeVertexNormals();
+      this.laneMesh = new THREE.Mesh(lg, this.laneMat || (this.laneMat = new THREE.MeshLambertMaterial({ color: 0xb4503c, flatShading: true, side: THREE.DoubleSide })));
+      this.laneMesh.receiveShadow = true;
+      this.group.add(this.laneMesh);
     }
     if (rp.length) {
       const rg = new THREE.BufferGeometry();
@@ -1191,7 +1262,7 @@ export class Roads {
     const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz) || 1;
     const nx = -dz / len, nz = dx / len;
     const f = b === a ? 0 : v.f;
-    const side = md === 'tram' ? 0 : md === 'water' ? 0 : 0.2;
+    const side = md === 'tram' ? 0 : md === 'water' ? 0 : this.lane[a] && (roadModel(v.model) || {}).kind === 'bus' ? 0.29 : 0.2;
     const x = ax + dx * f + nx * side, z = az + dz * f + nz * side;
     out.x = x; out.z = z; out.y = md === 'water' ? WATER_LEVEL + 0.08 : heightAt(W, x, z) + 0.03; out.yaw = b === a ? (v.yaw || 0) : Math.atan2(-dz, dx);
     v.yaw = out.yaw;
@@ -1214,10 +1285,20 @@ export class Roads {
     for (const k in this.busMeshes) nb[k] = 0;
     let nd = 0, ns = this._stopSigns || 0;
     const o = {};
+    // level of detail by distance from the camera's view: near in full
+    // (doors, destination signs), mid as a plain model, far not drawn. The
+    // simulation (Roads.tick) is the same for all of them.
+    const cam = this.game.camera, cx = cam.target.x, cz = cam.target.z;
+    const far = (cam.viewSize || 30) * 1.8 + 8 * TILE, mid = far * 0.55;
+    const lod = this.lod = { near: 0, mid: 0, far: 0 };
     for (const v of this.vehicles) {
       const m = roadModel(v.model);
       if (!m || !mesh[m.kind]) continue;
       if (v.state === 'stored') continue;
+      const dd = m.kind === 'airport' ? 0 : Math.max(Math.abs(tileCX(v.tile) - cx), Math.abs(tileCZ(v.tile) - cz));
+      if (dd > far) { lod.far++; continue; }
+      const detail = dd <= mid;
+      if (detail) lod.near++; else lod.mid++;
       const shape = m.kind === 'bus' ? BUS_SHAPES[m.shape] : null;
       const M = shape ? this.busMeshes[m.shape] : mesh[m.kind];
       const slot = shape ? nb[m.shape] : n[m.kind];
@@ -1228,7 +1309,7 @@ export class Roads {
       this._m.compose(this._p, this._q, this._s);
       M.setMatrixAt(slot, this._m); M.setColorAt(slot, this._c.set(this.vehColor(v, m)));
       if (shape) nb[m.shape]++; else n[m.kind]++;
-      if (!shape) continue;
+      if (!shape || !detail) continue;
       const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw);
       const at = (lx, ly, lz) => { this._p.set(o.x + (cy * lx + sy * lz) * sc, o.y + ly * sc, o.z + (-sy * lx + cy * lz) * sc); };
       // destination sign in the line colour
@@ -1310,7 +1391,7 @@ export class Roads {
     const tram = [];
     for (let i = 0; i < N * N; i++) { if (this.bits[i]) roads.push(i, this.bits[i]); if (this.tram[i]) tram.push(i); }
     return {
-      roads, tram, nextStop: this.nextStop, nextVeh: this.nextVeh,
+      roads, tram, lane: this.lane.some((x) => x) ? [...this.lane.keys()].filter((i) => this.lane[i]) : undefined, nextStop: this.nextStop, nextVeh: this.nextVeh,
       stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
       lines: this.lines.serialize(),
       vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: cleanFin(v.fin), dly: v.dly ? Math.round(v.dly * 10) / 10 : undefined, state: v.state === 'run' || v.state === 'broken' ? 'load' : v.state, rel: v.rel != null ? Math.round(v.rel * 1000) / 1000 : undefined, served: v.served != null ? Math.round(v.served) : undefined, goGarage: v.goGarage || undefined, service: v.service || undefined, color: v.color != null ? v.color : undefined, breakdowns: v.breakdowns || undefined })),
@@ -1322,6 +1403,7 @@ export class Roads {
     const okTile = (t) => Number.isInteger(t) && t >= 0 && t < N * N;
     if (Array.isArray(d.roads)) for (let k = 0; k + 1 < d.roads.length; k += 2) if (okTile(d.roads[k])) this.bits[d.roads[k]] = d.roads[k + 1] & 15;
     if (Array.isArray(d.tram)) for (const t of d.tram) if (okTile(t)) this.tram[t] = 1;
+    if (Array.isArray(d.lane)) for (const t of d.lane) if (okTile(t)) this.lane[t] = 1;
     this.stops = [];
     for (const s of Array.isArray(d.stops) ? d.stops : []) {
       if (!s || !okTile(s.tile) || !STOP_KINDS.includes(s.kind)) continue;

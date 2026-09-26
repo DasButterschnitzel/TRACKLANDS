@@ -56,18 +56,22 @@ export class Crossings {
   // road traffic stops entering as soon as the warning starts
   isBlocked(tile) { const c = this.map.get(tile); return !!c && (c.closed || c.warn || c.request > this.game.time); }
   // Interlock: a train may only reserve a crossing that is clear of road
-  // traffic. Asking starts the warning (no car enters, cars on it clear
-  // out). Without animation (headless runs) cars do not move: then the
-  // crossing clears them off at once, back to the side they came from.
+  // traffic. Asking starts the warning (no car enters, cars on it hurry off).
+  // A town car still on it after a few seconds (stuck behind the queue on
+  // the far side) is moved off it: back behind the stop line if it was
+  // about to cross, on to the far side if it was crossing.
   roadBusy(tile) {
     const c = this.map.get(tile);
     if (!c) return false;
-    const g = this.game, cars = g.towns.carList.filter((k) => (k.from === tile && k.f < 0.5) || (k.to === tile && k.f >= 0.4));
+    const g = this.game, T = g.traffic;
+    const cars = T ? T.cars.filter((k) => (k.from === tile && k.f < 0.5) || (k.to === tile && k.f >= 0.4)) : [];
     const lorry = g.roads && g.roads.onTile(tile);
-    if (!cars.length && !lorry) return false;
+    // clear: the train takes it now, so from this very step no one enters
+    if (!cars.length && !lorry) { c.busySince = null; c.request = Math.max(c.request || 0, g.time + 1.5); return false; }
     c.request = g.time + 1.5;
-    if (g.time - (this.lastFrame ?? -1e9) > 1) {
-      for (const k of cars) { if (k.to === tile) k.f = 0.3; else { const p = k.from; k.from = k.to; k.to = p; k.f = 0.7; } }
+    if (c.busySince == null || g.time - c.busySince > 30) c.busySince = g.time;
+    if (cars.length && g.time - c.busySince > 4) {
+      for (const k of cars) { if (k.to === tile) k.f = 0.3; else k.f = 0.52; }
       return !!lorry;   // company vehicles are simulated: they clear out themselves
     }
     return true;

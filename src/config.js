@@ -320,6 +320,8 @@ export const RESEARCH = [
   { id: 'passenger_economy', cat: 'cities', cost: 4, req: ['urban_planning'], fx: { paxIncome: 0.15, paxProd: 0.2 } },
   { id: 'city_services', cat: 'cities', cost: 6, req: ['passenger_economy'], fx: { mailProd: 0.3 } },
   { id: 'metro_planning', cat: 'cities', cost: 10, req: ['city_services'], fx: { townReq: -0.15 } },
+  { id: 'bus_lanes', cat: 'cities', cost: 3, req: ['urban_planning'], fx: {} },
+  { id: 'bus_priority', cat: 'cities', cost: 7, req: ['bus_lanes', 'city_services'], fx: { busPriority: 1 } },
   // INDUSTRY
   { id: 'industry_boost', cat: 'industry', cost: 3, req: [], fx: { industryProd: 0.15 } },
   { id: 'heavy_industry', cat: 'industry', cost: 5, req: ['industry_boost'], fx: { processing: 0.2 } },

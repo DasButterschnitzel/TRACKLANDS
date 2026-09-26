@@ -6,7 +6,7 @@ import {
   LIVERIES, STATION_STYLES, REGION_PREV_OBJECTIVES, REGION_DEVELOPED_AT, LEGACY_LEVEL, LEGEND_REQ, COSTS,
 } from '../config.js';
 
-const FX_KEYS = ['trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
+const FX_KEYS = ['busPriority', 'trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
   'stationRadius', 'cargoIncome', 'mailIncome', 'paxIncome', 'paxProd', 'mailProd', 'townReq', 'industryProd', 'processing', 'industryGrowth',
   'income', 'buildingCost', 'contractReward', 'legacyDiscount', 'switchTime', 'junctionSpeed', 'brake'];
 

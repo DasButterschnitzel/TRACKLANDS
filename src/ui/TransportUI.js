@@ -276,6 +276,7 @@ export const TransportUIMixin = {
     return {
       tMode: (a) => { this.transportMode = a; this.tv().limit = PAGE; this.tv().sub = 'all'; this.tv().line = 'all'; this.refreshPanel(); },
       tTool: (a) => { this.closePanel(); g().construction.setTool(a); },
+      tLane: () => { this.closePanel(); g().select(null); const C = g().construction; C.setTool('road'); C.roadMode = 'lane'; this.renderToolbar(); },
       tStop: (a) => { const R = g().roads; if (!R.kindUnlocked(a)) { this.error('err_locked'); return; } this.closePanel(); g().construction.stopKind = a; g().construction.setTool('roadstop'); },
       tFix: (a) => { const i = a.indexOf('|'); const act = a.slice(0, i), arg = a.slice(i + 1); const h = this.actions[act]; if (h) h.call(this, arg); rp(); },
       tLineAdd: (a) => { this.actions.rlAdd(a); rp(); },

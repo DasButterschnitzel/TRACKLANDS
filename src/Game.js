@@ -31,6 +31,7 @@ import { Maintenance } from './trains/Maintenance.js';
 import { Authority } from './world/Authority.js';
 import { CargoRatings } from './economy/Ratings.js';
 import { Crossings } from './road/Crossings.js';
+import { Traffic } from './road/Traffic.js';
 import { TransportOverview } from './economy/Transport.js';
 import { Roads } from './road/Roads.js';
 import { Progression } from './progression/Progression.js';
@@ -93,6 +94,7 @@ export class Game {
     this.towns = new TownSystem(this);
     this.crossings = new Crossings(this);
     this.roads = new Roads(this);
+    this.traffic = new Traffic(this);
     this.authority = new Authority(this);
     this.ratings = new CargoRatings(this);
     this.towns.init(this.world);
@@ -499,6 +501,7 @@ export class Game {
     this.stations.updateVisuals(dt, this.clock);
     this.industries.updateVisuals(dt, this.clock);
     this.towns.updateVisuals(dt, this.clock);
+    this.traffic.updateVisuals(dt);
     this.crossings.update(dt);
     this.roads.updateVisuals(dt);
     this.particles.update(dt);

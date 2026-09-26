@@ -21,7 +21,7 @@ export async function run({ browser, base }) {
       const out = { crossings: tiles.length, violations: 0, openWhileTrain: 0, closings: 0, openings: 0, maxClosed: 0, maxIdle: 0, samples: 0 };
       const idleFor = new Map();
       const closedFor = new Map();
-      const carOn = (tile) => T.carList.some((c) => (c.from === tile && c.f < 0.5) || (c.to === tile && c.f >= 0.5));
+      const carOn = (tile) => g.traffic.cars.some((c) => (c.from === tile && c.f < 0.5) || (c.to === tile && c.f >= 0.5));
       const steps = Math.round(240 / dt);
       for (let i = 0; i < steps; i++) {
         g.tick(dt);

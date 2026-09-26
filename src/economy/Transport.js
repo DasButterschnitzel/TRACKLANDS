@@ -201,7 +201,7 @@ export class TransportOverview {
       else if (k.status === 'underused') add('pb_line_underused', 'info', { n: Math.round(k.load * 100) });
       // stuck in traffic: a good share of the trip spent standing
       const jam = vs.length ? vs.reduce((a, v) => a + (v.dly || 0), 0) / vs.length : 0;
-      if (vs.length && jam > 12 && k.cycle > 0 && jam * Math.max(1, l.stops.length) > k.cycle * 0.2) add('pb_congestion', 'warn', { n: Math.round(jam) }, null, jam);
+      if (vs.length && jam > 12 && k.cycle > 0 && jam * Math.max(1, l.stops.length) > k.cycle * 0.2) add('pb_congestion', 'warn', { n: Math.round(jam) }, md === 'bus' && g.progression.research.has('bus_lanes') ? { act: 'tLane', arg: '', label: 'road_mode_lane' } : null, jam);
     }
     for (const v of R.vehicles) {
       if (v.owner) continue;

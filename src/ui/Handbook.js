@@ -16,7 +16,7 @@ export const HANDBOOK = [
   { id: 'economy', icon: 'coin', n: 4 },
   { id: 'tycoon', icon: 'company', n: 5 },
   { id: 'transport', icon: 'bus', n: 5 },
-  { id: 'buslines', icon: 'route', n: 5 },
+  { id: 'buslines', icon: 'route', n: 6 },
   { id: 'overview', icon: 'trains', n: 4 },
   { id: 'world', icon: 'weather', n: 5 },
 ];

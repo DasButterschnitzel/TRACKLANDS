@@ -1,5 +1,5 @@
 // Towns: needs, growth stages, passenger/mail production and procedural
-// instanced buildings, streets, street lamps and ambient cars.
+// instanced buildings, streets and street lamps.
 import * as THREE from 'three';
 import { N, TILE, idx, tx, tz, inMap, cheb, RNG, hashStr, easeOutBack, clamp, lerp } from '../util.js';
 import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOMES, REGIONS } from '../config.js';
@@ -193,19 +193,13 @@ export class TownSystem {
       this.roofPools[a] = new InstancePool(g.roof, MATS, cap, true, 'rslot');
       this.group.add(this.pools[a].mesh, this.roofPools[a].mesh);
     }
-    // street lamps & cars
+    // street lamps (the town's cars: road/Traffic.js)
     const lm = new ModelBuilder();
     lm.cyl(0.02, 0.025, 0.7, 5, 0x3a3f45);
     lm.box(0.16, 0.03, 0.04, 0x3a3f45, { y: 0.68, x: 0.06 });
     lm.box(0.08, 0.04, 0.06, 0xfff0c0, { y: 0.64, x: 0.12, glow: true });
     this.lamps = new InstancePool(lm.build(), MATS, 1500, false);
-    const cm = new ModelBuilder();
-    cm.box(0.36, 0.12, 0.18, 0xffffff, { y: 0.05 });
-    cm.box(0.2, 0.1, 0.16, 0xdde8f0, { x: -0.03, y: 0.17 });
-    cm.box(0.03, 0.04, 0.12, 0xfff6c0, { x: 0.18, y: 0.1, glow: true });
-    this.cars = new InstancePool(cm.build(), MATS, 400, false);
-    this.group.add(this.lamps.mesh, this.cars.mesh);
-    this.carList = [];
+    this.group.add(this.lamps.mesh);
     this.roadMat = new THREE.MeshLambertMaterial({ color: 0x6f6a66, flatShading: true, side: THREE.DoubleSide });
     this.animating = [];
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._s = new THREE.Vector3(); this._up = new THREE.Vector3(0, 1, 0);
@@ -654,17 +648,7 @@ export class TownSystem {
     if (X) X.version = -1;
     if (this.game.roads) this.game.roads.townsChanged();
     this.group.add(m);
-    // cars
-    const want = Math.min(2 + t.stage * 3, 20);
-    const mine = this.carList.filter((c) => c.town === t.id);
-    const roadArr = [...tiles];
-    for (let k = mine.length; k < want && roadArr.length > 1; k++) {
-      const c = { town: t.id, slot: -1, from: roadArr[k % roadArr.length], to: -1, f: 0, speed: 0.6 + this.rand() * 0.5, color: [0xc94f4f, 0x3f6e9a, 0xe0a33a, 0xe8e2d4, 0x5aa66a, 0x2b2b2b][k % 6] };
-      c.slot = this.cars.add(c);
-      if (c.slot < 0) break;
-      this.cars.mesh.setColorAt(c.slot, new THREE.Color(c.color));
-      this.carList.push(c);
-    }
+    if (this.game.traffic) this.game.traffic.townChanged(t);
   }
 
   buildAll() {
@@ -703,37 +687,6 @@ export class TownSystem {
       for (const a of ARCH) { this.pools[a].dirty(); this.roofPools[a].dirty(); }
       if (done.length) this.animating = this.animating.filter((b) => !done.includes(b));
     }
-    // cars drive along streets
-    const W = g.world;
-    const speedMul = g.speed || 1;
-    for (const c of this.carList) {
-      const t = this.byId(c.town);
-      if (!t || !t.roadSet || !t.roadSet.size) continue;
-      if (c.to < 0 || !t.roadSet.has(c.from)) {
-        c.from = t.roadSet.has(c.from) ? c.from : [...t.roadSet][0];
-        c.to = this.nextRoad(t, c.from, -1);
-        c.f = 0;
-      }
-      // a closed level crossing ahead: wait before the tile edge
-      const X = g.crossings;
-      const hold = X && X.isBlocked(c.to) && c.f < 0.4;
-      // on a crossing that starts to warn: clear it quickly
-      const rush = X && X.isBlocked(c.from) && c.f < 0.5 ? 4 : 1;
-      if (!hold) c.f += dt * c.speed * 0.6 * Math.min(speedMul, 2) * rush;
-      if (hold && c.f > 0.34) c.f = 0.34;
-      if (c.f >= 1) { const prev = c.from; c.from = c.to; c.to = this.nextRoad(t, c.from, prev); c.f = 0; }
-      const ax = (tx(c.from) + 0.5) * TILE, az = (tz(c.from) + 0.5) * TILE, bx = (tx(c.to) + 0.5) * TILE, bz = (tz(c.to) + 0.5) * TILE;
-      const dx = bx - ax, dz = bz - az;
-      const len = Math.hypot(dx, dz) || 1;
-      const nx = -dz / len, nz = dx / len;
-      const x = lerp(ax, bx, c.f) + nx * 0.18, z = lerp(az, bz, c.f) + nz * 0.18;
-      this._p.set(x, heightAt(W, x, z) + 0.05, z);
-      this._q.setFromAxisAngle(this._up, Math.atan2(-dz, dx));
-      this._s.set(1, 1, 1);
-      this._m.compose(this._p, this._q, this._s);
-      this.cars.mesh.setMatrixAt(c.slot, this._m);
-    }
-    this.cars.dirty();
     void time;
   }
 
