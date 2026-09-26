@@ -109,42 +109,28 @@ export class Economy {
     return this.revenue(c, n, dist, train, false);
   }
 
+  // A train delivers a load at stn: the whole journey is paid now, split over
+  // the vehicles that carried it (CargoFlows.settle).
   deliver(train, stn, lot) {
     const g = this.game;
-    const from = g.stations.byId(lot.from);
-    const dist = this.distTiles(from, stn);
-    const town = stn.links.towns.length ? g.towns.byId(stn.links.towns[0]) : null;
-    const needed = town ? g.towns.needs(town, lot.c) : false;
-    const transit = lot.t0 != null ? Math.max(0, g.time - lot.t0) : 0;
-    const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed, transit) * modeFit('rail', lot.c));
-    const res = g.stations.distribute(stn, lot.c, lot.n);
-    this.bookDelivery(rev, lot.c, lot.n, train, from, stn);
-    train.earned += rev;
-    const S = g.stats;
-    S.inc('deliveries');
-    S.incCargo(lot.c, lot.n);
-    if (lot.c === 'PASSENGERS') S.inc('passengers', lot.n); else S.inc('freightIncome', rev);
-    S.inc('cargoUnits', lot.n);
-    S.max('longestRoute', dist);
-    this.bucket.income += rev;
-    this.bucket.deliveries++;
-    if (res.town) {
-      const tb = this.bucket.towns[res.town.id] || (this.bucket.towns[res.town.id] = {});
-      tb[lot.c] = (tb[lot.c] || 0) + lot.n;
-    }
-    // contracts
+    const r = g.flows.settle(lot, stn, { train, ref: { type: 'train', id: train.id }, fromObj: g.stations.byId(lot.from), mode: 'rail', fare: 1 });
+    g.events.emit('delivery', { train, station: stn, cargo: lot.c, amount: lot.n, revenue: r.rev, town: r.res.town, industry: r.res.industry, dist: r.dist, legs: r.legs });
+    return r.rev;
+  }
+
+  // a delivery (any mode) counts towards the contracts
+  noteDelivery(c, n, rev, res, from, here) {
     for (const k of this.contracts) {
       if (k.done) continue;
-      if (k.type === 'deliver_town' && lot.c === k.cargo && res.town && res.town.id === k.town) k.progress += lot.n;
-      else if (k.type === 'timed_deliver' && lot.c === k.cargo) k.progress += lot.n;
-      else if (k.type === 'passengers' && lot.c === 'PASSENGERS') k.progress += lot.n;
-      else if (k.type === 'town_link' && lot.c === 'PASSENGERS' && res.town && res.town.id === k.town && from && from.links && from.links.towns.includes(k.from)) k.progress += lot.n;
-      else if (k.type === 'freight_income' && lot.c !== 'PASSENGERS') k.progress += rev;
+      if (k.type === 'deliver_town' && c === k.cargo && res.town && res.town.id === k.town) k.progress += n;
+      else if (k.type === 'timed_deliver' && c === k.cargo) k.progress += n;
+      else if (k.type === 'passengers' && c === 'PASSENGERS') k.progress += n;
+      else if (k.type === 'town_link' && c === 'PASSENGERS' && res.town && res.town.id === k.town && from && from.links && from.links.towns.includes(k.from)) k.progress += n;
+      else if (k.type === 'freight_income' && c !== 'PASSENGERS') k.progress += rev;
       else if (k.type === 'deliveries') k.progress += 1;
       if (k.progress >= k.amount) this.completeContract(k);
     }
-    g.events.emit('delivery', { train, station: stn, cargo: lot.c, amount: lot.n, revenue: rev, town: res.town, industry: res.industry, dist });
-    return rev;
+    void here;
   }
 
   // revenue category of a cargo in the ledger
@@ -259,8 +245,9 @@ export class Economy {
     this.contracts = this.contracts.filter((k) => !k.claimed);
   }
 
-  // passengers changing trains (PaxFlow)
-  onTransfer(n) {
+  // loads changing vehicle (CargoFlows): travellers count for the transfer contracts
+  onTransfer(n, c = 'PASSENGERS') {
+    if (c !== 'PASSENGERS') return;
     for (const k of this.contracts) if (!k.done && k.type === 'pax_transfers') { k.progress += n; if (k.progress >= k.amount) this.completeContract(k); }
   }
 

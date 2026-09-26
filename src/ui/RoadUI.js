@@ -84,7 +84,7 @@ export const RoadUIMixin = {
       <h4>${this.tr('stop_serves')}</h4>
       ${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('')}
       ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'truck' ? 'stop_no_industry' : 'stop_no_town')}</p>` : ''}
-      <h4 id="rs-wait">${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}
+      <h4 id="rs-wait">${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}${this.journeyBlock(s)}
       ${this.ratingBlock(s)}
       <span id="rs-type"></span>${s.kind === 'airport' ? this.airportBlock(s) : this.stopTypeBlock(s)}
       <span id="rs-lines"></span>${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
@@ -156,14 +156,14 @@ export const RoadUIMixin = {
     const add = cands.length ? cands.map((x) => `<button class="tag link" data-act="rvRouteAdd" data-arg="${v.id}:${x.s.id}">${icon('plus', 'mini')} ${esc(x.s.name)}</button>`).join('') : `<p class="muted small">${this.tr('rv_no_more_stops')}</p>`;
     const line = R.lines.lineOf(v);
     return `${this.rvActions(v)}<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
-      <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}
+      <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}${this.cargoJourneys(v.cargo, null)}
       <span id="rv-line"></span>${this.vehLineBlock(v)}
       ${line ? `<p class="muted small">${this.tr('rv_on_line', { name: esc(line.name) })}</p>` : `<h4>${this.tr('rv_route')}</h4><div class="rv-route">${route}</div>
       <h5>${this.tr('rv_add_stop')}</h5><div class="chips wrap">${add}</div>
       <p class="muted small">${this.tr('rv_route_help')}</p>`}
       ${this.vehCareBlock(v)}
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(v)}
-      <p class="muted small">${this.tr('rv_trips', { n: v.trips, e: fmt(v.earned) })}</p>
+      <p class="muted small">${this.tr('rv_trips', { n: v.trips, e: fmt(v.earned) })}</p>${this.handoverNote({ type: 'road', id: v.id })}
       <div class="row wrap"><button class="btn ghost danger" data-act="rvSell" data-arg="${v.id}">${this.tr('sell')} · ${fmt(Math.round(m.price * g.difficulty.costMul * 0.5))} ●</button></div>`;
   },
   roadActions() {

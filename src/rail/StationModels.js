@@ -210,7 +210,25 @@ function facilityModels(mb, facilities, B) {
     else if (f === 'coal_loader') { mb.box(0.8, 0.9, 0.7, 0x4a4f55, { x: fx, y: y0 + 0.5, z: fz }); for (const s of [-1, 1]) mb.box(0.08, 0.5, 0.08, 0x3a3d42, { x: fx + s * 0.3, y: y0, z: fz }); mb.box(0.3, 0.06, 0.9, 0x2a2c30, { x: fx, y: y0 + 1.0, z: fz + 0.6, rx: -0.4 }); mb.sphere(0.35, 0, 0x1e1e22, { x: fx, y: y0, z: fz - 0.55, sy: 0.5 }); }
     else if (f === 'tank_farm') { for (const dx of [-0.35, 0.35]) { mb.cyl(0.32, 0.32, 0.7, 12, 0xd8dde2, { x: fx + dx, y: y0, z: fz }); mb.cyl(0.33, 0.33, 0.04, 12, 0xc94f4f, { x: fx + dx, y: y0 + 0.5, z: fz }); } mb.box(0.9, 0.04, 0.06, 0x8a5a3a, { x: fx, y: y0 + 0.5, z: fz + 0.3 }); }
     else if (f === 'timber_yard') { for (let k = 0; k < 3; k++) mb.hcyl(0.1, 1.1, 7, 0x9a6b3f, { x: fx, y: y0 + 0.1 + k * 0.17, z: fz - 0.2 + (k % 2) * 0.18 }); mb.box(0.06, 1.2, 0.06, 0xd8a030, { x: fx + 0.6, y: y0, z: fz }); mb.box(0.8, 0.06, 0.06, 0xd8a030, { x: fx + 0.25, y: y0 + 1.15, z: fz }); }
-    else if (f === 'container_crane') {
+    else if (f === 'warehouse') {
+      // a long goods shed with roller doors and a loading ramp
+      mb.box(1.3, 0.75, 0.8, 0xb8a890, { x: fx, y: y0, z: fz });
+      mb.roof(1.4, 0.26, 0.92, 0x5a6068, { x: fx, y: y0 + 0.75, z: fz });
+      for (const dx of [-0.4, 0, 0.4]) mb.box(0.28, 0.5, 0.02, 0x6a7078, { x: fx + dx, y: y0, z: fz + 0.41 });
+      mb.box(1.3, 0.16, 0.3, 0xa8a296, { x: fx, y: y0, z: fz + 0.55 });
+    } else if (f === 'cold_store') {
+      // white insulated store with cooling units on the roof
+      mb.box(1.1, 0.8, 0.8, 0xeef2f4, { x: fx, y: y0, z: fz });
+      mb.box(1.14, 0.06, 0.84, 0x9aa8b4, { x: fx, y: y0 + 0.8, z: fz });
+      for (const dx of [-0.3, 0.3]) { mb.box(0.3, 0.16, 0.3, 0x8a96a0, { x: fx + dx, y: y0 + 0.86, z: fz }); mb.cyl(0.1, 0.1, 0.03, 10, 0x3a4048, { x: fx + dx, y: y0 + 1.02, z: fz }); }
+      mb.box(0.36, 0.55, 0.02, 0x2f8ab8, { x: fx, y: y0, z: fz + 0.41 });
+    } else if (f === 'vehicle_ramp') {
+      // an end-loading ramp with new cars waiting in rows
+      mb.box(0.9, 0.12, 0.6, 0x8a8a84, { x: fx, y: y0, z: fz });
+      mb.box(0.5, 0.06, 0.6, 0x9a9a94, { x: fx + 0.6, y: y0 + 0.06, z: fz, rz: -0.2 });
+      const cars = [0xc0392b, 0x2f6fa8, 0xe8e8ee, 0x3a3d42, 0xd8a030, 0x3a8a5a];
+      for (let k = 0; k < 6; k++) mb.box(0.24, 0.1, 0.12, cars[k], { x: fx - 0.3 + (k % 3) * 0.3, y: y0 + 0.12, z: fz - 0.15 + Math.floor(k / 3) * 0.3 });
+    } else if (f === 'container_crane') {
       for (const dx of [-0.5, 0.5]) for (const dz of [-0.35, 0.35]) mb.box(0.08, 1.5, 0.08, 0xd06030, { x: fx + dx, y: y0, z: fz + dz });
       mb.box(1.1, 0.12, 0.8, 0xd06030, { x: fx, y: y0 + 1.5, z: fz });
       mb.box(0.3, 0.2, 0.3, 0x3a3d42, { x: fx + 0.2, y: y0 + 1.3, z: fz });

@@ -33,6 +33,8 @@ import { CargoRatings } from './economy/Ratings.js';
 import { Crossings } from './road/Crossings.js';
 import { Traffic } from './road/Traffic.js';
 import { TransportOverview } from './economy/Transport.js';
+import { TransportNetwork } from './economy/Network.js';
+import { CargoFlows } from './economy/Flows.js';
 import { Roads } from './road/Roads.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
@@ -101,6 +103,8 @@ export class Game {
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
     this.maint = new Maintenance(this);
+    this.network = new TransportNetwork(this);
+    this.flows = new CargoFlows(this);
     this.pax = new PaxFlow(this);
     this.lines = new Lines(this);
     this.transport = new TransportOverview(this);
@@ -180,6 +184,7 @@ export class Game {
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
     this.company.deserialize(s.company);
     if (s.scenario) this.scenario = ScenarioRun.restore(this, s.scenario);
+    this.flows.afterLoad();
     this.world.view.recolorTerrain();
   }
 
@@ -373,7 +378,8 @@ export class Game {
     E.on('roadDelivery', (d) => {
       const x = tileCX(d.stop.tile), z = tileCZ(d.stop.tile), v = this.near({ x, z });
       if (v > 0.1) {
-        ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin');
+        // a change of vehicle: the load is paid when it arrives
+        if (d.transfer) ui.floatText(x, 0.8, z, `⇄ ${fmt(d.amount)}`, 'info'); else ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin');
         if (d.stop.kind === 'bus') { A.play('airBrake', { vol: v * 0.5, world: true }); A.play('busDoor', { vol: v * 0.7, world: true }); } else A.play('truckEngine', { vol: v * 0.7, world: true });
       }
     });
@@ -465,6 +471,7 @@ export class Game {
     this.industries.tick(dt);
     this.towns.tick(dt);
     this.stations.tick(dt);
+    this.flows.tick(dt);
     this.pax.tick(dt);
     this.trains.tick(dt);
     this.maint.tick(dt);

@@ -19,6 +19,7 @@ import { MATS } from '../core/ModelBuilder.js';
 import { SCALE } from '../style.js';
 import { SPACING_CHOICES } from './Lines.js';
 import { log } from '../core/Log.js';
+import { CargoFlows } from '../economy/Flows.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
@@ -37,12 +38,8 @@ const _s1 = new THREE.Vector3(1, 1, 1);
 export { locoModel };
 
 // copy of a cargo lot, keeping a passenger destination / transfer tag when valid
-function lotFrom(l) {
-  const o = { c: l.c, n: l.n, from: l.from };
-  if (typeof l.t0 === 'number' && isFinite(l.t0)) o.t0 = l.t0;   // loading time (delivery-time payment)
-  if (Number.isInteger(l.to)) { o.to = l.to; if (Number.isInteger(l.via) && l.via !== l.to) o.via = l.via; }
-  return o;
-}
+// a copy of a load with its journey (origin, destination, legs: CargoFlows)
+function lotFrom(l) { return CargoFlows.cleanLot(l) || { c: l.c, n: l.n, from: l.from }; }
 
 export class TrainSystem {
   constructor(game) {
@@ -769,9 +766,22 @@ export class TrainSystem {
   // ---------- targets & dispatcher ----------
   stationAccepts(stn, lot) {
     if (lot.from === stn.id) return false;
-    // passengers with a destination only leave at it or at their transfer station
+    // loads with a drop point (a destination or a change) only leave there
     if (lot.to != null) return stn.id === lot.to || stn.id === lot.via;
     return this.game.stations.accepts(stn, lot.c);
+  }
+  // freight this train cannot deliver itself: a stop ahead where it can
+  // change to another service that takes it on to a place that accepts it
+  // (TransportNetwork), no worse than a third above the best way from here
+  routeVia(stn, c, ahead) {
+    const NW = this.game.network;
+    if (!NW || !ahead || !ahead.size) return null;
+    const acc = NW.toAcc(c);
+    const here = acc.get(stn.id);
+    if (!here) return null;
+    let best = null, bc = Infinity;
+    for (const [h, ivt] of ahead) { const r = acc.get(h); if (!r) continue; const cost = ivt + r.cost; if (cost < bc) { bc = cost; best = { to: h, fd: r.dest }; } }
+    return best && bc <= here.cost * 1.3 + 40 ? best : null;
   }
 
   // Choose platform + route toward station stn. pref = preferred track index.
@@ -1219,30 +1229,25 @@ export class TrainSystem {
     const keep = [];
     const unload = opt.act !== 'load' && opt.act !== 'none';
     g.pax.validate(t);
+    const F = g.flows, ref = { type: 'train', id: t.id };
     for (const lot of t.cargo) {
       if (lot.to != null) {
-        // passengers with a destination: get off there, or change trains here
-        if (unload && lot.to === stn.id) { g.economy.deliver(t, stn, lot); moved += lot.n; continue; }
-        if (unload && lot.via === stn.id) {
-          const took = g.pax.transferIn(t, stn, lot);
-          moved += took;
-          if (took < lot.n) keep.push({ c: lot.c, n: lot.n - took, from: lot.from });
-          continue;
+        if (!unload || lot.to !== stn.id) { keep.push(lot); continue; }
+        // its destination, or a change to another service here (paid when it arrives)
+        if (F.endsHere(lot, stn)) { g.economy.deliver(t, stn, lot); moved += lot.n; continue; }
+        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', 1);
+        moved += took;
+        if (took < lot.n) {
+          // the station is full: travellers end their journey here, freight rides on
+          const rest = { ...lot, n: lot.n - took };
+          if (S.accepts(stn, lot.c)) { delete rest.fd; g.economy.deliver(t, stn, rest); moved += rest.n; } else { delete rest.to; keep.push(rest); }
         }
-        keep.push(lot);
         continue;
       }
       if (unload && opt.act === 'transfer' && lot.from !== stn.id) {
-        // feeder transfer: cargo waits at this station for another train
-        const took = S.receive(stn, lot.c, lot.n);
-        if (took > 0) {
-          const share = Math.round(g.economy.estimate(lot.c, took, S.byId(lot.from), stn, t) * 0.4);
-          g.economy.bookDelivery(share, lot.c, took, t, S.byId(lot.from), stn); t.earned += share;
-          S.noteTransfer(stn, lot.c, took);
-          moved += took;
-          if (took < lot.n) keep.push({ c: lot.c, n: lot.n - took, from: lot.from });
-          continue;
-        }
+        // feeder order: the load waits here for the next service (paid when it arrives)
+        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', 1);
+        if (took > 0) { moved += took; if (took < lot.n) keep.push({ ...lot, n: lot.n - took }); continue; }
       }
       const accept = unload && this.stationAccepts(stn, lot);
       if (accept) { g.economy.deliver(t, stn, lot); moved += lot.n; } else keep.push(lot);
@@ -1284,19 +1289,23 @@ export class TrainSystem {
     const only = opt && Array.isArray(opt.cargo) && opt.cargo.length ? opt.cargo : null;
     const cargos = Object.keys(stn.stock).filter((c) => stn.stock[c] >= 1);
     const scored = [];
+    let ahead = null;
     for (const c of cargos) {
       if (t.filter && !t.filter.includes(c)) continue;
       if (only && !only.includes(c)) continue;
       if (!canCarry(t._st, c)) continue;
-      let ok;
-      if (stops) ok = stops.some((s) => S.accepts(s, c) || (t.route.find((r) => r.st === s.id) || {}).act === 'transfer');
-      else ok = S.hasDemand(stn, c, comp, t);
+      let ok, via = null;
+      if (stops) {
+        ok = stops.some((s) => S.accepts(s, c) || (t.route.find((r) => r.st === s.id) || {}).act === 'transfer');
+        // nowhere on the route takes it: change to another service on the way (routing)
+        if (!ok && c !== 'PASSENGERS') { ahead = ahead || g.pax.trainAhead(t, stn); via = this.routeVia(stn, c, ahead); ok = via != null; }
+      } else ok = S.hasDemand(stn, c, comp, t);
       if (!ok) continue;
-      scored.push({ c, sc: stn.stock[c] * CARGO[c].value });
+      scored.push({ c, sc: stn.stock[c] * CARGO[c].value, via });
     }
     scored.sort((a, b) => b.sc - a.sc);
     let total = 0;
-    for (const { c } of scored) {
+    for (const { c, via } of scored) {
       const room = roomFor(t._st, lots, c);
       if (room <= 0) continue;
       const claimedByOthers = (stn.claimed[c] || 0);
@@ -1304,16 +1313,23 @@ export class TrainSystem {
       const n = Math.min(avail, room, c === 'PASSENGERS' ? g.pax.boardable(t, stn) : Infinity);
       if (n <= 0) continue;
       total += n;
-      // passengers choose where they are going as they board (PaxFlow)
-      const add = c === 'PASSENGERS' && !dry ? g.pax.board(t, stn, n) : [{ c, n, from: stn.id }];
+      // passengers board for where they are going (PaxFlow); freight keeps its
+      // journey (CargoFlows) and, when it changes on the way, where to get off
+      let add;
+      if (dry) add = [{ c, n, from: stn.id }];
+      else if (c === 'PASSENGERS') add = g.pax.board(t, stn, n);
+      else add = g.flows.take(stn, c, n).map((l) => (via ? { ...l, to: via.to, fd: via.fd } : l));
+      const got = add.reduce((a, l) => a + l.n, 0);
+      if (!dry && got < n) total -= n - got;
       for (const a of add) {
         if (a.t0 == null) a.t0 = g.time;
-        const lot = lots.find((l) => l.c === a.c && l.from === a.from && l.to === a.to && l.via === a.via);
+        const sig = CargoFlows.sig(a);
+        const lot = lots.find((l) => l.from === a.from && CargoFlows.sig(l) === sig);
         if (lot) { lot.t0 = ((lot.t0 ?? a.t0) * lot.n + a.t0 * a.n) / (lot.n + a.n); lot.n += a.n; } else lots.push(a);
       }
+      // (taking the loads already reduced what waits here)
       if (!dry) {
-        stn.stock[c] -= n;
-        g.stations.onPickup(stn, c, n);
+        g.stations.onPickup(stn, c, got);
         if (g.ratings) g.ratings.onPickup(stn, c, t);
       }
     }

@@ -10,6 +10,7 @@ export const HANDBOOK = [
   { id: 'signals', icon: 'signal', n: 4 },
   { id: 'single', icon: 'track', n: 3 },
   { id: 'passengers', icon: 'town', n: 4 },
+  { id: 'journeys', icon: 'route', n: 6 },
   { id: 'lines', icon: 'route', n: 4 },
   { id: 'overtaking', icon: 'train', n: 3 },
   { id: 'rollingstock', icon: 'collection', n: 5 },

@@ -28,6 +28,7 @@ import { AuthorityUIMixin } from './AuthorityUI.js';
 import { LineUIMixin } from './LineUI.js';
 import { TransportUIMixin } from './TransportUI.js';
 import { CatalogUIMixin } from './CatalogUI.js';
+import { FlowUIMixin } from './FlowUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
@@ -1188,7 +1189,7 @@ export class UI {
       <p class="muted small">${this.tr('town_growth_help')}</p>
       <h4>${this.tr('accepts')}</h4><div class="icons">${TOWN_ACCEPTS.map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('')}</div>
       <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
-      ${this.townTransportBlock(t, sts)}
+      ${this.townTransportBlock(t, sts)}${this.unservedNote(t)}
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
       <span id="tw-districts"></span>${this.townGrowthBlock(t)}
       <span id="tw-auth"></span>${this.authBlock(t)}`;
@@ -1428,4 +1429,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);
+Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);

@@ -5,9 +5,10 @@
 // safe station editing (add track with switch ladders, extend platforms,
 // roles, facilities), statistics, the bottleneck advisor and visuals.
 import { cleanFin } from '../economy/Ledger.js';
+import { CargoFlows } from '../economy/Flows.js';
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ } from '../util.js';
-import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen } from '../config.js';
+import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen, STORE_CLASSES, STORE_BASE, CARGO_STORE, CONTAINER_CARGO, facilitySlots } from '../config.js';
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
@@ -47,17 +48,55 @@ export class StationSystem {
   allTiles(stn) { const out = []; for (const tk of stn.tracks) for (const t of tk.tiles) out.push(t); return out; }
 
   radius(stn) { return STATION.radius[stn.level] + this.game.progression.fx.stationRadius; }
+  // the station level's storage (the base room of every storage class)
   storage(stn) { return Math.round(STATION.storage[stn.level | 0] * (1 + this.game.progression.fx.storage) * (stn.road && this.game.roads ? this.game.roads.stopProps(stn).storageMul : 1)); }
+  // storage class of a cargo here: container cargo goes to the container
+  // yard of a container terminal once containerization is researched
+  storeClass(stn, c) {
+    if (CONTAINER_CARGO.includes(c) && (stn.facilities || []).includes('container_crane') && this.game.progression.research.has('containerization')) return 'container';
+    return CARGO_STORE[c] || 'general';
+  }
+  // room of a storage class: base × class share + what the equipment adds
+  classCap(stn, k) {
+    let m = STORE_BASE[k] ?? 1;
+    for (const f of stn.facilities || []) { const F = FACILITIES[f]; if (F && F.store && F.store[k]) m += F.store[k]; }
+    return Math.round(this.storage(stn) * m);
+  }
+  classUse(stn, k) { let n = 0; for (const c in stn.stock) if (this.storeClass(stn, c) === k) n += stn.stock[c]; return n; }
+  // room for cargo c (its class's room minus what the class already holds)
+  roomFor(stn, c) { const k = this.storeClass(stn, c); return Math.max(0, this.classCap(stn, k) - this.classUse(stn, k)); }
+  // every class in use or with room, for the station panel
+  storeRows(stn) {
+    const out = [];
+    for (const k of STORE_CLASSES) {
+      const cap = this.classCap(stn, k), use = this.classUse(stn, k);
+      const boosted = (stn.facilities || []).some((f) => FACILITIES[f] && FACILITIES[f].store && FACILITIES[f].store[k]);
+      if (use >= 1 || (boosted && cap > 0)) out.push({ k, cap, use: Math.floor(use) });
+    }
+    return out;
+  }
   loadRate(stn, cargos) {
     let r = STATION.loadRate[stn.level];
     // a station built for one kind of traffic handles it faster
     if (stn.service && stn.service !== 'mixed') r *= SERVICE_LOAD_MUL;
     if (cargos && stn.facilities.length) {
       let best = 1;
-      for (const f of stn.facilities) for (const c of cargos) if (FACILITIES[f] && FACILITIES[f].cargo.includes(c)) best = Math.max(best, FACILITIES[f].mul);
+      const cont = this.game.progression.research.has('containerization');
+      for (const f of stn.facilities) for (const c of cargos) {
+        const F = FACILITIES[f];
+        if (!F || !F.cargo.includes(c)) continue;
+        // containers: a terminal moves container cargo faster after containerization
+        best = Math.max(best, f === 'container_crane' && cont && CONTAINER_CARGO.includes(c) ? 2.4 : F.mul);
+      }
       r *= best;
     }
     return r;
+  }
+  // how quickly loads change vehicle here (× the network's change penalty)
+  handling(stn) {
+    let h = 1;
+    for (const f of stn.facilities || []) { const F = FACILITIES[f]; if (F && F.handling) h = Math.min(h, F.handling * (f === 'container_crane' && !this.game.progression.research.has('containerization') ? 1.6 : 1)); }
+    return h;
   }
   maxTracks() { const R = this.game.progression.research; return R.has('grand_terminals') ? STATION.maxTracksGrand : R.has('station_expansion') ? STATION.maxTracksExp : STATION.maxTracks; }
   maxLength() { return this.game.progression.research.has('platform_extension') ? STATION.maxLengthExt : STATION.maxLength; }
@@ -569,7 +608,7 @@ export class StationSystem {
     }
     for (const [id, c] of this.claims) if (c.stn === stn.id) this.claims.delete(id);
     // passengers bound for this station elsewhere now take any train
-    for (const s of this.list) if (s.paxTo && s.paxTo[stn.id] != null) { delete s.paxTo[stn.id]; g.pax.clamp(s); }
+    if (g.flows) g.flows.forget(stn.id);
     g.pax.invalidate();
     net.bumpVersion();
     for (const t of tiles) g.railView.markDirty(t);
@@ -822,8 +861,9 @@ export class StationSystem {
     const g = this.game;
     if (!FACILITIES[id]) return 'err_unknown';
     if (!g.progression.research.has('freight_terminals')) return 'err_research_required';
+    if (FACILITIES[id].research && !g.progression.research.has(FACILITIES[id].research)) return 'err_research_required';
     if (stn.facilities.includes(id)) return 'err_done';
-    if (stn.facilities.length >= 2) return 'err_max_facilities';
+    if (stn.facilities.length >= facilitySlots(stn.level)) return 'err_max_facilities';
     if (!g.economy.canAfford(this.facilityCost())) return 'err_no_money';
     return null;
   }
@@ -840,24 +880,28 @@ export class StationSystem {
   }
 
   // ---------- cargo ----------
+  // cargo arrives at a station: as much as its storage class has room for
   receive(stn, c, n) {
     if (stn.service && !this.serves(stn, c)) return 0;
-    const cap = this.storage(stn);
-    const cur = stn.stock[c] || 0;
-    const take = Math.max(0, Math.min(n, cap - cur));
-    if (take > 0) stn.stock[c] = cur + take;
+    const k = this.storeClass(stn, c);
+    const cap = this.classCap(stn, k);
+    const used = this.classUse(stn, k);
+    const take = Math.max(0, Math.min(n, cap - used));
+    if (take > 0) stn.stock[c] = (stn.stock[c] || 0) + take;
     // road stops measure what turns up at them (line demand)
     if (stn.road && take > 0) stn.stats.genMonth = (stn.stats.genMonth || 0) + take;
-    stn.warn = cur + take >= cap * 0.9;
+    stn.warn = used + take >= cap * 0.9;
+    if (take < n) stn.stats.lost = (stn.stats.lost || 0) + (n - take);
     return take;
   }
   onPickup(stn, c, n) { stn.picked += n; this.game.events.emit('cargoPicked', stn, c, n); }
 
-  distribute(stn, c, n) {
+  distribute(stn, c, n, opts = null) {
     const g = this.game;
     stn.delivered += n;
-    // last mile: some travellers arriving by train continue by bus or tram
-    if (c === 'PASSENGERS' && !stn.road && g.roads) g.roads.onward(stn, n);
+    // last mile: some travellers arriving by train (without a planned
+    // destination of their own) continue by bus or tram
+    if (c === 'PASSENGERS' && !stn.road && g.roads && !(opts && opts.planned)) g.roads.onward(stn, n);
     const townId = stn.links.towns.length ? stn.links.towns[0] : stn.cargoTown;
     if (TOWN_ACCEPTS.includes(c) && townId != null) {
       const town = g.towns.byId(townId);
@@ -1086,7 +1130,7 @@ export class StationSystem {
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities, service: s.service || undefined,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
-        ...(s.paxTo && Object.keys(s.paxTo).length ? { paxTo: s.paxTo } : {}),
+        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined,
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
     };
@@ -1106,11 +1150,12 @@ export class StationSystem {
       if (s.fin) stn.fin = cleanFin(s.fin);
       if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stn, s.ratings);
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];
-      // passengers waiting for a connection (PaxFlow); ids are checked once all stations exist
+      // loads waiting with a journey of their own (CargoFlows); older saves:
+      // passengers waiting for a connection (paxTo) become packets bound there
+      const pk = CargoFlows.cleanPackets(s.pk);
+      if (pk) stn.pk = pk;
       if (s.paxTo && typeof s.paxTo === 'object') {
-        const m = {};
-        for (const k in s.paxTo) { const v = Math.floor(+s.paxTo[k]); if (/^\d+$/.test(k) && isFinite(v) && v > 0) m[k] = v; }
-        if (Object.keys(m).length) stn.paxTo = m;
+        for (const k in s.paxTo) { const v = Math.floor(+s.paxTo[k]); if (/^\d+$/.test(k) && isFinite(v) && v > 0) (stn.pk || (stn.pk = [])).push({ c: 'PASSENGERS', n: v, fd: +k, o: stn.id, ot: stn.tile }); }
       }
       // tracks: validate tiles (in map, free, has rail except legacy single tile)
       const tracks = [];
@@ -1125,16 +1170,13 @@ export class StationSystem {
       });
       if (!tracks.length) tracks.push({ tiles: [s.tile], role: 'any', dir: 'both', off: 0, ladder: [] });
       stn.tracks = tracks;
-      stn.facilities = Array.isArray(s.facilities) ? s.facilities.filter((f) => FACILITIES[f]).slice(0, 2) : [];
+      stn.facilities = Array.isArray(s.facilities) ? s.facilities.filter((f, i, a) => FACILITIES[f] && a.indexOf(f) === i).slice(0, facilitySlots(5)) : [];
       if (s.service === 'passenger' || s.service === 'freight') stn.service = s.service;
       if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
       this.list.push(stn);
       this.markTiles(stn);
     }
-    for (const s of this.list) if (s.paxTo) {
-      for (const k of Object.keys(s.paxTo)) if (+k === s.id || !this.byId(+k)) delete s.paxTo[k];
-      this.game.pax.clamp(s);
-    }
+    // (destinations that no longer exist are checked once every stop exists: Game.restore)
     for (const dd of d.depots || []) {
       if (typeof dd.tile !== 'number' || net.special.has(dd.tile)) continue;
       const dep = { id: dd.id, tile: dd.tile, name: String(dd.name || 'Depot') };

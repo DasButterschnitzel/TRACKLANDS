@@ -164,14 +164,40 @@ export const STATION = {
   maxLength: 3, maxLengthExt: 6,
   minPlatformEff: 0.72,                 // loading speed floor for trains longer than the platform
 };
-// Freight facilities boost loading of matching cargo at a station.
+// Freight facilities (handling equipment) at a station: faster loading of
+// the cargo they handle (mul), more room for their storage classes (store:
+// + share of the class's base room) and faster handover between vehicles
+// (handling: × the change penalty in the network). The container terminal
+// needs containerization; it keeps the cargo that fits containers in its own
+// large container yard.
 export const FACILITIES = {
-  grain_silo: { cargo: ['GRAIN', 'FOOD'], mul: 1.8 },
-  coal_loader: { cargo: ['COAL', 'ORE'], mul: 1.8 },
-  tank_farm: { cargo: ['OIL', 'FUEL'], mul: 1.8 },
-  timber_yard: { cargo: ['WOOD', 'LUMBER'], mul: 1.8 },
-  container_crane: { cargo: ['GOODS', 'MACHINERY', 'STEEL', 'MAIL'], mul: 1.8 },
+  grain_silo: { cargo: ['GRAIN', 'FOOD'], mul: 1.8, store: { bulk: 1 } },
+  coal_loader: { cargo: ['COAL', 'ORE', 'STONE', 'SAND', 'CLAY', 'COPPER'], mul: 1.8, store: { bulk: 1 } },
+  tank_farm: { cargo: ['OIL', 'FUEL', 'CHEMICALS', 'MILK'], mul: 1.8, store: { liquid: 1.5 } },
+  timber_yard: { cargo: ['WOOD', 'LUMBER', 'PAPER'], mul: 1.8, store: { general: 0.5 } },
+  container_crane: { cargo: ['GOODS', 'MACHINERY', 'STEEL', 'MAIL', 'ELECTRONICS', 'FOOD', 'PAPER', 'FRUIT', 'FISH', 'MATERIALS'], mul: 1.8, store: { container: 1 }, handling: 0.5, research: 'containerization' },
+  warehouse: { cargo: ['GOODS', 'ELECTRONICS', 'PAPER', 'MATERIALS', 'LIVESTOCK'], mul: 1.4, store: { general: 1.5, oversize: 0.5 }, handling: 0.8 },
+  cold_store: { cargo: ['FOOD', 'FISH', 'FRUIT', 'MILK'], mul: 1.5, store: { cold: 2 } },
+  vehicle_ramp: { cargo: ['VEHICLES', 'MACHINERY', 'STEEL'], mul: 1.8, store: { oversize: 1.5 } },
 };
+// how many facilities a station may have, by its level (0 … 5)
+export const facilitySlots = (level) => 2 + Math.floor((level | 0) / 2);
+// ---------- STORAGE CLASSES (Phase 7) ----------
+// Waiting cargo is kept by class: each class has room for the station
+// level's storage × its base, shared by every cargo of the class, plus what
+// the handling equipment adds.
+export const STORE_CLASSES = ['pax', 'mail', 'general', 'bulk', 'liquid', 'cold', 'container', 'oversize'];
+export const STORE_BASE = { pax: 1, mail: 0.8, general: 1, bulk: 1.25, liquid: 1, cold: 0.8, container: 0, oversize: 0.8 };
+export const CARGO_STORE = {
+  PASSENGERS: 'pax', MAIL: 'mail',
+  ORE: 'bulk', COAL: 'bulk', STONE: 'bulk', SAND: 'bulk', CLAY: 'bulk', COPPER: 'bulk', GRAIN: 'bulk',
+  OIL: 'liquid', FUEL: 'liquid', CHEMICALS: 'liquid',
+  MILK: 'cold', FOOD: 'cold', FISH: 'cold', FRUIT: 'cold',
+  GOODS: 'general', ELECTRONICS: 'general', PAPER: 'general', LUMBER: 'general', WOOD: 'general', MATERIALS: 'general', LIVESTOCK: 'general',
+  STEEL: 'oversize', MACHINERY: 'oversize', VEHICLES: 'oversize',
+};
+// cargo that travels in containers (a container terminal after containerization)
+export const CONTAINER_CARGO = ['GOODS', 'ELECTRONICS', 'FOOD', 'PAPER', 'FRUIT', 'FISH', 'MAIL', 'MATERIALS'];
 export const PLATFORM_ROLES = ['any', 'passenger', 'freight', 'express', 'through'];
 
 // ---------- INDUSTRIES ----------

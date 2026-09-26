@@ -30,6 +30,7 @@ export class Lines {
     return best;
   }
 
+  invalidate() { this._c = null; }
   list() {
     const g = this.game;
     if (this._c && this._v === this.version && g.time >= this._t && g.time - this._t < 1) return this._c;
