@@ -246,6 +246,8 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
       cactus: (mb) => { mb.cyl(0.07, 0.08, 0.6, 6, 0x5a8a4a); mb.cyl(0.04, 0.04, 0.22, 5, 0x5a8a4a, { x: 0.1, y: 0.25, rz: -0.9 }); mb.cyl(0.04, 0.04, 0.2, 5, 0x5a8a4a, { x: 0.16, y: 0.36 }); },
     };
     this.treeMeshes = {};
+    this.treeGeo = {};
+    this.treeFar = false;
     const mat = this.swayMaterial();
     const lists = { oak: [], pine: [], snowpine: [], cactus: [] };
     this.treeAt = new Map();
@@ -287,7 +289,28 @@ transformed.z += sw * 0.6 * max(transformed.y, 0.0);
       if (!L.length) mesh.setColorAt(0, _c.setRGB(1, 1, 1));
       mesh.instanceMatrix.needsUpdate = true;
       this.treeMeshes[kind] = mesh;
+      this.treeGeo[kind] = [geo, null];
       this.group.add(mesh);
+    }
+  }
+
+  // zoomed far out the forests use one low-poly shape per tree (same
+  // instances, a tenth of the triangles) and cast no shadows
+  treeLod(far) {
+    if (far === this.treeFar || !this.treeMeshes) return;
+    this.treeFar = far;
+    const simple = {
+      oak: (mb) => { mb.cyl(0.05, 0.07, 0.35, 3, 0x7a5a3a); mb.cone(0.34, 0.75, 5, 0x5e9a48, { y: 0.3 }); },
+      pine: (mb) => { mb.cone(0.3, 0.95, 4, 0x2f6a44, { y: 0.12 }); },
+      snowpine: (mb) => { mb.cone(0.3, 0.95, 4, 0x3f6a54, { y: 0.12 }); },
+      cactus: (mb) => { mb.box(0.12, 0.6, 0.12, 0x5a8a4a); },
+    };
+    for (const kind in this.treeMeshes) {
+      const set = this.treeGeo[kind];
+      if (far && !set[1]) { const mb = new ModelBuilder(); simple[kind](mb); set[1] = mb.build(); set[1].clearGroups(); }
+      const mesh = this.treeMeshes[kind];
+      mesh.geometry = far ? set[1] : set[0];
+      mesh.castShadow = !far;
     }
   }
 

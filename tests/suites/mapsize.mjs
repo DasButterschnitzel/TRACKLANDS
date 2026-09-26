@@ -13,7 +13,7 @@ export async function run({ browser, base }) {
   const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 1280, height: 800 } });
   await loadSave(page, productionSave());
   const classic = await page.evaluate(() => { const g = window.__tracklands.game; return { towns: g.towns.list.length, inds: g.industries.list.length }; });
-  for (const size of [96, 128]) {
+  for (const size of [96, 128, 192]) {
     await page.evaluate((n) => {
       const app = window.__tracklands;
       document.querySelectorAll('.modal-wrap').forEach((m) => m.remove());
@@ -42,6 +42,12 @@ export async function run({ browser, base }) {
       g.camera.target.set(n, 0, n); g.camera.zoomGoal = g.camera.viewSize = g.camera.maxZoom; g.camera.apply();
       for (let k = 0; k < 10; k++) { g.frame(1 / 60); gl.finish(); }
       out.frameMs = Math.round((performance.now() - t0) / 10);
+      out.tris = g.renderer.info.render.triangles;
+      // a road route corner to corner (route finding on the big grid)
+      const p0 = performance.now();
+      const plan = g.roads.plan(12 * n + 12, (n - 12) * n + n - 12);
+      out.routeMs = Math.round(performance.now() - p0); out.route = plan.ok ? plan.tiles.length : plan.reason;
+      const s0 = performance.now(); for (let k = 0; k < 60; k++) g.tick(1 / 30); out.stepMs = (performance.now() - s0) / 60;
       // save / load
       const S = await import('./src/save/Save.js');
       const d = S.migrate(JSON.parse(JSON.stringify(g.serialize())));
@@ -55,6 +61,7 @@ export async function run({ browser, base }) {
     check(r.regions === 8 && r.towns > classic.towns && r.inds > classic.inds, `${size}: all 8 regions, ${r.towns} towns (classic ${classic.towns}), ${r.inds} industries (classic ${classic.inds})`);
     check(r.chunks === (size / 32) ** 2 && r.maxZoom > 80, `${size}: terrain in ${r.chunks} chunks, zoom out to ${r.maxZoom}`);
     check(r.valid && r.saved === size, `${size}: save validates and records its size; ${r.frameMs} ms per frame zoomed out, GPU work included (SwiftShader)`);
+    check(r.tris < 1.5e6 && r.stepMs < 20 && r.routeMs < 400, `${size}: zoomed out ${Math.round(r.tris / 1000)}k triangles (far LOD), simulation step ${r.stepMs.toFixed(2)} ms, corner-to-corner road route in ${r.routeMs} ms (${r.route})`);
     await loadSave(page, await page.evaluate(() => window.__msave));
     const back = await page.evaluate(async () => { const g = window.__tracklands.game, U = await import('./src/util.js'); return { N: U.N, sig: JSON.stringify([g.towns.list.map((t) => [t.x, t.z]), g.industries.list.map((i) => [i.x, i.z])]) }; });
     check(back.N === size && back.sig === r.sig, `${size}: loads back with the same world`);
@@ -71,7 +78,7 @@ export async function run({ browser, base }) {
   await page.click('.modal [data-mbtn=go]');
   await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running && window.__tracklands.game.mapSize === 128, null, { timeout: 60000 }).catch(() => {});
   const ng = await page.evaluate(async () => { const g = window.__tracklands.game, U = await import('./src/util.js'); return { size: g.mapSize, N: U.N }; });
-  check(opts.join(',') === '64,96,128' && ng.size === 128 && ng.N === 128, `the new-game dialog offers ${opts.join(', ')} and starts a 128 world`);
+  check(opts.join(',') === '64,96,128,192' && ng.size === 128 && ng.N === 128, `the new-game dialog offers ${opts.join(', ')} and starts a 128 world`);
   // height map: a radial image (dark rim = sea, bright centre = mountains)
   const png = await page.evaluate(() => {
     const c = document.createElement('canvas'); c.width = c.height = 200;

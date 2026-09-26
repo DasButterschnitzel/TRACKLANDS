@@ -982,6 +982,8 @@ export class TownSystem {
       this.roofPools[a].mesh.geometry = set[band].roof;
       this.pools[a].mesh.castShadow = this.roofPools[a].mesh.castShadow = band < 2;
     }
+    const V = this.game.world && this.game.world.view;
+    if (V && V.treeLod) V.treeLod(band >= 2);
     this.lamps.hidden = band >= 2;
     this.lamps.mesh.visible = !this.lamps.hidden && this.lamps.mesh.count > 0;
   }

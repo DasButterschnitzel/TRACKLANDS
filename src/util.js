@@ -2,7 +2,7 @@
 
 // logical tiles per side. A game picks its map size before the world is
 // built (setMapSize); every module reads N through the live ES binding.
-export const MAP_SIZES = [64, 96, 128];
+export const MAP_SIZES = [64, 96, 128, 192];
 export let N = 64;
 export function setMapSize(n) { N = MAP_SIZES.includes(n) ? n : 64; return N; }
 export const TILE = 2;          // world units per tile
