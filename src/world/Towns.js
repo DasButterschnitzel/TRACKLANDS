@@ -2,7 +2,7 @@
 // instanced buildings, streets and street lamps.
 import * as THREE from 'three';
 import { N, TILE, idx, tx, tz, inMap, cheb, RNG, hashStr, easeOutBack, clamp, lerp } from '../util.js';
-import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOMES, REGIONS } from '../config.js';
+import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOMES, REGIONS, MATERIALS_GROWTH } from '../config.js';
 import { ModelBuilder, MATS, shade } from '../core/ModelBuilder.js';
 import { heightAt } from './WorldGen.js';
 import { ARCHETYPES, FAMILIES, LANDMARKS, LANDMARK_STAGE, HEIGHT_ORDER, pickArchetype, streetAt, planDist } from './CityStyle.js';
@@ -458,6 +458,8 @@ export class TownSystem {
 
   receive(t, c, n) {
     t.delivered += n;
+    // building materials: the town builds faster next month
+    if (c === 'MATERIALS') t.mat = (t.mat || 0) + n;
     t.received[c] = (t.received[c] || 0) + n;
     const req = this.requirement(t);
     if (req && req[c]) {
@@ -508,6 +510,10 @@ export class TownSystem {
       const r = A ? A.rating(t) : 50;
       let budget = sts.length ? 1 + (r >= 60 ? 1 : 0) + (r >= 80 ? 1 : 0) + Math.min(2, sts.length - 1) : ((t.idleMonths = (t.idleMonths || 0) + 1) % 4 === 0 ? 1 : 0);
       if (r < 20) budget = Math.min(budget, 1);
+      // building materials delivered last month: extra plots and renewals
+      t.matLast = t.mat || 0; t.mat = 0;
+      if (sts.length && t.matLast > 0) budget += Math.min(MATERIALS_GROWTH.max, Math.floor(t.matLast / MATERIALS_GROWTH.per) + 1);
+      t.lastBudget = budget;
       if (budget > 0) { const n0 = t.buildings.length; this.layout(t, true, budget); if (t.buildings.length !== n0 || t.renewed) g.events.emit('townGrew', t); }
     }
   }
@@ -970,7 +976,7 @@ export class TownSystem {
     return this.list.map((t) => {
       const cl = {};
       for (const k in t.cleared || {}) if (t.cleared[k] > now) cl[k] = Math.round(t.cleared[k]);
-      return { id: t.id, kind: t.kind, plan: t.plan || 'grid3', axis: t.axis || undefined, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, bld: t.buildings.map((b) => [b.tile, ARCH.indexOf(b.arch)]), renewed: t.renewed || undefined, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
+      return { id: t.id, mat: t.mat ? Math.round(t.mat) : undefined, kind: t.kind, plan: t.plan || 'grid3', axis: t.axis || undefined, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, bld: t.buildings.map((b) => [b.tile, ARCH.indexOf(b.arch)]), renewed: t.renewed || undefined, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
     });
   }
   deserialize(arr) {
@@ -985,6 +991,7 @@ export class TownSystem {
       t.axis = d.axis === 1 ? 1 : 0;
       t._cands = null; t._sub = null;
       t.stage = Math.max(0, Math.min(6, d.stage | 0));
+      t.mat = Number.isFinite(+d.mat) && d.mat > 0 ? Math.min(1e5, +d.mat) : 0;
       t.progress = {};
       for (const c in d.progress || {}) if (typeof d.progress[c] === 'number') t.progress[c] = d.progress[c];
       t.pop = Math.max(TOWN_POP[t.stage], +d.pop || 0);

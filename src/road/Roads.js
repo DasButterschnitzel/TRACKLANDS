@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import { N, TILE, idx, tx, tz, inMap, tileCX, tileCZ, cheb, WATER_LEVEL } from '../util.js';
 import { heightAt } from '../world/WorldGen.js';
-import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES } from '../config.js';
+import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, modeFit } from '../config.js';
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
 import { RoadLines } from './Lines.js';
 import { BUS_SHAPES, stopModel, garageModel, personModel, doorModel, signModel } from './RoadModels.js';
@@ -827,7 +827,7 @@ export class Roads {
       if (!toRail && s.accepts && s.accepts.has(lot.c) && !local) {
         const town = s.links.towns.length ? g.towns.byId(s.links.towns[0]) : null;
         const needed = town ? g.towns.needs(town, lot.c) : false;
-        const rev = Math.round(E.revenue(lot.c, lot.n, dist, null, needed, transit) * 0.9 * this.fareMul(m, from, s));
+        const rev = Math.round(E.revenue(lot.c, lot.n, dist, null, needed, transit) * 0.9 * this.fareMul(m, from, s) * modeFit(modeOf(m.kind), lot.c));
         if (v.owner) { const r = this.rival(v); if (r) r.earn(rev); v.earned += rev; S.distribute(s, lot.c, lot.n); continue; }
         E.bookDelivery(rev, lot.c, lot.n, null, from, s, this.ref(v));
         S.distribute(s, lot.c, lot.n);
@@ -841,7 +841,7 @@ export class Roads {
       if (rail && (toRail || lot.to == null || lot.to === s.id)) {
         const took = S.receive(rail, lot.c, lot.n);
         if (took > 0) {
-          const share = Math.round(E.revenue(lot.c, took, Math.max(dist, 1), null, false, transit) * 0.45 * this.fareMul(m, from, s));
+          const share = Math.round(E.revenue(lot.c, took, Math.max(dist, 1), null, false, transit) * 0.45 * this.fareMul(m, from, s) * modeFit(modeOf(m.kind), lot.c));
           E.bookDelivery(share, lot.c, took, null, from, rail, this.ref(v));
           v.earned += share; E.bucket.income += share;
           S.noteTransfer(rail, lot.c, took); s.stats.transfers += took;
@@ -1376,12 +1376,19 @@ export class Roads {
     for (const v of this.vehicles) { this.vehPos(v, o); const d = Math.hypot(o.x - p.x, o.z - p.z); if (d < bd) { bd = d; best = v; } }
     return best;
   }
+  // half a vehicle's body length in path units (f runs tile centre to centre)
+  halfLen(v) {
+    const m = roadModel(v.model) || {};
+    const len = m.kind === 'bus' && BUS_SHAPES[m.shape] ? BUS_SHAPES[m.shape].len : m.kind === 'tram' ? 0.95 : 0.62;
+    return (len * 1.4) / 2 / TILE;
+  }
   // is any road vehicle on (or entering) this tile? (level crossing interlock)
+  // A vehicle leaving it still covers it until its rear is past the edge.
   onTile(tile) {
     return this.vehicles.some((v) => {
       const md = modeOf((roadModel(v.model) || {}).kind);
       if (md !== 'road' && md !== 'tram') return false;
-      return (v.tile === tile && (v.f < 0.5 || !v.path)) || (v.path && v.path[v.pi + 1] === tile && v.f >= 0.4);
+      return (v.tile === tile && (!v.path || v.f - this.halfLen(v) < 0.5)) || (v.path && v.path[v.pi + 1] === tile && v.f >= 0.4);
     });
   }
 

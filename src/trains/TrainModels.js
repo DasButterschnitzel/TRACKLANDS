@@ -523,6 +523,34 @@ export function wagonGeometry(wagonId, cargoId, fill, eraKind, paint, trimArg, v
       if (loaded) for (const z of [GZ + 0.012, -GZ - 0.012]) mb.box(0.1, 0.06, 0.01, cc, { x: L / 2 - 0.16, y: FLOOR + H - 0.14, z }); // cargo label
       break;
     }
+    case 'cattle': {
+      // slatted livestock wagon
+      frame(mb, L, eraKind);
+      const c = variantTint(0x7a4a32, V), H = ROOF - FLOOR - 0.04;
+      mb.box(L - 0.03, 0.08, W, c, { y: FLOOR });
+      for (let k = 0; k < 5; k++) for (const z of [GZ, -GZ]) mb.box(L - 0.06, 0.05, 0.02, shade(c, 1 - (k % 2) * 0.12), { y: FLOOR + 0.1 + k * 0.08, z });
+      for (let k = 0; k <= 5; k++) for (const z of [GZ + 0.004, -GZ - 0.004]) mb.box(0.03, H, 0.02, shade(c, 0.7), { x: -L / 2 + 0.04 + k * (L - 0.08) / 5, y: FLOOR, z });
+      mb.box(L, 0.05, W + 0.04, shade(c, 0.65), { y: FLOOR + H });
+      if (loaded) for (let k = 0; k < 3; k++) mb.box(0.24, 0.12, 0.12, cc, { x: -L / 3 + k * L / 3, y: FLOOR + 0.12, z: (k % 2 ? 0.1 : -0.1) });
+      break;
+    }
+    case 'autorack': {
+      // two-deck rack for new vehicles
+      frame(mb, L, eraKind);
+      const c = variantTint(modern ? 0x9aa3ac : 0x6a6f76, V), H = ROOF - FLOOR + 0.06;
+      mb.box(L - 0.04, 0.05, W, c, { y: FLOOR });
+      mb.box(L - 0.04, 0.04, W, c, { y: FLOOR + H / 2 });
+      mb.box(L, 0.05, W + 0.04, shade(c, 0.8), { y: FLOOR + H });
+      for (let k = 0; k <= 6; k++) for (const z of [GZ + 0.004, -GZ - 0.004]) mb.box(0.025, H, 0.02, shade(c, 0.75), { x: -L / 2 + 0.04 + k * (L - 0.08) / 6, y: FLOOR, z });
+      if (loaded) {
+        const cols = [0xc0392b, 0x2f6fa8, 0xe8e8ec, 0x2a2a2e];
+        for (let d = 0; d < Math.min(2, fill + 1); d++) for (let k = 0; k < 3; k++) {
+          const col = cols[(k + d + V) % cols.length], y = FLOOR + 0.05 + d * H / 2, x = -L / 3 + k * L / 3;
+          mb.box(0.32, 0.08, 0.2, col, { x, y }); mb.box(0.16, 0.07, 0.18, shade(col, 0.8), { x: x - 0.02, y: y + 0.08 });
+        }
+      }
+      break;
+    }
     case 'reefer': {
       frame(mb, L, eraKind);
       const c = PAL.reeferWhite, H = ROOF - FLOOR;

@@ -212,6 +212,13 @@ export class Traffic {
     const ah = this.ahead(a, b, f0, v, false, passCars);
     if (ah != null) lim = Math.min(lim, ah - CAR_GAP);
     else if (lim > 1 - CAR_GAP && v.path && v.path[v.pi + 2] != null) { const nx = this.ahead(b, v.path[v.pi + 2], -1, v, false, passCars || (bus && R.lane[b])); if (nx != null) lim = Math.min(lim, 1 + nx - CAR_GAP); }
+    // keep level crossings clear: only start across with room for the whole
+    // vehicle behind it (else wait at the stop line before the barriers)
+    const X = g.crossings;
+    if (f0 <= 0.38 && lim > 0.38 && X && X.map.has(b) && v.path && v.path[v.pi + 2] != null) {
+      const room = this.ahead(b, v.path[v.pi + 2], -1, v, false, false);
+      if (room != null && room < R.halfLen(v) * 2 + CAR_GAP) lim = 0.38;
+    }
     let red = false;
     if (f0 <= STOP_AT && lim > STOP_AT) {
       const L = this.lights.get(b);

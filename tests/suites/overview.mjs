@@ -103,10 +103,10 @@ export async function run({ browser, base }) {
     await page.selectOption('#panel select[data-id=line]', `rl:${w.line}`);
     const byLine = await page.evaluate(() => document.querySelectorAll('#panel .tvrow').length);
     check(byLine === 3, `line filter: ${byLine} buses of line ${w.line}`);
-    const boxes = await page.$$('#panel .tvrow input[type=checkbox]');
-    await boxes[0].click(); await page.waitForTimeout(100);
-    const boxes2 = await page.$$('#panel .tvrow input[type=checkbox]');
-    await boxes2[1].click(); await page.waitForTimeout(100);
+    // (locators re-resolve: the live panel may redraw between finding and tapping)
+    const boxes = page.locator('#panel .tvrow input[type=checkbox]');
+    await boxes.nth(0).click(); await page.waitForTimeout(100);
+    await boxes.nth(1).click(); await page.waitForTimeout(100);
     const picked = await page.evaluate(() => window.__tracklands.ui.tv().picked.size);
     const bar = await page.$('#panel .tbatch');
     check(picked === 2 && !!bar, `two buses picked by tapping their boxes, batch bar shown (${picked})`);

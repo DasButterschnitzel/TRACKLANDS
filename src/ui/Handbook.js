@@ -12,7 +12,7 @@ export const HANDBOOK = [
   { id: 'passengers', icon: 'town', n: 4 },
   { id: 'lines', icon: 'route', n: 4 },
   { id: 'overtaking', icon: 'train', n: 3 },
-  { id: 'freight', icon: 'factory', n: 4 },
+  { id: 'freight', icon: 'factory', n: 6 },
   { id: 'economy', icon: 'coin', n: 4 },
   { id: 'tycoon', icon: 'company', n: 5 },
   { id: 'transport', icon: 'bus', n: 5 },

@@ -919,3 +919,4 @@ h4.psev.bad { color: #9a3a36; }
 .card.identity .id-head small { color: var(--ink2); }
 .card.identity p { margin: 4px 0 6px; }
 .card.identity .kv-list button.link { background: none; border: 0; padding: 0; color: var(--teal2); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.fit { display: block; margin: 0 0 4px 28px; } .fit .ic { width: 14px; height: 14px; vertical-align: -2px; }

@@ -46,8 +46,9 @@ import * as buses from './suites/buses.mjs';
 import * as overview from './suites/overview.mjs';
 import * as traffic from './suites/traffic.mjs';
 import * as cities from './suites/cities.mjs';
+import * as chains from './suites/chains.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];
@@ -72,6 +73,13 @@ for (const s of suites) {
     r = { ok: false, lines: ['EXCEPTION ' + (e && e.stack || e)] };
   }
   for (const l of r.lines) console.log('  ' + l);
+  // isolation: a suite that stopped early may leave pages with a running game
+  // behind; close them (and after an exception start a fresh browser) so they
+  // cannot slow down or wedge the suites after it
+  if (browser) {
+    for (const c of browser.contexts()) await c.close().catch(() => {});
+    if (!r.ok && r.lines.some((l) => l.startsWith('EXCEPTION'))) { await browser.close().catch(() => {}); browser = null; }
+  }
   const secs = ((Date.now() - t0) / 1000).toFixed(0);
   console.log(`  ${r.ok ? 'PASS' : 'FAIL'} ${s.name} (${secs}s)`);
   results.push({ name: s.name, ok: r.ok, secs });

@@ -2,8 +2,7 @@
 // random world events, daily challenges and the recovery grant.
 import { cheb, RNG, hashStr, dateKey, tx, tz } from '../util.js';
 import {
-  CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost,
-} from '../config.js';
+  CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
 
 export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
@@ -114,7 +113,7 @@ export class Economy {
     const town = stn.links.towns.length ? g.towns.byId(stn.links.towns[0]) : null;
     const needed = town ? g.towns.needs(town, lot.c) : false;
     const transit = lot.t0 != null ? Math.max(0, g.time - lot.t0) : 0;
-    const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed, transit));
+    const rev = Math.round(this.revenue(lot.c, lot.n, dist, train, needed, transit) * modeFit('rail', lot.c));
     const res = g.stations.distribute(stn, lot.c, lot.n);
     this.bookDelivery(rev, lot.c, lot.n, train, from, stn);
     train.earned += rev;

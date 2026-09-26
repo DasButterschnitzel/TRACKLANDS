@@ -4,7 +4,7 @@ export const CREATOR_NAME = ''; // Set to credit the creator in the Credits pane
 export const GAME_VERSION = '3.0.0';
 // World generator version. Saves remember theirs (no field = 1) so a loaded
 // world is always rebuilt exactly as it was; improvements apply to new games.
-export const WORLDGEN_VERSION = 2;
+export const WORLDGEN_VERSION = 3;   // v3: new industries per region, placed where they make sense
 export const SAVE_VERSION = 3;
 
 export const DIFFICULTY = {
@@ -29,9 +29,39 @@ export const CARGO = {
   MACHINERY: { value: 30, color: 0x6b7f5a, group: 'flat', mass: 2.2 },
   MAIL: { value: 9, color: 0xc94f4f, group: 'mail', mass: 0.3 },
   PASSENGERS: { value: 7, color: 0x4f86c9, group: 'pax', mass: 0.1 },
+  // construction, food, chemistry, automotive and high-tech chains
+  STONE: { value: 6, color: 0x9a9a94, group: 'bulk', mass: 1.7 },
+  SAND: { value: 5, color: 0xe0cc92, group: 'bulk', mass: 1.5 },
+  CLAY: { value: 6, color: 0xb86a4a, group: 'bulk', mass: 1.6 },
+  MATERIALS: { value: 17, color: 0xc88a5a, group: 'flat', mass: 1.6 },
+  COPPER: { value: 11, color: 0xc8743a, group: 'bulk', mass: 1.8 },
+  LIVESTOCK: { value: 10, color: 0x8a5a3a, group: 'animal', mass: 1.0 },
+  MILK: { value: 9, color: 0xf2f2ea, group: 'liquid', mass: 1.0 },
+  FRUIT: { value: 9, color: 0xe8803a, group: 'crate', mass: 0.7 },
+  FISH: { value: 10, color: 0x6a9ab8, group: 'crate', mass: 0.7 },
+  CHEMICALS: { value: 20, color: 0x7ab84a, group: 'liquid', mass: 1.1 },
+  PAPER: { value: 14, color: 0xe8e4d6, group: 'flat', mass: 0.9 },
+  VEHICLES: { value: 42, color: 0xc0392b, group: 'vehicle', mass: 1.3 },
+  ELECTRONICS: { value: 38, color: 0x2fb8a8, group: 'crate', mass: 0.4 },
 };
 export const CARGO_IDS = Object.keys(CARGO);
-export const TOWN_ACCEPTS = ['PASSENGERS', 'MAIL', 'FOOD', 'WOOD', 'LUMBER', 'GOODS', 'STEEL', 'FUEL', 'MACHINERY'];
+export const TOWN_ACCEPTS = ['PASSENGERS', 'MAIL', 'FOOD', 'WOOD', 'LUMBER', 'GOODS', 'STEEL', 'FUEL', 'MACHINERY', 'MATERIALS', 'VEHICLES', 'ELECTRONICS'];
+// Transport specialisation: every mode can carry every cargo it has a vehicle
+// for, but some fit better (revenue ×): bulk by rail and ship, perishables by
+// road, valuables by road and air, heavy loads by rail and ship.
+export const CARGO_CLASS = { ORE: 'bulk', COAL: 'bulk', STONE: 'bulk', SAND: 'bulk', CLAY: 'bulk', COPPER: 'bulk', GRAIN: 'bulk', OIL: 'liquid', FUEL: 'liquid', CHEMICALS: 'liquid', MILK: 'perishable', FOOD: 'perishable', FISH: 'perishable', FRUIT: 'perishable', LIVESTOCK: 'perishable', GOODS: 'valuable', ELECTRONICS: 'valuable', VEHICLES: 'valuable', MAIL: 'valuable', STEEL: 'heavy', MACHINERY: 'heavy', MATERIALS: 'heavy', LUMBER: 'heavy', WOOD: 'heavy', PAPER: 'heavy' };
+export const MODE_FIT = {
+  bulk: { rail: 1.1, road: 0.85, water: 1.15, air: 0.6 },
+  liquid: { rail: 1.05, road: 0.9, water: 1.1, air: 0.6 },
+  perishable: { rail: 1.0, road: 1.08, water: 0.95, air: 1.1 },
+  valuable: { rail: 1.0, road: 1.05, water: 1.0, air: 1.3 },
+  heavy: { rail: 1.08, road: 0.9, water: 1.1, air: 0.6 },
+};
+export function modeFit(mode, c) { const k = CARGO_CLASS[c]; return k ? MODE_FIT[k][mode] ?? 1 : 1; }
+// the modes that suit a cargo best (shown to the player)
+export function bestModes(c) { const k = CARGO_CLASS[c]; if (!k) return []; const f = MODE_FIT[k]; const top = Math.max(...Object.values(f)); return Object.keys(f).filter((m) => f[m] >= top - 0.06 && f[m] > 1); }
+// building materials delivered to a town speed up its physical growth (a month's worth)
+export const MATERIALS_GROWTH = { per: 25, max: 3 };
 // ---------- WAGONS ----------
 // Data-driven rolling stock. `carries` is the single source of truth for cargo
 // compatibility (UI, loading, AI and economy all read it). len in world units,
@@ -44,16 +74,18 @@ export const WAGONS = {
   observation: { len: 1.45, mass: 20, cap: 7, carries: ['PASSENGERS'], cost: 420, vmax: 160, revMul: 0.2, trainRev: 0.08, cls: 'pax', research: 'passenger_comfort' },
   cab_car: { len: 1.45, mass: 24, cap: 7, carries: ['PASSENGERS'], cost: 650, vmax: 200, cab: true, cls: 'pax', research: 'push_pull' },
   mail_van: { len: 1.3, mass: 15, cap: 12, carries: ['MAIL'], cost: 110, vmax: 160, cls: 'mail' },
-  boxcar: { len: 1.3, mass: 15, cap: 10, carries: ['FOOD', 'GOODS', 'MAIL'], cost: 100, vmax: 120, cls: 'freight' },
+  boxcar: { len: 1.3, mass: 15, cap: 10, carries: ['FOOD', 'GOODS', 'MAIL', 'FRUIT', 'PAPER', 'ELECTRONICS', 'MATERIALS'], cost: 100, vmax: 120, cls: 'freight' },
   timber: { len: 1.4, mass: 13, cap: 10, carries: ['WOOD', 'LUMBER'], cost: 90, vmax: 110, cls: 'freight' },
-  hopper: { len: 1.25, mass: 16, cap: 10, carries: ['GRAIN', 'COAL', 'ORE'], cost: 110, vmax: 110, cls: 'freight' },
+  hopper: { len: 1.25, mass: 16, cap: 10, carries: ['GRAIN', 'COAL', 'ORE', 'STONE', 'SAND', 'CLAY', 'COPPER'], cost: 110, vmax: 110, cls: 'freight' },
   coal_hopper: { len: 1.2, mass: 17, cap: 13, carries: ['COAL'], cost: 150, vmax: 110, cls: 'freight', research: 'specialized_wagons' },
-  ore_hopper: { len: 1.05, mass: 18, cap: 13, carries: ['ORE'], cost: 150, vmax: 100, cls: 'freight', research: 'specialized_wagons' },
-  tank: { len: 1.3, mass: 16, cap: 10, carries: ['OIL', 'FUEL'], cost: 140, vmax: 120, cls: 'freight' },
-  flatbed: { len: 1.4, mass: 12, cap: 10, carries: ['LUMBER', 'STEEL', 'WOOD', 'MACHINERY'], cost: 90, vmax: 120, cls: 'freight' },
-  reefer: { len: 1.35, mass: 18, cap: 12, carries: ['FOOD'], cost: 200, vmax: 140, cls: 'freight', research: 'specialized_wagons', revMul: 0.1 },
-  container: { len: 1.55, mass: 14, cap: 14, carries: ['GOODS', 'FOOD', 'MAIL'], cost: 260, vmax: 160, cls: 'freight', research: 'containerization' },
+  ore_hopper: { len: 1.05, mass: 18, cap: 13, carries: ['ORE', 'COPPER', 'STONE'], cost: 150, vmax: 100, cls: 'freight', research: 'specialized_wagons' },
+  tank: { len: 1.3, mass: 16, cap: 10, carries: ['OIL', 'FUEL', 'MILK', 'CHEMICALS'], cost: 140, vmax: 120, cls: 'freight' },
+  flatbed: { len: 1.4, mass: 12, cap: 10, carries: ['LUMBER', 'STEEL', 'WOOD', 'MACHINERY', 'MATERIALS', 'PAPER'], cost: 90, vmax: 120, cls: 'freight' },
+  reefer: { len: 1.35, mass: 18, cap: 12, carries: ['FOOD', 'FISH', 'FRUIT', 'MILK'], cost: 200, vmax: 140, cls: 'freight', research: 'specialized_wagons', revMul: 0.1 },
+  container: { len: 1.55, mass: 14, cap: 14, carries: ['GOODS', 'FOOD', 'MAIL', 'ELECTRONICS', 'PAPER', 'FRUIT', 'FISH'], cost: 260, vmax: 160, cls: 'freight', research: 'containerization' },
   machinery_flat: { len: 1.5, mass: 20, cap: 10, carries: ['MACHINERY', 'STEEL'], cost: 220, vmax: 100, cls: 'freight', research: 'heavy_haul', revMul: 0.15 },
+  cattle: { len: 1.35, mass: 15, cap: 10, carries: ['LIVESTOCK'], cost: 130, vmax: 110, cls: 'freight' },
+  autorack: { len: 1.6, mass: 19, cap: 8, carries: ['VEHICLES'], cost: 280, vmax: 130, cls: 'freight', research: 'containerization' },
   brake_van: { len: 0.95, mass: 14, cap: 0, carries: [], cost: 80, vmax: 120, brake: 0.25, cls: 'service' },
   caboose: { len: 1.0, mass: 12, cap: 0, carries: [], cost: 120, vmax: 140, brake: 0.2, cls: 'service' },
 };
@@ -134,12 +166,35 @@ export const INDUSTRIES = {
   COAL_MINE: { primary: true, rate: 14, recipes: [{ in: {}, out: { COAL: 1 } }], storage: 60 },
   OIL_FIELD: { primary: true, rate: 12, recipes: [{ in: {}, out: { OIL: 1 } }], storage: 60 },
   SAWMILL: { rate: 24, recipes: [{ in: { WOOD: 1 }, out: { LUMBER: 1 } }], storage: 80 },
-  FOOD_PROC: { rate: 24, recipes: [{ in: { GRAIN: 1 }, out: { FOOD: 1 } }], storage: 80 },
+  FOOD_PROC: { rate: 24, recipes: [{ in: { GRAIN: 1 }, out: { FOOD: 1 } }, { in: { LIVESTOCK: 1 }, out: { FOOD: 2 } }, { in: { FRUIT: 1 }, out: { FOOD: 1 } }, { in: { FISH: 1 }, out: { FOOD: 1 } }], storage: 80 },
   STEEL_MILL: { rate: 18, recipes: [{ in: { ORE: 1, COAL: 1 }, out: { STEEL: 1 } }], storage: 80 },
   REFINERY: { rate: 20, recipes: [{ in: { OIL: 1 }, out: { FUEL: 1 } }], storage: 80 },
   FACTORY: { rate: 16, recipes: [{ in: { LUMBER: 1, STEEL: 1 }, out: { GOODS: 2 } }, { in: { STEEL: 1, GOODS: 1 }, out: { MACHINERY: 1 }, needLevel: 0 }], storage: 90 },
-  DIST_CENTER: { rate: 20, recipes: [{ in: { GOODS: 1 }, out: { MAIL: 1 } }, { in: { FOOD: 1 }, out: { MAIL: 1 } }, { in: { MACHINERY: 1 }, out: { MAIL: 2 } }], storage: 90, sink: true },
-  PORT: { primary: true, rate: 10, recipes: [{ in: {}, out: { GOODS: 1 } }, { in: {}, out: { OIL: 1 } }], accepts: ['WOOD', 'GRAIN', 'STEEL', 'FUEL', 'LUMBER'], storage: 80 },
+  DIST_CENTER: { rate: 20, recipes: [{ in: { GOODS: 1 }, out: { MAIL: 1 } }, { in: { FOOD: 1 }, out: { MAIL: 1 } }, { in: { MACHINERY: 1 }, out: { MAIL: 2 } }, { in: { PAPER: 1 }, out: { MAIL: 1 } }, { in: { ELECTRONICS: 1 }, out: { MAIL: 2 } }], storage: 90, sink: true },
+  PORT: { primary: true, rate: 10, recipes: [{ in: {}, out: { GOODS: 1 } }, { in: {}, out: { OIL: 1 } }], accepts: ['WOOD', 'GRAIN', 'STEEL', 'FUEL', 'LUMBER', 'VEHICLES', 'ELECTRONICS'], storage: 80 },
+  // ----- primary -----
+  QUARRY: { primary: true, rate: 16, recipes: [{ in: {}, out: { STONE: 1 } }], storage: 70 },
+  SAND_PIT: { primary: true, rate: 18, recipes: [{ in: {}, out: { SAND: 1 } }], storage: 70 },
+  CLAY_PIT: { primary: true, rate: 16, recipes: [{ in: {}, out: { CLAY: 1 } }], storage: 70 },
+  COPPER_MINE: { primary: true, rate: 12, recipes: [{ in: {}, out: { COPPER: 1 } }], storage: 60 },
+  LIVESTOCK_FARM: { primary: true, rate: 12, recipes: [{ in: {}, out: { LIVESTOCK: 1 } }], storage: 50 },
+  DAIRY_FARM: { primary: true, rate: 14, recipes: [{ in: {}, out: { MILK: 1 } }], storage: 50 },
+  ORCHARD: { primary: true, rate: 14, recipes: [{ in: {}, out: { FRUIT: 1 } }], storage: 50, seasonal: true },
+  FISHERY: { primary: true, rate: 12, recipes: [{ in: {}, out: { FISH: 1 } }], storage: 50 },
+  // ----- processing -----
+  CEMENT_WORKS: { rate: 18, recipes: [{ in: { STONE: 1, SAND: 1 }, out: { MATERIALS: 2 } }], storage: 90 },
+  BRICKWORKS: { rate: 20, recipes: [{ in: { CLAY: 2 }, out: { MATERIALS: 1 } }, { in: { CLAY: 1, COAL: 1 }, out: { MATERIALS: 2 } }], storage: 80 },
+  CHEM_PLANT: { rate: 16, recipes: [{ in: { OIL: 1 }, out: { CHEMICALS: 1 } }, { in: { COAL: 2 }, out: { CHEMICALS: 1 } }], storage: 80 },
+  PAPER_MILL: { rate: 20, recipes: [{ in: { WOOD: 2 }, out: { PAPER: 1 } }, { in: { WOOD: 1, CHEMICALS: 1 }, out: { PAPER: 2 } }], storage: 80 },
+  DAIRY: { rate: 22, recipes: [{ in: { MILK: 1 }, out: { FOOD: 1 } }], storage: 70 },
+  AUTO_PLANT: { rate: 12, recipes: [{ in: { STEEL: 1, CHEMICALS: 1, MACHINERY: 1 }, out: { VEHICLES: 2 } }, { in: { STEEL: 2, CHEMICALS: 1 }, out: { VEHICLES: 1 } }], storage: 90 },
+  ELECTRONICS_PLANT: { rate: 12, recipes: [{ in: { COPPER: 1, CHEMICALS: 1 }, out: { ELECTRONICS: 1 } }], storage: 80 },
+  // ----- energy: demand for fuel, no grid -----
+  POWER_PLANT: { rate: 20, recipes: [{ in: { COAL: 1 }, out: {} }], storage: 120, sink: true },
+  GAS_PLANT: { rate: 20, recipes: [{ in: { OIL: 1 }, out: {} }], storage: 120, sink: true },
+  // ----- advanced (the later regions) -----
+  DATA_CENTER: { rate: 14, recipes: [{ in: { ELECTRONICS: 1 }, out: { MAIL: 3 } }], storage: 80, sink: true },
+  WIND_FACTORY: { rate: 12, recipes: [{ in: { STEEL: 1, ELECTRONICS: 1 }, out: { MACHINERY: 2 } }, { in: { STEEL: 1, CHEMICALS: 1 }, out: { MACHINERY: 1 } }], storage: 90 },
 };
 export const INDUSTRY_TYPES = Object.keys(INDUSTRIES);
 // Investing in industries (src/world/Industries.js). base: what the site is
@@ -149,7 +204,9 @@ export const INDUSTRY_TYPES = Object.keys(INDUSTRIES);
 // funding a new site builds one on free land. Majority owners (≥ 50 %) run
 // the site: +10 % production.
 export const INDUSTRY_INVEST = {
-  base: { FOREST: 1200, FARM: 1200, MINE: 1500, COAL_MINE: 1500, OIL_FIELD: 2000, SAWMILL: 1800, FOOD_PROC: 2000, STEEL_MILL: 2900, REFINERY: 2900, FACTORY: 2700, DIST_CENTER: 2400, PORT: 3600 },
+  base: { FOREST: 1200, FARM: 1200, MINE: 1500, COAL_MINE: 1500, OIL_FIELD: 2000, SAWMILL: 1800, FOOD_PROC: 2000, STEEL_MILL: 2900, REFINERY: 2900, FACTORY: 2700, DIST_CENTER: 2400, PORT: 3600,
+    QUARRY: 1300, SAND_PIT: 1100, CLAY_PIT: 1100, COPPER_MINE: 1800, LIVESTOCK_FARM: 1300, DAIRY_FARM: 1300, ORCHARD: 1200, FISHERY: 1500,
+    CEMENT_WORKS: 2600, BRICKWORKS: 2200, CHEM_PLANT: 3200, PAPER_MILL: 2400, DAIRY: 2000, AUTO_PLANT: 4200, ELECTRONICS_PLANT: 4000, POWER_PLANT: 3000, GAS_PLANT: 3000, DATA_CENTER: 4500, WIND_FACTORY: 3800 },
   step: 0.25,          // stakes are bought and sold in quarters
   margin: 0.5,         // dividend: share × margin × monthly output value
   sellBack: 0.8,       // a stake sells for 80 % of its value
@@ -201,6 +258,8 @@ export const ROAD_VEHICLES = [
   { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
   { id: 'tanker_truck', name: 'Tanker Truck', kind: 'truck', groups: ['liquid'], cap: 16, speed: 55, price: 1500, op: 15, level: 5, color: 0xb8bcc2 },
   { id: 'flatbed_truck', name: 'Flatbed Truck', kind: 'truck', groups: ['flat'], cap: 14, speed: 55, price: 1400, op: 14, level: 5, color: 0x5a7a4a },
+  { id: 'livestock_truck', name: 'Livestock Truck', kind: 'truck', groups: ['animal'], cap: 12, speed: 55, price: 1300, op: 13, level: 3, color: 0x8a6a4a },
+  { id: 'car_transporter', name: 'Car Transporter', kind: 'truck', groups: ['vehicle'], cap: 8, speed: 60, price: 2400, op: 18, level: 10, color: 0xc0392b },
   // trams run on tram track laid along streets and company roads
   { id: 'tram', name: 'Tram Classic', kind: 'tram', pax: true, cap: 45, mail: 4, speed: 45, price: 1700, op: 9, level: 4, color: 0xd8483a },
   { id: 'tram_lr', name: 'Light Rail Tram', kind: 'tram', pax: true, cap: 80, mail: 6, speed: 70, price: 3600, op: 16, level: 14, color: 0x2f8a9a },
@@ -337,14 +396,14 @@ export const RESEARCH_CATS = ['rail', 'signals', 'trains', 'stations', 'logistic
 
 // ---------- REGIONS ----------
 export const REGIONS = [
-  { id: 'green_valley', center: [30, 32], biome: 'green', level: 1, cost: 0, towns: 3, industries: ['FOREST', 'FARM', 'SAWMILL', 'FOREST'] },
-  { id: 'pine_highlands', center: [30, 10], biome: 'pine', level: 4, cost: 2500, towns: 2, industries: ['FOREST', 'COAL_MINE', 'MINE', 'SAWMILL'] },
-  { id: 'industrial_basin', center: [53, 12], biome: 'industrial', level: 8, cost: 8000, towns: 2, industries: ['STEEL_MILL', 'FACTORY', 'COAL_MINE', 'DIST_CENTER'] },
-  { id: 'golden_plains', center: [53, 34], biome: 'plains', level: 12, cost: 20000, towns: 2, industries: ['FARM', 'FARM', 'FOOD_PROC', 'MINE'] },
-  { id: 'coastal_reach', center: [9, 33], biome: 'coast', level: 16, cost: 50000, towns: 3, industries: ['PORT', 'REFINERY', 'FARM', 'FOREST'] },
-  { id: 'desert_frontier', center: [48, 54], biome: 'desert', level: 21, cost: 120000, towns: 2, industries: ['OIL_FIELD', 'OIL_FIELD', 'REFINERY', 'MINE'] },
-  { id: 'alpine_pass', center: [16, 54], biome: 'alpine', level: 26, cost: 300000, towns: 2, industries: ['MINE', 'COAL_MINE', 'FACTORY', 'FOREST'], tourist: true },
-  { id: 'northern_snowfields', center: [9, 10], biome: 'snow', level: 32, cost: 700000, towns: 2, industries: ['MINE', 'COAL_MINE', 'STEEL_MILL', 'OIL_FIELD'] },
+  { id: 'green_valley', center: [30, 32], biome: 'green', level: 1, cost: 0, towns: 3, industries: ['FOREST', 'FARM', 'SAWMILL', 'FOREST'], extra: ['CLAY_PIT', 'DAIRY_FARM'] },
+  { id: 'pine_highlands', center: [30, 10], biome: 'pine', level: 4, cost: 2500, towns: 2, industries: ['FOREST', 'COAL_MINE', 'MINE', 'SAWMILL'], extra: ['QUARRY', 'PAPER_MILL', 'BRICKWORKS'] },
+  { id: 'industrial_basin', center: [53, 12], biome: 'industrial', level: 8, cost: 8000, towns: 2, industries: ['STEEL_MILL', 'FACTORY', 'COAL_MINE', 'DIST_CENTER'], extra: ['CHEM_PLANT', 'AUTO_PLANT', 'POWER_PLANT'] },
+  { id: 'golden_plains', center: [53, 34], biome: 'plains', level: 12, cost: 20000, towns: 2, industries: ['FARM', 'FARM', 'FOOD_PROC', 'MINE'], extra: ['LIVESTOCK_FARM', 'ORCHARD', 'DAIRY'] },
+  { id: 'coastal_reach', center: [9, 33], biome: 'coast', level: 16, cost: 50000, towns: 3, industries: ['PORT', 'REFINERY', 'FARM', 'FOREST'], extra: ['FISHERY', 'SAND_PIT', 'CEMENT_WORKS'] },
+  { id: 'desert_frontier', center: [48, 54], biome: 'desert', level: 21, cost: 120000, towns: 2, industries: ['OIL_FIELD', 'OIL_FIELD', 'REFINERY', 'MINE'], extra: ['COPPER_MINE', 'ELECTRONICS_PLANT', 'GAS_PLANT'] },
+  { id: 'alpine_pass', center: [16, 54], biome: 'alpine', level: 26, cost: 300000, towns: 2, industries: ['MINE', 'COAL_MINE', 'FACTORY', 'FOREST'], extra: ['QUARRY', 'DATA_CENTER'], tourist: true },
+  { id: 'northern_snowfields', center: [9, 10], biome: 'snow', level: 32, cost: 700000, towns: 2, industries: ['MINE', 'COAL_MINE', 'STEEL_MILL', 'OIL_FIELD'], extra: ['COPPER_MINE', 'WIND_FACTORY'] },
 ];
 export const REGION_PREV_OBJECTIVES = 2;
 export const REGION_DEVELOPED_AT = 4;

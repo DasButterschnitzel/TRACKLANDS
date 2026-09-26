@@ -100,6 +100,22 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
   return W;
 }
 
+// site rules for the newer industries (world generation v3)
+const count = (W, x, z, r, fn) => { let n = 0; for (let dz = -r; dz <= r + 1; dz++) for (let dx = -r; dx <= r + 1; dx++) if (inMap(x + dx, z + dz) && fn(W.type[idx(x + dx, z + dz)], idx(x + dx, z + dz))) n++; return n; };
+const landHere = (W, x, z) => [0, 1].every((dz) => [0, 1].every((dx) => W.type[idx(x + dx, z + dz)] !== 1));
+const SITE_RULE = {
+  // (hills: mountain tiles or rising ground)
+  QUARRY: (W, x, z) => count(W, x, z, 3, (t, i) => t === 2 || W.mtn[i] > 0.18) >= 3,
+  COPPER_MINE: (W, x, z) => count(W, x, z, 3, (t, i) => t === 2 || W.mtn[i] > 0.18) >= 3,
+  FISHERY: (W, x, z) => count(W, x, z, 2, (t) => t === 1) >= 3 && landHere(W, x, z),
+  SAND_PIT: (W, x, z, reg) => landHere(W, x, z) && (reg.biome === 'desert' || count(W, x, z, 3, (t) => t === 1) >= 2),
+  CLAY_PIT: (W, x, z) => landHere(W, x, z) && count(W, x, z, 4, (t) => t === 1) >= 1,
+  POWER_PLANT: (W, x, z) => landHere(W, x, z) && count(W, x, z, 5, (t) => t === 1) >= 1,
+  ORCHARD: (W, x, z) => count(W, x, z, 1, (t, i) => t !== 0 || W.mtn[i] > 0.15) === 0,
+  LIVESTOCK_FARM: (W, x, z) => count(W, x, z, 1, (t, i) => t !== 0 || W.mtn[i] > 0.15) === 0,
+  DAIRY_FARM: (W, x, z) => count(W, x, z, 1, (t, i) => t !== 0 || W.mtn[i] > 0.15) === 0,
+};
+
 function clearArea(W, cx, cz, r, keepWater = false) {
   for (let z = cz - r; z <= cz + r; z++) for (let x = cx - r; x <= cx + r; x++) {
     if (!inMap(x, z)) continue;
@@ -142,10 +158,19 @@ function regionInterior(W, x, z, r, rad) {
   return true;
 }
 
+// distance from (x, z) to the segment [x0, z0, x1, z1]
+export function segDist(x, z, [x0, z0, x1, z1]) {
+  const dx = x1 - x0, dz = z1 - z0, L = dx * dx + dz * dz;
+  const t = L ? Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / L)) : 0;
+  return Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t));
+}
+
 function placeSites(W, rng, version) {
   const used = new Set(['Greenfield']);
   const sites = [];
   const farEnough = (x, z, d) => sites.every((s) => Math.max(Math.abs(s.x - x), Math.abs(s.z - z)) >= d);
+  // v3: the tutorial line Greenfield -> forest stays free of other industries
+  let corridor = null;
 
   const findSpot = (r, pred, minDist, rad, near) => {
     for (let pass = 0; pass < 3; pass++) {
@@ -160,6 +185,7 @@ function placeSites(W, rng, version) {
         if (!regionInterior(W, x, z, r, pass === 0 ? 2 : 1)) continue;
         if (!farEnough(x, z, md)) continue;
         if (pred && !pred(x, z)) continue;
+        if (version >= 3 && corridor && segDist(x + 0.5, z + 0.5, corridor) < 3.5) continue;
         return [x, z];
       }
     }
@@ -171,7 +197,10 @@ function placeSites(W, rng, version) {
   REGIONS.forEach((reg, r) => {
     const c = W.centers[r];
     const nTowns = area > 1 ? Math.round(reg.towns * area * 0.75) : reg.towns;
-    const inds = area > 1 ? Array.from({ length: Math.round(reg.industries.length * area * 0.75) }, (_, k) => reg.industries[k % reg.industries.length]) : reg.industries;
+    // v3: each region also gets its newer industries (construction, food,
+    // chemistry, automotive, energy, high tech)
+    const list = version >= 3 ? [...reg.industries, ...(reg.extra || [])] : reg.industries;
+    const inds = area > 1 ? Array.from({ length: Math.round(list.length * area * 0.75) }, (_, k) => list[k % list.length]) : list;
     // towns
     for (let t = 0; t < nTowns; t++) {
       let spot;
@@ -201,6 +230,7 @@ function placeSites(W, rng, version) {
         }
         if (!spot) { spot = [g.x + 8, g.z - 3]; }
         lineClear(W, W.towns[0].x, W.towns[0].z, spot[0], spot[1]);
+        corridor = [W.towns[0].x, W.towns[0].z, spot[0] + 0.5, spot[1] + 0.5];
       } else if (type === 'PORT') {
         spot = findSpot(r, (x, z) => {
           let w = 0;
@@ -214,10 +244,15 @@ function placeSites(W, rng, version) {
         }, 7, 1, null);
       } else if (type === 'FOREST') {
         spot = findSpot(r, (x, z) => W.trees[idx(x, z)] >= 1, 7, 1, null);
+      } else if (version >= 3 && SITE_RULE[type]) {
+        // where it makes sense: quarries and copper by the hills, fisheries on
+        // the coast, sand by water or in the desert, clay by a river or lake,
+        // farms and orchards on flat land, power stations by cooling water
+        spot = findSpot(r, (x, z) => SITE_RULE[type](W, x, z, reg), 7, 1, null) || findSpot(r, (x, z) => SITE_RULE[type](W, x, z, reg), 4, 1, null);
       }
       if (!spot) spot = findSpot(r, null, 7, 1, null) || findSpot(r, null, 4, 1, null);
       if (!spot) return;
-      if (type === 'PORT') {
+      if (type === 'PORT' || (version >= 3 && type === 'FISHERY')) {
         for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) { const i = idx(spot[0] + dx, spot[1] + dz); W.type[i] = 0; W.mtn[i] = 0; }
       } else clearArea(W, spot[0], spot[1], 2);
       clearArea(W, spot[0] + 1, spot[1] + 1, 0);

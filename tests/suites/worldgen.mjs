@@ -1,7 +1,7 @@
 // World generation QA (node only, no browser): many seeds, each checked for
 // complete regions, sites on solid land, spacing, the tutorial layout, finite
 // terrain and a starting region whose sites can be linked over land.
-import { generateWorld, T_WATER, T_MOUNTAIN } from '../../src/world/WorldGen.js';
+import { generateWorld, segDist, T_WATER, T_MOUNTAIN } from '../../src/world/WorldGen.js';
 import { REGIONS } from '../../src/config.js';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -16,7 +16,9 @@ function check(W) {
   REGIONS.forEach((reg, r) => {
     const t = W.towns.filter((x) => x.region === r).length, i = W.industries.filter((x) => x.region === r).length;
     if (t !== reg.towns) probs.push(`${reg.id}: ${t}/${reg.towns} towns`);
-    if (i !== reg.industries.length) probs.push(`${reg.id}: ${i}/${reg.industries.length} industries`);
+    // world generation v3 adds each region's extra (Phase 6) industries
+    const want = reg.industries.length + ((W.genVersion || 1) >= 3 ? (reg.extra || []).length : 0);
+    if (i !== want) probs.push(`${reg.id}: ${i}/${want} industries`);
   });
   const land = (x, z) => x >= 0 && z >= 0 && x < N && z < N && W.type[idx(x, z)] !== T_WATER;
   for (const t of W.towns) {
@@ -32,6 +34,8 @@ function check(W) {
   const g = W.towns[0], f = W.industries[0];
   if (!g || g.name !== 'Greenfield' || !f || f.type !== 'FOREST' || f.region !== 0) probs.push('tutorial pair missing');
   else if (cheb(g, f) < 7 || cheb(g, f) > 13) probs.push(`tutorial forest ${cheb(g, f)} tiles from Greenfield`);
+  // v3: no other industry on the tutorial line (it would block the first track)
+  if (g && f && (W.genVersion || 1) >= 3) for (const ind of W.industries.slice(1)) if (segDist(ind.x + 0.5, ind.z + 0.5, [g.x, g.z, f.x + 0.5, f.z + 0.5]) < 3.5) probs.push(`${ind.type} on the tutorial line`);
   for (let i = 0; i < W.heights.length; i++) if (!isFinite(W.heights[i])) { probs.push('non-finite height'); break; }
   // starting region: every site reachable from Greenfield over land (no bridge needed)
   const seen = new Uint8Array(N * N), q = [idx(g.x, g.z)];
@@ -71,6 +75,11 @@ export async function run({ quick, args }) {
   const changed = Object.entries(fx.worlds).filter(([s, h]) => fp(generateWorld(+s, 1)) !== h).map(([s]) => s);
   if (changed.length) ok = false;
   lines.push(`${changed.length ? 'FAIL' : 'ok  '} generator v1 unchanged for ${Object.keys(fx.worlds).length} worlds incl. the production save${changed.length ? ': changed ' + changed.slice(0, 8).join(',') : ''}`);
+  // saves made with generator v2 must also rebuild the same world after v3
+  const fx2 = JSON.parse(fs.readFileSync('tests/fixtures/worldgen-v2.json', 'utf8'));
+  const changed2 = Object.entries(fx2.worlds).filter(([s, h]) => fp(generateWorld(+s, 2)) !== h).map(([s]) => s);
+  if (changed2.length) ok = false;
+  lines.push(`${changed2.length ? 'FAIL' : 'ok  '} generator v2 unchanged for ${Object.keys(fx2.worlds).length} worlds${changed2.length ? ': changed ' + changed2.slice(0, 8).join(',') : ''}`);
   lines.push(`${bad ? 'FAIL' : 'ok  '} ${seeds.length} worlds in ${((Date.now() - t0) / 1000).toFixed(1)} s, ${bad} with problems${tally.size ? ': ' + [...tally].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ×${n}`).join(' · ') : ''}`);
   return { ok, lines };
 }

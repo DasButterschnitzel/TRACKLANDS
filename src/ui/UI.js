@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
 import { ROAD_COSTS, ROAD_VEHICLES,
-  CARGO, CARGO_IDS, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
+  CARGO, CARGO_IDS, bestModes, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
@@ -1160,7 +1160,10 @@ export class UI {
     const cap = g.industries.capacity(ind);
     const ins = g.industries.inputs(ind), outs = g.industries.outputs(ind);
     const sts = g.industries.linkedStations(ind);
-    const recipe = cfg.recipes.map((r) => `<div class="recipe">${Object.keys(r.in).map((c) => `${cargoIcon(c)}<small>${r.in[c]} ${this.cargoName(c)}</small>`).join(' + ') || `<small>${this.tr('natural_resource')}</small>`} → ${Object.keys(r.out).map((c) => `${cargoIcon(c)}<small>${r.out[c]} ${this.cargoName(c)}</small>`).join(' + ')}</div>`).join('');
+    const recipe = cfg.recipes.map((r) => `<div class="recipe">${Object.keys(r.in).map((c) => `${cargoIcon(c)}<small>${r.in[c]} ${this.cargoName(c)}</small>`).join(' + ') || `<small>${this.tr('natural_resource')}</small>`} → ${Object.keys(r.out).map((c) => `${cargoIcon(c)}<small>${r.out[c]} ${this.cargoName(c)}</small>`).join(' + ') || `<small>${this.tr('ind_consumes')}</small>`}</div>`).join('');
+    // which modes suit its cargo best (a bonus, never a rule)
+    const MI = { rail: 'train', road: 'truck', water: 'dock', air: 'airport' };
+    const fit = (c) => { const b = bestModes(c); return b.length ? `<small class="muted fit">${this.tr('best_by')} ${b.map((m) => `${icon(MI[m], 'mini')} ${this.tr('mode_' + m)}`).join(', ')}</small>` : ''; };
     const locked = !g.progression.regionUnlocked(ind.region);
     const share = g.industries.transportShare(ind);
     const opp = g.industries.opportunities(ind).map((o) => o.dests.map((d) => `<div class="opp ${d.state}${d.locked ? ' locked' : ''}"><button class="tag link" data-act="jump" data-arg="${d.kind}:${d.id}">${cargoIcon(o.c, 'mini')}${d.kind === 'town' ? icon('town', 'mini') : icon('factory', 'mini')}${esc(d.name)}</button><b>≈${fmt(d.value)}●</b><small class="opp-meta">${d.dist} ${this.tr('tiles')} · <span class="opp-state">${d.locked ? icon('lock', 'mini') : ''}${this.tr('opp_' + d.state)}</span></small></div>`).join('')).join('');
@@ -1169,7 +1172,7 @@ export class UI {
       <h4>${this.tr('production_chain')}</h4>${recipe}
       ${ins.length ? `<h4>${this.tr('needs')}</h4>${ins.map((c) => this.cargoRow(c, ind.inp[c] || 0, cap * 2)).join('')}` : ''}
       <h4>${this.tr('produces')}</h4>${outs.map((c) => this.cargoRow(c, ind.out[c] || 0, cap)).join('')}
-      <h4>${this.tr('carried_by')}</h4>${outs.map((c) => this.cargoWagonsRow(c)).join('')}
+      ${outs.length ? `<h4>${this.tr('carried_by')}</h4>${outs.map((c) => this.cargoWagonsRow(c) + fit(c)).join('')}` : ''}
       ${opp ? `<h4>${this.tr('opportunities')} ${this.helpBtn('freight')}</h4><div class="opps">${opp}</div><p class="muted small">${this.tr('opportunities_help')}</p>` : ''}
       <h4>${this.tr('growth')}</h4>${ind.level < 4 ? `${this.bar(g.industries.levelProgress(ind))}<small class="muted">${this.tr('next_ilvl', { name: this.tr('ilvl_' + (ind.level + 1)) })}</small>` : `<span class="good">${this.tr('max_level')}</span>`}
       <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('industry_no_station')}</p>`}

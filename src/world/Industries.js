@@ -92,7 +92,7 @@ export class IndustrySystem {
   // farms follow the seasons (the year averages to 1)
   seasonMul(type) {
     const g = this.game;
-    if (type !== 'FARM' || !g.env || !g.settings.weather) return 1;
+    if ((type !== 'FARM' && !(INDUSTRIES[type] || {}).seasonal) || !g.env || !g.settings.weather) return 1;
     return SEASON_FARM[g.env.season()] || 1;
   }
   transportShare(ind) { return ind.produced > 0 ? Math.min(1, ind.transported / ind.produced) : 0; }
@@ -350,7 +350,7 @@ export class IndustrySystem {
     const anims = [], emitters = [];
     const ctx = { mb, anims, emitters, level: ind.level, seed: ind.id, crops: null };
     // foundation slab
-    mb.box(3.7, 0.5, 3.7, ind.type === 'FARM' ? 0x8a7a4a : ind.type === 'FOREST' ? 0x6a5a3a : 0x9a948a, { y: -0.42 });
+    mb.box(3.7, 0.5, 3.7, SLAB[ind.type] || 0x9a948a, { y: -0.42 });
     INDUSTRY_MODELS[ind.type](ctx);
     const mesh = meshFrom(mb.build());
     root.add(mesh);
@@ -479,6 +479,43 @@ function chimney(ctx, x, z, h, r, col = 0x8a4a3a, type = 'smoke') {
   ctx.emitters.push({ x, y: h + 0.1, z, type });
 }
 
+// foundation colour: fields, forest floor, pits and yards
+const SLAB = { FARM: 0x8a7a4a, FOREST: 0x6a5a3a, ORCHARD: 0x7a8a4a, LIVESTOCK_FARM: 0x8a8a4a, DAIRY_FARM: 0x7a9a5a, QUARRY: 0xa8a49a, SAND_PIT: 0xd8c490, CLAY_PIT: 0xa8704f, COPPER_MINE: 0x8a7a6a, FISHERY: 0xb8b2a6 };
+// a variant per site (the same industry need not look the same everywhere)
+const variantOf = (ctx) => ((ctx.seed * 2654435761) >>> 0) % 3;
+
+// stepped pit with a digger and a conveyor (quarries, sand and clay pits)
+function pitModel(ctx, col, pile) {
+  const { mb, level } = ctx, V = variantOf(ctx);
+  // benches stepping down into the pit: rims, highest outside
+  const cx = -0.4, cz = -0.3;
+  for (let k = 0; k < 3; k++) {
+    const w = 2.3 - k * 0.6, d = 2.1 - k * 0.55, h = 0.34 - k * 0.1, t = 0.28, c2 = shade(col, 0.95 - k * 0.1);
+    mb.box(w, h, t, c2, { x: cx, z: cz - d / 2 + t / 2 }); mb.box(w, h, t, c2, { x: cx, z: cz + d / 2 - t / 2 });
+    mb.box(t, h, d, c2, { x: cx - w / 2 + t / 2, z: cz }); mb.box(t, h, d, c2, { x: cx + w / 2 - t / 2, z: cz });
+  }
+  mb.box(0.6, 0.02, 0.5, shade(col, 0.7), { x: cx, z: cz });
+  // excavator on the pit floor
+  mb.box(0.3, 0.06, 0.34, DARK, { x: -0.5, y: 0.02, z: -0.35 });
+  mb.box(0.36, 0.18, 0.26, 0xd0a030, { x: -0.5, y: 0.08, z: -0.35 });
+  mb.box(0.5, 0.05, 0.06, 0xd0a030, { x: -0.2, y: 0.24, z: -0.35, rz: -0.5 });
+  // conveyor up to the heap
+  mb.box(1.5, 0.05, 0.12, METAL, { x: 0.55, y: 0.3, z: 0.6, rz: 0.35 });
+  for (let k = 0; k < 2 + Math.min(3, level); k++) mb.cone(0.36 - (k % 2) * 0.06, 0.4, 7, shade(pile, 1 - (k % 3) * 0.06), { x: 1.2 - (k % 3) * 0.5, z: 1.0 - Math.floor(k / 3) * 0.6 });
+  if (V === 1) shed(mb, 1.1, -1.1, 0.8, 0.7, 0.5, 0x9aa3ac, 0x5a5a5a);
+  else { mb.box(0.6, 0.5, 0.6, 0x7a7f86, { x: 1.1, z: -1.1 }); mb.cyl(0.18, 0.1, 0.5, 8, 0x7a7f86, { x: 1.1, y: 0.5, z: -1.1 }); }
+  if (level >= 2) { mb.box(0.5, 0.26, 0.26, 0xd0a030, { x: 1.2, z: 0.0 }); mb.wheel(0.09, 0.06, 8, DARK, { x: 1.05, y: 0.09, z: 0.15 }); }
+}
+function barn(mb, x, z, w, d, h, wall, roof) { mb.box(w, h, d, wall, { x, z }); mb.roof(w + 0.1, h * 0.55, d + 0.1, roof, { x, y: h, z }); }
+function fence(mb, x0, z0, x1, z1, col = 0x8a6a4a) {
+  const n = Math.round(Math.hypot(x1 - x0, z1 - z0) / 0.3);
+  for (let k = 0; k <= n; k++) mb.box(0.03, 0.16, 0.03, col, { x: x0 + (x1 - x0) * k / n, z: z0 + (z1 - z0) * k / n });
+  const ry = -Math.atan2(z1 - z0, x1 - x0);
+  mb.box(Math.hypot(x1 - x0, z1 - z0), 0.02, 0.02, col, { x: (x0 + x1) / 2, y: 0.12, z: (z0 + z1) / 2, ry });
+}
+function animal(mb, x, z, col, ry = 0) { mb.box(0.2, 0.1, 0.09, col, { x, y: 0.08, z, ry }); mb.box(0.06, 0.07, 0.06, shade(col, 0.8), { x: x + Math.cos(ry) * 0.12, y: 0.14, z: z - Math.sin(ry) * 0.12, ry }); for (const [dx, dz] of [[-0.07, -0.03], [0.07, -0.03], [-0.07, 0.03], [0.07, 0.03]]) mb.box(0.02, 0.08, 0.02, DARK, { x: x + dx, z: z + dz }); }
+function tanks(mb, n, x0, z, r, h, col) { for (let k = 0; k < n; k++) { mb.cyl(r, r, h, 10, col, { x: x0 + k * (r * 2 + 0.08), z }); mb.cone(r * 1.02, r * 0.5, 10, shade(col, 0.8), { x: x0 + k * (r * 2 + 0.08), y: h, z }); } }
+
 const INDUSTRY_MODELS = {
   FOREST(ctx) {
     const { mb, level } = ctx;
@@ -512,8 +549,8 @@ const INDUSTRY_MODELS = {
     mb.box(0.3, 0.2, 0.2, 0x3a6a3a, { x: 1.4, z: 1.5 });
     mb.wheel(0.1, 0.06, 8, DARK, { x: 1.3, y: 0.1, z: 1.62 });
   },
-  MINE(ctx) { mineModel(ctx, 0x8a6f63, false); },
-  COAL_MINE(ctx) { mineModel(ctx, 0x2b2b30, true); },
+  MINE(ctx) { const V = variantOf(ctx); if (V === 2) aditModel(ctx, 0x8a6f63); else mineModel(ctx, 0x8a6f63, false); },
+  COAL_MINE(ctx) { const V = variantOf(ctx); if (V === 1) pitModel(ctx, 0x4a4a4e, 0x2b2b30); else mineModel(ctx, 0x2b2b30, true); },
   OIL_FIELD(ctx) {
     const { mb, level } = ctx;
     const n = 1 + Math.min(3, level);
@@ -606,7 +643,173 @@ const INDUSTRY_MODELS = {
     spinPart(ctx, 1.0, 1.6, 1.3, (m) => { m.box(1.8, 0.1, 0.1, 0xd0a030, { x: 0.3 }); m.box(0.25, 0.25, 0.25, DARK, { x: -0.5 }); m.box(0.02, 0.5, 0.02, DARK, { x: 1.0, y: -0.25 }); }, 0.3, 'y');
     if (level >= 2) { mb.cyl(0.18, 0.22, 1.8, 8, 0xf0f0f0, { x: -1.5, z: 1.5 }); mb.cyl(0.19, 0.19, 0.3, 8, 0xc94f4f, { x: -1.5, y: 1.2, z: 1.5 }); mb.sphere(0.12, 0, 0xfff2c0, { x: -1.5, y: 1.9, z: 1.5, glow: true }); }
   },
+  // ---------- primary ----------
+  QUARRY(ctx) { pitModel(ctx, 0xa8a49a, 0x9a9a94); if (variantOf(ctx) === 2) { ctx.mb.box(0.9, 1.0, 0.5, 0x8a8a84, { x: -1.3, z: 1.3 }); ctx.mb.box(0.5, 0.7, 0.4, 0x9a9a94, { x: -0.6, z: 1.45 }); } },
+  SAND_PIT(ctx) { pitModel(ctx, 0xd8c490, 0xe0cc92); },
+  CLAY_PIT(ctx) { pitModel(ctx, 0xa8704f, 0xb86a4a); ctx.mb.cyl(0.4, 0.4, 0.04, 12, 0x5a8ab0, { x: -1.3, y: 0.02, z: 1.2 }); },
+  COPPER_MINE(ctx) { const V = variantOf(ctx); if (V === 0) pitModel(ctx, 0x8a7a6a, 0xc8743a); else if (V === 1) mineModel(ctx, 0xc8743a, false); else aditModel(ctx, 0xc8743a); },
+  ORCHARD(ctx) {
+    const { mb, level } = ctx;
+    barn(mb, -1.1, -1.1, 0.9, 0.7, 0.55, 0xe8d8b8, 0x9a4a3a);
+    const cr = new ModelBuilder();
+    const rows = 3 + Math.min(2, level), V = variantOf(ctx);
+    for (let r = 0; r < rows; r++) for (let k = 0; k < 5; k++) {
+      const x = -0.8 + k * 0.5 + (r % 2) * 0.12, z = -0.2 + r * 0.42;
+      mb.cyl(0.03, 0.04, 0.24, 5, 0x6b4a33, { x, z });
+      cr.sphere(0.18, 0, 0xffffff, { x, y: 0.34, z, sy: 0.85 });
+      if ((k + r + V) % 2) mb.sphere(0.04, 0, V === 1 ? 0xd8483a : 0xe8a03a, { x: x + 0.1, y: 0.3, z: z + 0.06 });
+    }
+    ctx.crops = cr;
+    for (let k = 0; k < 2 + level; k++) mb.box(0.22, 0.16, 0.18, 0xa07a4a, { x: 0.9 + (k % 3) * 0.25, z: -1.2 + Math.floor(k / 3) * 0.22 });
+  },
+  LIVESTOCK_FARM(ctx) {
+    const { mb, level } = ctx, V = variantOf(ctx);
+    barn(mb, -0.9, -0.9, 1.3, 0.9, 0.7, V === 1 ? 0x8a3a2a : 0xb04a3a, 0x4a3a2a);
+    mb.box(0.4, 0.4, 0.02, 0xe8e0d0, { x: -0.9, z: -0.44 });
+    mb.cyl(0.2, 0.2, 1.2, 10, 0xd8d2c4, { x: 0.4, z: -1.2 });
+    fence(mb, -1.4, 0.1, 1.5, 0.1); fence(mb, -1.4, 1.5, 1.5, 1.5); fence(mb, -1.4, 0.1, -1.4, 1.5); fence(mb, 1.5, 0.1, 1.5, 1.5);
+    const col = V === 2 ? 0xe8e4dc : 0x7a4a2a;
+    for (let k = 0; k < 4 + level * 2; k++) animal(mb, -1.1 + ((k * 37) % 25) / 10, 0.35 + ((k * 13) % 11) / 10, k % 3 ? col : 0x2a2a2a, (k * 1.7) % 6);
+    mb.box(0.5, 0.12, 0.2, 0x9a7a4a, { x: 1.1, z: -0.3 });
+  },
+  DAIRY_FARM(ctx) {
+    const { mb, level } = ctx;
+    barn(mb, -0.8, -1.0, 1.4, 0.8, 0.6, 0xe8e4dc, 0x3f6e9a);
+    tanks(mb, 1 + Math.min(2, level), 0.6, -1.2, 0.2, 0.7, 0xdfe6ea);
+    fence(mb, -1.5, 0.0, 1.5, 0.0, 0xe8e4dc); fence(mb, -1.5, 1.5, 1.5, 1.5, 0xe8e4dc);
+    for (let k = 0; k < 4 + level * 2; k++) animal(mb, -1.2 + ((k * 29) % 26) / 10, 0.3 + ((k * 7) % 11) / 10, k % 2 ? 0xf4f0e8 : 0x2a2a2a, (k * 2.1) % 6);
+    mb.box(0.5, 0.2, 0.3, 0xdfe6ea, { x: 1.2, z: -0.3 });
+  },
+  FISHERY(ctx) {
+    const { mb, level } = ctx;
+    mb.box(3.6, 0.2, 0.9, 0x8a6a4a, { y: -0.12, z: 1.35 });
+    for (let k = 0; k < 6; k++) mb.cyl(0.05, 0.05, 0.5, 6, 0x5a4a3a, { x: -1.6 + k * 0.64, y: -0.5, z: 1.75 });
+    barn(mb, -0.7, -0.6, 1.6, 1.0, 0.6, 0xdfe8f0, 0x3f6e9a);
+    mb.box(0.8, 0.3, 0.4, 0x6a9ab8, { x: 1.1, z: -0.9 });
+    // a fishing boat at the quay
+    mb.box(0.9, 0.2, 0.32, 0xc94f4f, { x: 0.6, y: -0.15, z: 1.95 });
+    mb.box(0.3, 0.22, 0.24, 0xf4f4f0, { x: 0.45, y: 0.05, z: 1.95 });
+    mb.box(0.03, 0.6, 0.03, DARK, { x: 0.85, y: 0.05, z: 1.95 });
+    for (let k = 0; k < 2 + level; k++) mb.box(0.24, 0.14, 0.2, 0x5a8ab0, { x: -1.4 + k * 0.3, z: 0.5 });
+  },
+  // ---------- processing ----------
+  CEMENT_WORKS(ctx) {
+    const { mb, level } = ctx;
+    mb.box(1.2, 1.4, 0.9, 0xc8c4bc, { x: -0.9, z: -0.8 });
+    mb.box(0.9, 0.9, 0.7, 0xb8b4ac, { x: -0.9, y: 1.4, z: -0.8 });
+    mb.hcyl(0.22, 2.0, 12, 0x9a948a, { x: 0.5, y: 0.5, z: -0.5, rz: 0.12 });   // kiln
+    for (const x of [-0.3, 1.3]) mb.box(0.18, 0.5, 0.3, 0x7a7f86, { x, z: -0.5 });
+    tanks(mb, 2 + Math.min(2, level), 0.1, 0.9, 0.24, 1.3, 0xdcdad4);
+    chimney(ctx, -1.3, -1.3, 2.4, 0.12, 0xb8b4ac, 'steam');
+    for (let k = 0; k < 2 + level; k++) mb.box(0.3, 0.2, 0.3, 0xc88a5a, { x: 1.2, y: (k % 2) * 0.2, z: 0.5 + Math.floor(k / 2) * 0.35 });
+  },
+  BRICKWORKS(ctx) {
+    const { mb, level } = ctx;
+    shed(mb, -0.2, -0.7, 2.4, 1.1, 0.6, 0xa8583a, 0x4a3a32);
+    chimney(ctx, 1.2, -1.2, 2.2 + level * 0.1, 0.14, 0xa8583a);
+    if (level >= 2) chimney(ctx, -1.2, -1.2, 1.8, 0.1, 0xa8583a);
+    for (let k = 0; k < 4 + level * 2; k++) mb.box(0.36, 0.18, 0.28, shade(0xb86a4a, 1 - (k % 3) * 0.06), { x: -1.2 + (k % 5) * 0.55, y: Math.floor(k / 5) * 0.18, z: 0.9 });
+  },
+  CHEM_PLANT(ctx) {
+    const { mb, level } = ctx;
+    for (let k = 0; k < 2 + Math.min(2, level); k++) mb.cyl(0.14, 0.18, 1.6 + (k % 2) * 0.4, 10, 0xe8ecef, { x: -1.1 + k * 0.4, z: -1.0 });
+    for (let k = 0; k < 2; k++) mb.sphere(0.36, 1, 0xdfe8d8, { x: 0.8, y: 0.38, z: -0.9 + k * 0.85 });
+    mb.box(1.0, 0.6, 0.7, 0x9aa3ac, { x: -0.7, z: 0.6 });
+    for (let k = 0; k < 3; k++) mb.box(2.6, 0.05, 0.05, k === 1 ? 0x7ab84a : METAL, { y: 0.45 + k * 0.15, z: 0.05 + k * 0.08 });
+    mb.cyl(0.05, 0.06, 2.2, 6, METAL, { x: 1.4, z: 1.2 });
+    mb.sphere(0.09, 0, 0xffa040, { x: 1.4, y: 2.25, z: 1.2, glow: true });
+    ctx.emitters.push({ x: -0.7, y: 2.1, z: -1.0, type: 'steam' });
+  },
+  PAPER_MILL(ctx) {
+    const { mb, level } = ctx;
+    mb.box(2.4, 0.8, 1.1, 0xd8d2c4, { x: -0.2, z: -0.7 });
+    mb.box(2.5, 0.08, 1.2, 0x5a6470, { x: -0.2, y: 0.8, z: -0.7 });
+    chimney(ctx, 1.1, -1.2, 1.9, 0.1, 0xc8c4bc, 'steam');
+    chimney(ctx, 0.7, -1.2, 1.6, 0.08, 0xc8c4bc, 'steam');
+    logPile(mb, -1.0, 0.8, 3);
+    for (let k = 0; k < 3 + level; k++) mb.hcyl(0.14, 0.5, 10, 0xe8e4d6, { x: 0.4 + (k % 3) * 0.36, y: 0.14 + Math.floor(k / 3) * 0.28, z: 0.9, rz: 0 });
+  },
+  DAIRY(ctx) {
+    const { mb, level } = ctx;
+    mb.box(2.0, 0.7, 1.1, 0xf0f0ea, { x: -0.4, z: -0.6 });
+    mb.box(2.1, 0.08, 1.2, 0x3f6e9a, { x: -0.4, y: 0.7, z: -0.6 });
+    for (let k = 0; k < 4; k++) mb.box(0.3, 0.2, 0.02, GLASS, { x: -1.1 + k * 0.45, y: 0.35, z: -0.04, glow: true });
+    tanks(mb, 2 + Math.min(2, level), 0.9, -1.1, 0.2, 1.2, 0xdfe6ea);
+    mb.box(0.8, 0.3, 0.4, 0xf2f2ea, { x: -0.6, z: 0.9 });
+    mb.box(0.3, 0.26, 0.4, 0x3f6e9a, { x: -0.1, z: 0.9 });
+  },
+  AUTO_PLANT(ctx) {
+    const { mb, level } = ctx;
+    mb.box(3.0, 0.9, 1.6, 0xdfe2e6, { z: -0.6 });
+    for (let k = 0; k < 5; k++) mb.roof(0.6, 0.28, 1.6, k % 2 ? 0x5a6470 : 0x4a5058, { x: -1.2 + k * 0.6, y: 0.9, z: -0.6 });
+    for (let k = 0; k < 6; k++) mb.box(0.3, 0.22, 0.02, GLASS, { x: -1.2 + k * 0.48, y: 0.5, z: 0.21, glow: true });
+    mb.box(0.8, 0.12, 0.05, 0xc0392b, { x: 0.9, y: 0.75, z: 0.22, glow: true });
+    mb.box(0.8, 0.5, 0.5, 0xc8ccd0, { x: -1.1, z: 0.55 });   // paint shop
+    chimney(ctx, -1.35, 0.55, 1.2, 0.07, 0xb8bcc2, 'steam');
+    // finished cars in the yard
+    const cols = [0xc0392b, 0x2f6fa8, 0xe8e8ec, 0x2a2a2e, 0x3a8a5a];
+    for (let k = 0; k < 4 + level * 2; k++) { const x = -1.3 + (k % 6) * 0.5, z = 0.7 + Math.floor(k / 6) * 0.4; mb.box(0.36, 0.1, 0.18, cols[k % 5], { x, z }); mb.box(0.18, 0.08, 0.16, shade(cols[k % 5], 0.8), { x: x - 0.02, y: 0.1, z }); }
+  },
+  ELECTRONICS_PLANT(ctx) {
+    const { mb, level } = ctx;
+    mb.box(2.6, 0.7, 1.4, 0xf0f2f4, { z: -0.5 });
+    mb.box(2.6, 0.26, 0.02, GLASS, { y: 0.3, z: 0.21, glow: true });
+    for (let k = 0; k < 3 + level; k++) mb.box(0.3, 0.14, 0.3, 0x7a8088, { x: -1.0 + k * 0.45, y: 0.7, z: -0.8 });   // cooling units
+    mb.box(0.9, 1.3, 0.8, 0xe6ebee, { x: 1.2, z: 0.8 });
+    mb.box(0.92, 0.2, 0.82, 0x2fb8a8, { x: 1.2, y: 1.1, z: 0.8, glow: true });
+    for (let k = 0; k < 2 + level; k++) mb.box(0.3, 0.2, 0.26, 0x2fb8a8, { x: -1.2 + k * 0.35, z: 1.2 });
+  },
+  // ---------- energy ----------
+  POWER_PLANT(ctx) {
+    const { mb, level } = ctx;
+    for (const x of [-0.8, 0.4].slice(0, 1 + (level >= 1 ? 1 : 0))) { mb.cyl(0.5, 0.62, 1.8, 14, 0xd8d4cc, { x, z: -0.8 }); mb.cyl(0.46, 0.5, 0.3, 14, 0xc8c4bc, { x, y: 1.8, z: -0.8 }); ctx.emitters.push({ x, y: 2.2, z: -0.8, type: 'steam' }); }
+    mb.box(1.4, 0.9, 0.9, 0x8a8f96, { x: 0.5, z: 0.6 });
+    chimney(ctx, 1.3, 1.2, 2.8, 0.12, 0xb8b4ac);
+    for (let k = 0; k < 2 + level; k++) mb.cone(0.35, 0.3, 7, 0x2b2b30, { x: -1.2 + k * 0.45, z: 1.3 });
+  },
+  GAS_PLANT(ctx) {
+    const { mb, level } = ctx;
+    mb.box(1.8, 0.9, 1.0, 0xdfe2e6, { x: -0.4, z: -0.7 });
+    for (let k = 0; k < 1 + Math.min(2, level); k++) chimney(ctx, 0.9 + k * 0.35, -1.1, 2.0, 0.1, 0xc8c4bc, 'steam');
+    tanks(mb, 2, -1.2, 0.9, 0.28, 0.5, 0xe8e8e8);
+    for (let k = 0; k < 4; k++) mb.box(0.04, 0.8, 0.04, METAL, { x: 0.6 + (k % 2) * 0.5, z: 0.6 + Math.floor(k / 2) * 0.5 });
+    mb.box(0.6, 0.04, 0.6, METAL, { x: 0.85, y: 0.8, z: 0.85 });
+  },
+  // ---------- advanced ----------
+  DATA_CENTER(ctx) {
+    const { mb, level } = ctx;
+    mb.box(2.6, 0.7, 1.6, 0x4a5058, { z: -0.4 });
+    for (let k = 0; k < 5; k++) mb.box(0.36, 0.1, 0.02, 0x2fb8a8, { x: -1.0 + k * 0.5, y: 0.35, z: 0.41, glow: true });
+    for (let k = 0; k < 4 + level; k++) mb.box(0.34, 0.2, 0.34, 0x8a8f96, { x: -1.1 + (k % 5) * 0.55, y: 0.7, z: -0.8 + Math.floor(k / 5) * 0.5 });
+    for (let k = 0; k < 2; k++) mb.box(0.5, 0.4, 0.4, 0xdfe2e6, { x: -0.8 + k * 0.7, z: 1.1 });
+    mb.box(0.03, 1.4, 0.03, METAL, { x: 1.3, z: 1.2 });
+    mb.sphere(0.05, 0, 0xff5040, { x: 1.3, y: 1.45, z: 1.2, glow: true });
+  },
+  WIND_FACTORY(ctx) {
+    const { mb, level } = ctx;
+    mb.box(3.0, 1.0, 1.4, 0xdfe6ea, { z: -0.6 });
+    mb.box(3.1, 0.08, 1.5, 0x3f6e9a, { y: 1.0, z: -0.6 });
+    // finished blades and a tower section in the yard
+    for (let k = 0; k < 2 + level; k++) mb.box(1.6, 0.04, 0.14, 0xf4f4f0, { x: -0.4, y: 0.05 + k * 0.05, z: 0.7 + k * 0.05 });
+    mb.hcyl(0.16, 1.2, 10, 0xe8ecef, { x: 0.8, y: 0.16, z: 1.2 });
+    mb.cyl(0.04, 0.06, 1.8, 6, 0xf4f4f0, { x: 1.4, z: -1.4 });
+    spinPart(ctx, 1.4, 1.8, -1.32, (m) => { for (let k = 0; k < 3; k++) m.box(0.05, 0.7, 0.02, 0xf4f4f0, { rz: (k * 2 * Math.PI) / 3, y: 0 }); }, 1.2, 'z');
+  },
 };
+
+// a mine in the hillside: tunnel portal, rails out to a tipple
+function aditModel(ctx, pileCol) {
+  const { mb, level } = ctx;
+  mb.box(1.8, 1.1, 1.2, 0x7a7068, { x: -0.8, z: -1.0 });
+  mb.box(0.6, 0.6, 0.1, DARK, { x: -0.8, y: 0, z: -0.39 });
+  mb.box(0.7, 0.1, 0.14, 0x8a5a3a, { x: -0.8, y: 0.6, z: -0.38 });
+  for (const x of [-1.1, -0.5]) mb.box(0.1, 0.6, 0.14, 0x8a5a3a, { x, z: -0.38 });
+  mb.box(0.1, 0.03, 1.8, METAL, { x: -0.9, z: 0.5 }); mb.box(0.1, 0.03, 1.8, METAL, { x: -0.7, z: 0.5 });
+  for (let k = 0; k < 2 + Math.min(2, level); k++) mb.box(0.3, 0.18, 0.2, 0x5a5048, { x: -0.8, y: 0.03, z: 0.1 + k * 0.4 });
+  mb.box(0.9, 0.9, 0.7, 0x8a5a3a, { x: 0.9, z: 0.4 });
+  mb.roof(1.0, 0.3, 0.8, 0x5a4a42, { x: 0.9, y: 0.9, z: 0.4 });
+  for (let k = 0; k < 2 + level; k++) mb.cone(0.3, 0.34, 7, shade(pileCol, 1 - (k % 3) * 0.07), { x: 1.1 - (k % 2) * 0.5, z: -0.9 + Math.floor(k / 2) * 0.45 });
+}
 
 function mineModel(ctx, pileCol, coal) {
   const { mb, level } = ctx;

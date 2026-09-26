@@ -125,7 +125,7 @@ export async function run({ browser, base }) {
       g.economy.coins = 1e7; g.settings.weather = false; g.progression.level = 30; g.maint.mode = 'relaxed';
       for (let i = 0; i < 8; i++) g.progression.regions.add(i);
       let a = -1;
-      for (let z = 12; z < N - 12 && a < 0; z++) for (let x = 10; x < N - 24 && a < 0; x++) { let ok = true; for (let i = 0; i < 16 && ok; i++) for (const dz of [-2, -1, 0, 1, 2]) { const t = (z + dz) * N + x + i; if (!R.tileOk(t) || R.hasRoad(t) || g.net.conn[t]) ok = false; } if (ok) a = z * N + x; }
+      for (let z = 3; z < N - 3 && a < 0; z++) for (let x = 3; x < N - 19 && a < 0; x++) { let ok = true; for (let i = 0; i < 16 && ok; i++) for (const dz of [-2, -1, 0, 1, 2]) { const t = (z + dz) * N + x + i; if (!R.tileOk(t) || R.hasRoad(t) || g.net.conn[t]) ok = false; } if (ok) a = z * N + x; }
       R.build(R.plan(a, a + 15));
       const s1 = R.addStop(a + 2, 'bus').stop, s2 = R.addStop(a + 13, 'bus').stop;
       // upgrades: basic → urban → bay → station (a building on the land beside)

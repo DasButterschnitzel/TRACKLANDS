@@ -105,7 +105,8 @@ export async function run({ browser, base }) {
       g.tick(1 / 30);
       if (i % 2 === 0) g.crossings.update(2 / 30);
       const train = T.tileOccupied(xt);
-      const bus = R.vehicles.some((v) => v.tile === xt || (v.path && v.path[v.pi + 1] === xt && v.f > 0.5));
+      // on the crossing: its centre past the near edge, or its rear not yet past the far edge
+      const bus = R.vehicles.some((v) => (v.tile === xt && (!v.path || v.f - R.halfLen(v) < 0.5)) || (v.path && v.path[v.pi + 1] === xt && v.f > 0.5));
       if (train && bus) bad++;
       if (train) both++;
       if (g.crossings.isClosed(xt)) closed++;

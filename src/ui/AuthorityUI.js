@@ -3,7 +3,7 @@
 // use is shown: rating and band, recent changes with reasons, permits with
 // their thresholds, compensation, people affected, relationship impact.
 import { fmt, escapeHtml as esc, tileCX, tileCZ } from '../util.js';
-import { icon } from './icons.js';
+import { icon, cargoIcon } from './icons.js';
 import { PERMITS, BANDS } from '../world/Authority.js';
 import { MONTH_S } from '../economy/Ledger.js';
 
@@ -36,7 +36,8 @@ export const AuthorityUIMixin = {
     return `<h4>${this.tr('town_structure')}</h4>
       <div class="kv-list"><div><span>${this.tr('town_class')}</span><b>${this.tr('cls_' + T.classOf(town))}</b></div>
         <div><span>${this.tr('town_buildings')}</span><b>${town.buildings.length} / ${T.buildTarget(town)}${town.growing ? ' · ' + this.tr('town_growing') : ''}</b></div>
-        ${town.renewed ? `<div><span>${this.tr('town_renewed')}</span><b>${town.renewed}</b></div>` : ''}</div>
+        ${town.renewed ? `<div><span>${this.tr('town_renewed')}</span><b>${town.renewed}</b></div>` : ''}
+        ${town.mat || town.matLast ? `<div><span>${cargoIcon('MATERIALS', 'mini')} ${this.tr('cargo_MATERIALS')}</span><b>${this.tr('town_materials', { n: fmt(Math.round(town.mat || 0)) })}</b></div>` : ''}</div>
       <div class="chips wrap">${chips}</div>
       ${metro.length ? `<p class="small">${icon('town', 'mini')} ${this.tr('town_metro', { names: metro.map((o) => esc(o.name)).join(', ') })}</p>` : ''}
       <p class="muted small">${this.tr('town_growth_pace')}</p>`;
