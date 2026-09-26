@@ -147,7 +147,7 @@ export class TrainSystem {
       xs: [], ys: [], zs: [], ss: [], steps: [], s: 0, v: 0, stopS: Infinity, resvEnd: -1,
       lane: 1, held: new Set(), runs: new Set(), claim: null, problem: null, loadTime: 0, lastStepIdx: -1,
       visual: null, fade: 1, reroutes: 0, homeDepot: d.depotId ?? null, unreachable: new Map(), recover: 0,
-      created: d.created || Date.now(), bought: typeof d.bought === 'number' && isFinite(d.bought) ? d.bought : 0, fin: cleanFin(d.fin),
+      created: d.created || Date.now(), bought: typeof d.bought === 'number' && isFinite(d.bought) ? d.bought : 0, fin: cleanFin(d.fin), dly: Number.isFinite(+d.dly) && d.dly > 0 ? Math.min(600, +d.dly) : undefined,
       cond: typeof d.cond === 'number' && d.cond >= 0.2 && d.cond <= 1 ? d.cond : null, serviceAt: typeof d.serviceAt === 'number' && d.serviceAt >= 0 && d.serviceAt <= 0.95 ? d.serviceAt : null, autoService: d.autoService !== false, broken: typeof d.broken === 'number' && d.broken > 0 && d.broken < 60 ? d.broken : 0, breakdowns: Math.max(0, d.breakdowns | 0), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
       waitTotal: 0, pendingVeh: null, deadT: 0,
       // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
@@ -1262,6 +1262,10 @@ export class TrainSystem {
     t.loadTime = 1.2 + (moved + planned) / Math.max(1, rate) + (opt.dwell || 0);
     t.waitFull = !!opt.full && opt.act !== 'unload' && opt.act !== 'none';
     t.trips++;
+    // seconds held at signals and behind other trains since the last stop
+    const wt = t.waitTotal || 0;
+    if (t._wt0 != null) { const lost = Math.max(0, wt - t._wt0); t.dly = t.dly == null ? lost : t.dly * 0.7 + lost * 0.3; }
+    t._wt0 = wt;
     if (moved > 0) t.visualSig = null;
     S.noteArrival(stn, t, moved);
     g.events.emit('trainArrive', t, stn, moved);
@@ -2248,7 +2252,7 @@ export class TrainSystem {
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
         spacing: t.spacing || undefined, group: t.group || undefined,
         depotOrder: t.depotOrder || undefined,
-        bought: t.bought ? Math.round(t.bought) : undefined, fin: cleanFin(t.fin),
+        bought: t.bought ? Math.round(t.bought) : undefined, fin: cleanFin(t.fin), dly: t.dly ? Math.round(t.dly * 10) / 10 : undefined,
         cond: t.cond == null ? undefined : Math.round(t.cond * 1000) / 1000, serviceAt: t.serviceAt == null ? undefined : t.serviceAt, autoService: t.autoService === false ? false : undefined, broken: t.broken > 0 ? Math.round(t.broken) : undefined, breakdowns: t.breakdowns || undefined,
       };
     });

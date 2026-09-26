@@ -351,7 +351,7 @@ export class TownSystem {
     let left = n;
     sts.forEach((s, i) => { const k = i === sts.length - 1 ? left : Math.min(left, Math.round(n * w[i] / sum)); if (k > 0) { this.game.stations.receive(s, c, k); left -= k; } });
   }
-  onStationsChanged() { for (const t of this.list) { t._sts = null; t._cov = null; } }
+  onStationsChanged() { for (const t of this.list) { t._sts = null; t._cov = null; t._gap = null; } }
   // which stations and stops reach which of the town's buildings
   coverage(t, sts) {
     if (t._cov && t._cov.n === t.buildings.length) return t._cov;
@@ -369,6 +369,35 @@ export class TownSystem {
     }
     t._cov = { share: tot ? cov / tot : 1, w, weight: cov, total: tot, n: t.buildings.length };
     return t._cov;
+  }
+  // Parts of a town no stop or station reaches (Transport advisor): the
+  // largest uncovered quarter (north, east, south, west, centre) by building
+  // weight, or none: no public transport at all. Cached a while.
+  gaps(t) {
+    const g = this.game;
+    if (t._gap && g.time >= t._gap.t && g.time - t._gap.t < 20 && t._gap.n === t.buildings.length) return t._gap.v;
+    const S = g.stations, R = g.roads;
+    const sts = [...S.list, ...(R ? R.stops : [])].filter((s) => !s.owner && s.links && s.links.towns.includes(t.id) && (!s.road || s.kind === 'bus' || s.kind === 'tram'));
+    let v = null;
+    if (!sts.length) v = { none: true };
+    else {
+      const shapes = sts.map((s) => ({ tiles: s.road ? R.stopTiles(s) : S.allTiles(s), r: s.road ? R.stopRadius(s) : S.radius(s) }));
+      const areas = {};
+      let tot = 0;
+      for (const b of t.buildings) {
+        const w = ARCH_W[b.arch] || 1;
+        tot += w;
+        if (shapes.some((sh) => sh.tiles.some((u) => cheb(u, b.tile) <= sh.r))) continue;
+        const dx = tx(b.tile) - t.x, dz = tz(b.tile) - t.z;
+        const k = Math.max(Math.abs(dx), Math.abs(dz)) <= 1 ? 'centre' : Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? 'east' : 'west') : (dz > 0 ? 'south' : 'north');
+        const a = areas[k] || (areas[k] = { w: 0, tile: b.tile });
+        a.w += w;
+      }
+      const best = Object.entries(areas).sort((a, b) => b[1].w - a[1].w)[0];
+      v = best && tot ? { area: best[0], share: best[1].w / tot, weight: best[1].w, tile: best[1].tile } : { share: 0 };
+    }
+    t._gap = { t: g.time, n: t.buildings.length, v };
+    return v;
   }
   // the travellers from reached buildings go to the stop or station that reaches them
   pushCovered(cov, n) {

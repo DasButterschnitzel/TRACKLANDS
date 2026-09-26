@@ -31,6 +31,7 @@ import { Maintenance } from './trains/Maintenance.js';
 import { Authority } from './world/Authority.js';
 import { CargoRatings } from './economy/Ratings.js';
 import { Crossings } from './road/Crossings.js';
+import { TransportOverview } from './economy/Transport.js';
 import { Roads } from './road/Roads.js';
 import { Progression } from './progression/Progression.js';
 import { Stats } from './progression/Stats.js';
@@ -100,6 +101,7 @@ export class Game {
     this.maint = new Maintenance(this);
     this.pax = new PaxFlow(this);
     this.lines = new Lines(this);
+    this.transport = new TransportOverview(this);
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);

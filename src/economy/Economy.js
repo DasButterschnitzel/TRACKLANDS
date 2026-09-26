@@ -152,7 +152,9 @@ export class Economy {
     const L = this.game.ledger;
     const cat = this.revCat(c);
     const note = `~dlv|${c}|${n}|${fromStn ? fromStn.name : ''}|${toStn ? toStn.name : ''}`;
-    this.earn(rev, cat, true, ref || (train ? { type: 'train', id: train.id } : null), note);
+    const vref = ref || (train ? { type: 'train', id: train.id } : null);
+    this.earn(rev, cat, true, vref, note);
+    if (L && vref) L.objUnits(vref, c, n);
     if (L && rev > 0) { if (toStn) L.objBook({ type: 'station', id: toStn.id }, rev, cat); if (fromStn && fromStn !== toStn) L.objBook({ type: 'station', id: fromStn.id }, rev * 0.5, cat); }
   }
 

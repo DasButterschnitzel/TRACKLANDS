@@ -26,6 +26,7 @@ import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { LineUIMixin } from './LineUI.js';
+import { TransportUIMixin } from './TransportUI.js';
 import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
@@ -292,7 +293,9 @@ export class UI {
     const g = this.game; if (!g) return;
     this.updateTop(false);
     if (this.followId != null) {
-      const p = g.entityPos({ type: 'train', id: this.followId });
+      // (a train id, or 'type:id' for other vehicles)
+      const f = typeof this.followId === 'string' ? this.followId.split(':') : null;
+      const p = g.entityPos(f ? { type: f[0], id: +f[1] } : { type: 'train', id: this.followId });
       if (p) { g.camera.target.x += (p.x - g.camera.target.x) * Math.min(1, dt * 5); g.camera.target.z += (p.z - g.camera.target.z) * Math.min(1, dt * 5); } else this.followId = null;
     }
     this.updateFloats(dt);
@@ -307,7 +310,9 @@ export class UI {
       this._liveT = 0.5;
       // live panels: not while the player is pressing something in them
       // (a rebuilt button would swallow the tap), and only when changed
-      const busy = performance.now() - (this._panelPressT || 0) < 1200;
+      // (nor while a dropdown or text field in them has the focus)
+      const fe = document.activeElement;
+      const busy = performance.now() - (this._panelPressT || 0) < 1200 || !!(fe && /^(SELECT|INPUT|TEXTAREA)$/.test(fe.tagName) && fe.closest('#panel, #inspector') && fe.type !== 'checkbox' && fe.type !== 'range');
       if (this.panel && this.panelDefs[this.panel] && this.panelDefs[this.panel].live && !busy) this.refreshPanel(false, true);
       if (this.inspectSel && !busy) this.renderInspector(true);
       this.updateBadges();
@@ -323,6 +328,8 @@ export class UI {
     const nr = g.progression.nextRegion();
     set('objectives', nr >= 0 && g.progression.regionUnlockInfo(nr).ok ? 1 : 0);
     set('news', this.panel === 'news' ? 0 : g.news.unread);
+    // urgent transport problems (no popups: a number on the Transport button)
+    set('trains', g.transport ? g.transport.problems().filter((p) => p.sev === 'bad').length : 0);
   }
 
   // ---------- toasts, banners, floating text ----------
@@ -613,7 +620,7 @@ export class UI {
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
       builder: { title: 'train_builder', render: () => this.pBuilder(), wide: true },
       livery: { title: 'livery_editor', render: () => this.pLivery(), wide: true },
-      trains: { title: 'menu_trains', render: () => this.pTrains(), live: true },
+      trains: { title: 'menu_trains', render: () => this.pTransport(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
       handbook: { title: 'handbook', render: () => this.pHandbook() },
     };
@@ -1175,16 +1182,38 @@ export class UI {
       return `<div class="crow">${cargoIcon(c)}<span>${this.cargoName(c)}</span>${this.bar(have / req[c], have >= req[c] ? 'good' : '')}<b>${have}/${req[c]}</b></div>`;
     }).join('') : `<span class="good">${this.tr('max_stage')}</span>`;
     const next = t.stage < 6 ? this.tr('stage_' + ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'][t.stage + 1]) : '';
-    return `<div class="pill-row"><span class="pill">${this.tr('stage_' + g.towns.stageName(t))}</span><span class="pill">${icon('town', 'mini')} ${fmt(t.pop)}</span>${t.tourist ? `<span class="pill">${this.tr('tourist_town')}</span>` : ''}</div>
+    const b = (act, arg, ic, label, dis = false) => `<button class="tact" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''}>${icon(ic)}<span>${label}</span></button>`;
+    return `<div class="tactions" role="toolbar" aria-label="${this.tr('town_actions')}">
+        ${b('scrollTo', '#tw-transport', 'bus', this.tr('tm_transport'))}${b('scrollTo', '#tw-growth', 'up', this.tr('growth'))}${b('scrollTo', '#tw-districts', 'town', this.tr('tm_districts'))}${b('scrollTo', '#tw-auth', 'company', this.tr('tm_authority'))}
+      </div>
+      <div class="pill-row"><span class="pill">${this.tr('stage_' + g.towns.stageName(t))}</span><span class="pill">${icon('town', 'mini')} ${fmt(t.pop)}</span>${t.tourist ? `<span class="pill">${this.tr('tourist_town')}</span>` : ''}</div>
       ${!g.progression.regionUnlocked(t.region) ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
-      <h4>${next ? this.tr('growth_to', { name: next }) : this.tr('growth')}</h4>${bars}
+      <h4 id="tw-growth">${next ? this.tr('growth_to', { name: next }) : this.tr('growth')}</h4>${bars}
       <p class="muted small">${this.tr('town_growth_help')}</p>
       <h4>${this.tr('accepts')}</h4><div class="icons">${TOWN_ACCEPTS.map((c) => `<span data-tip="${this.cargoName(c)}">${cargoIcon(c)}</span>`).join('')}</div>
       <h4>${this.tr('produces')}</h4><div class="icons">${cargoIcon('PASSENGERS')}${cargoIcon('MAIL')}</div>
-      <h4>${this.tr('stations')}</h4>${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('') || `<p class="muted">${this.tr('town_no_station')}</p>`}
+      ${this.townTransportBlock(t, sts)}
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
-      ${this.townGrowthBlock(t)}
-      ${this.authBlock(t)}`;
+      <span id="tw-districts"></span>${this.townGrowthBlock(t)}
+      <span id="tw-auth"></span>${this.authBlock(t)}`;
+  }
+  // how the town is served: stations, stops and lines, the share of the
+  // town within walking distance, the largest part without a stop
+  townTransportBlock(t, sts) {
+    const g = this.game, R = g.roads;
+    const stops = R ? R.stops.filter((s) => !s.owner && s.links && s.links.towns.includes(t.id) && s.kind !== 'garage') : [];
+    const lines = R ? R.lines.list.filter((l) => l.stops.some((id) => stops.some((s) => s.id === id))) : [];
+    const all = [...g.stations.list, ...(R ? R.stops : [])].filter((s) => !s.owner && s.links && s.links.towns.includes(t.id));
+    const cov = all.length ? g.towns.coverage(t, all).share : 0;
+    const gap = g.towns.gaps(t);
+    const busOk = R && R.kindUnlocked('bus');
+    const busStops = stops.filter((s) => s.kind === 'bus' || s.kind === 'tram');
+    return `<h4 id="tw-transport">${this.tr('tm_transport')} ${this.helpBtn('buslines')}</h4>
+      <div class="crow">${icon('town', 'mini')}<span>${this.tr('tm_coverage')}</span>${this.bar(cov, cov > 0.7 ? 'good' : cov < 0.3 ? 'warn' : '')}<b>${Math.round(cov * 100)}%</b></div>
+      ${gap && gap.none ? `<p class="card warn small">${icon('advisor', 'mini')} ${this.tr('tm_town_none')}</p>` : gap && gap.area && gap.share > 0.15 ? `<p class="card small">${icon('advisor', 'mini')} ${this.tr('tm_town_gap', { area: this.tr('area_' + gap.area), n: Math.round(gap.share * 100) })}${gap.tile >= 0 ? ` <button class="btn small ghost" data-act="jumpTile" data-arg="${gap.tile}">${icon('focus', 'mini')} ${this.tr('show')}</button>` : ''}</p>` : ''}
+      <div class="links">${sts.map((s) => `<button class="tag link" data-act="jump" data-arg="station:${s.id}">${icon('station', 'mini')}${esc(s.name)}</button>`).join('')}${stops.map((s) => `<button class="tag link" data-act="jump" data-arg="roadstop:${s.id}">${icon(s.kind, 'mini')}${esc(s.name)}</button>`).join('')}${!sts.length && !stops.length ? `<span class="muted">${this.tr('town_no_station')}</span>` : ''}</div>
+      ${lines.length ? `<div class="chips wrap">${lines.map((l) => `<button class="tag link" data-act="jump" data-arg="line:${l.id}">${this.lineBadge(l)}</button>`).join('')}</div>` : ''}
+      ${busOk ? `<div class="row wrap">${busStops.length >= 2 ? `<button class="btn small primary" data-act="tTool" data-arg="line">${icon('route', 'mini')} ${this.tr('tm_new_line')}</button>` : ''}<button class="btn small ${busStops.length >= 2 ? 'ghost' : 'primary'}" data-act="tStop" data-arg="bus">${icon('bus', 'mini')} ${this.tr('tool_roadstop_bus')}</button></div>` : ''}`;
   }
 
   // ---------- modals ----------
@@ -1277,6 +1306,7 @@ export class UI {
       ...this.financeActions(),
       ...this.roadActions(),
       ...this.lineActions(),
+      ...this.transportActions(),
       ...this.industryActions(),
       ...this.newsActions(),
       ...this.driverActions(),
@@ -1340,6 +1370,7 @@ export class UI {
       ...this.newsInputs(),
       ...this.driverInputs(),
       ...this.lineInputs(),
+      ...this.transportInputs(),
       companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
@@ -1374,4 +1405,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, LineUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);
+Object.assign(UI.prototype, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);

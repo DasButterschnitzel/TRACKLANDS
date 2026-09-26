@@ -142,6 +142,9 @@ export class RoadLines {
   // tiles along the route of one full cycle (road path lengths; air: straight)
   cycleTiles(line) {
     const R = this.roads, seq = this.seq(line);
+    // (path searches are cached until the stops or the roads change)
+    const key = `${seq.join(',')}|${R.version}`;
+    if (line._ct && line._ct.k === key) return line._ct.v;
     const mode = R.modeOfKind ? R.modeOfKind(line.kind) : 'road';
     let n = 0;
     for (let i = 0; i < seq.length; i++) {
@@ -151,6 +154,7 @@ export class RoadLines {
       const p = R.route(mode, a.tile, b.tile);
       n += p ? p.length - 1 : cheb(a.tile, b.tile) * 1.4;
     }
+    line._ct = { k: key, v: n };
     return n;
   }
   model(line) {

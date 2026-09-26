@@ -18,6 +18,7 @@ import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, STOP_MODE, STOP_TYPES
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
 import { RoadLines } from './Lines.js';
 import { BUS_SHAPES, stopModel, garageModel, personModel, doorModel, signModel } from './RoadModels.js';
+import { cleanFin } from '../economy/Ledger.js';
 
 const D4 = [[1, 0, 1], [0, 1, 2], [-1, 0, 4], [0, -1, 8]];   // dx, dz, bit  (E S W N)
 const opp4 = (b) => (b === 1 ? 4 : b === 4 ? 1 : b === 2 ? 8 : 2);
@@ -616,6 +617,8 @@ export class Roads {
           if (st && st.tile === next && here) { const busy = here.filter((o) => o !== v && o.state === 'load').length; if (busy >= this.stopProps(st).bays) blocked = true; }
         }
       }
+      // time lost standing in traffic (delay per trip, congestion)
+      if (blocked) v.jam = (v.jam || 0) + dt;
       const vmax = (m.speed / KMH_PER_TILE_S) * envSpeed * this.turnMul(v, m);
       // brake for the stop at the end of the path, accelerate by the model
       const remain = v.path.length - 1 - v.pi - v.f;
@@ -731,6 +734,9 @@ export class Roads {
       return;
     }
     this.checkRule(v);
+    // seconds lost in traffic on the way here, smoothed over the last trips
+    const lost = v.jam || 0; v.jam = 0;
+    v.dly = v.dly == null ? lost : v.dly * 0.7 + lost * 0.3;
     const md = modeOf(m.kind);
     if (md !== 'road') g.events.emit('rvArrive', v, md);
     s.stats.arrivals++;
@@ -1305,9 +1311,9 @@ export class Roads {
     for (let i = 0; i < N * N; i++) { if (this.bits[i]) roads.push(i, this.bits[i]); if (this.tram[i]) tram.push(i); }
     return {
       roads, tram, nextStop: this.nextStop, nextVeh: this.nextVeh,
-      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: s.fin || undefined })),
+      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
       lines: this.lines.serialize(),
-      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: v.fin || undefined, state: v.state === 'run' || v.state === 'broken' ? 'load' : v.state, rel: v.rel != null ? Math.round(v.rel * 1000) / 1000 : undefined, served: v.served != null ? Math.round(v.served) : undefined, goGarage: v.goGarage || undefined, service: v.service || undefined, color: v.color != null ? v.color : undefined, breakdowns: v.breakdowns || undefined })),
+      vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: cleanFin(v.fin), dly: v.dly ? Math.round(v.dly * 10) / 10 : undefined, state: v.state === 'run' || v.state === 'broken' ? 'load' : v.state, rel: v.rel != null ? Math.round(v.rel * 1000) / 1000 : undefined, served: v.served != null ? Math.round(v.served) : undefined, goGarage: v.goGarage || undefined, service: v.service || undefined, color: v.color != null ? v.color : undefined, breakdowns: v.breakdowns || undefined })),
       rules: this.rules.length ? this.rules : undefined,
     };
   }
@@ -1320,7 +1326,7 @@ export class Roads {
     for (const s of Array.isArray(d.stops) ? d.stops : []) {
       if (!s || !okTile(s.tile) || !STOP_KINDS.includes(s.kind)) continue;
       const stop = { id: s.id | 0, tile: s.tile, kind: s.kind, road: true, name: String(s.name || 'Stop').slice(0, 40), level: 0, stock: {}, claimed: {}, facilities: [], delivered: +s.delivered || 0, picked: +s.picked || 0, created: +s.created || 0,
-        stats: { arrivals: s.arrivals | 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: s.transfers | 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false, fin: s.fin && typeof s.fin === 'object' ? s.fin : null };
+        stats: { arrivals: s.arrivals | 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: s.transfers | 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false, fin: cleanFin(s.fin) || null };
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stop.stock[c] = Math.min(9999, +s.stock[c]);
       if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stop, s.ratings);
       if (typeof s.owner === 'string' && /^r\d{1,2}$/.test(s.owner)) stop.owner = s.owner;
@@ -1335,7 +1341,7 @@ export class Roads {
     for (const v of Array.isArray(d.vehicles) ? d.vehicles : []) {
       if (!v || !roadModel(v.model) || !okTile(v.tile)) continue;
       const stops = (Array.isArray(v.stops) ? v.stops : []).filter((id) => this.stops.some((s) => s.id === id));
-      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : v.state === 'stored' ? 'stored' : 'load', t: 1, dwell: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined, to: Number.isInteger(l.to) && this.stops.some((s) => s.id === l.to) ? l.to : undefined, rail: l.rail ? true : undefined })), line: Number.isInteger(v.line) ? v.line : null, earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: v.fin && typeof v.fin === 'object' ? v.fin : null, v: 0, owner: typeof v.owner === 'string' && /^r\d{1,2}$/.test(v.owner) ? v.owner : undefined, rel: Number.isFinite(+v.rel) && v.rel != null ? Math.max(0.2, Math.min(1, +v.rel)) : undefined, served: Number.isFinite(+v.served) && v.served != null ? +v.served : undefined, goGarage: Number.isInteger(v.goGarage) && this.stops.some((s) => s.id === v.goGarage && s.kind === 'garage') ? v.goGarage : null, service: !!v.service, color: v.color != null && Number.isFinite(+v.color) ? (+v.color >>> 0) & 0xffffff : null, breakdowns: v.breakdowns | 0 });
+      this.vehicles.push({ id: v.id | 0, model: v.model, name: String(v.name || 'Bus').slice(0, 40), stops, idx: Math.max(0, v.idx | 0), tile: v.tile, prev: -1, next: -1, f: 0, path: null, state: v.state === 'idle' ? 'idle' : v.state === 'stored' ? 'stored' : 'load', t: 1, dwell: 1, cargo: (Array.isArray(v.cargo) ? v.cargo : []).filter((l) => l && CARGO[l.c] && l.n > 0).map((l) => ({ c: l.c, n: Math.floor(l.n), from: l.from | 0, t0: Number.isFinite(l.t0) ? l.t0 : undefined, to: Number.isInteger(l.to) && this.stops.some((s) => s.id === l.to) ? l.to : undefined, rail: l.rail ? true : undefined })), line: Number.isInteger(v.line) ? v.line : null, earned: +v.earned || 0, trips: v.trips | 0, bought: +v.bought || 0, fin: cleanFin(v.fin) || null, dly: Number.isFinite(+v.dly) && v.dly > 0 ? Math.min(600, +v.dly) : undefined, v: 0, owner: typeof v.owner === 'string' && /^r\d{1,2}$/.test(v.owner) ? v.owner : undefined, rel: Number.isFinite(+v.rel) && v.rel != null ? Math.max(0.2, Math.min(1, +v.rel)) : undefined, served: Number.isFinite(+v.served) && v.served != null ? +v.served : undefined, goGarage: Number.isInteger(v.goGarage) && this.stops.some((s) => s.id === v.goGarage && s.kind === 'garage') ? v.goGarage : null, service: !!v.service, color: v.color != null && Number.isFinite(+v.color) ? (+v.color >>> 0) & 0xffffff : null, breakdowns: v.breakdowns | 0 });
     }
     this.nextStop = Math.max(d.nextStop | 0, 1, ...this.stops.map((s) => s.id + 1));
     this.nextVeh = Math.max(d.nextVeh | 0, 1, ...this.vehicles.map((v) => v.id + 1));

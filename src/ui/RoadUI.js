@@ -7,6 +7,8 @@ import { ROAD_VEHICLES, STOP_TYPES, STOP_ORDER, STOP_FACILITIES } from '../confi
 import { lineHex } from '../road/Lines.js';
 import { roadModel, roadCaps } from '../road/Roads.js';
 
+const MODE_ICON_K = { bus: 'bus', truck: 'truck', tram: 'tram', dock: 'dock', airport: 'airport' };
+
 export const RoadUIMixin = {
   // a rival's stop or vehicle: look, do not touch
   rivalCard(o) {
@@ -56,7 +58,7 @@ export const RoadUIMixin = {
       <div class="row wrap">${v.state === 'stored' ? `<button class="btn small primary" data-act="rvRelease" data-arg="${v.id}">${this.tr('garage_release')}</button>` : `<button class="btn small" data-act="rvGarage" data-arg="${v.id}" ${gr ? '' : 'disabled'} data-tip="${gr ? esc(gr.name) : this.tr('err_no_garage')}">${icon('depot', 'mini')} ${this.tr('rv_to_garage')}</button><button class="btn small ghost" data-act="rvService" data-arg="${v.id}" ${gr ? '' : 'disabled'}>${this.tr('rv_service_now')}</button>`}</div>
       ${gr || v.state === 'stored' ? '' : `<p class="muted small">${this.tr('rv_no_garage_help')}</p>`}
       ${better.length ? `<label class="set"><span>${this.tr('rv_replace_rule')}</span><select data-change="rvRule" data-id="${v.id}"><option value="">${this.tr('rv_rule_none')}</option>${better.map((x) => `<option value="${x.id}" ${rule && rule.to === x.id ? 'selected' : ''}>${this.tr('rv_rule_to', { name: esc(x.name), n: rule ? rule.age : 12 })}</option>`).join('')}</select></label>` : ''}
-      <h5>${this.tr('rv_livery')}</h5><div class="swatches">${cols.map((c) => c === null ? `<button class="swatch auto ${v.color == null && !(line && line.livery) ? 'on' : ''}" data-act="rvColor" data-arg="${v.id}:auto" aria-label="${this.tr('rv_livery_model')}">A</button>` : c === 'line' ? (line ? `<button class="swatch ${line.livery && v.color == null ? 'on' : ''}" style="background:${lineHex(line.color)}" data-act="rvColor" data-arg="${v.id}:line" aria-label="${this.tr('rv_livery_line')}">L</button>` : '') : `<button class="swatch ${v.color === c ? 'on' : ''}" style="background:${lineHex(c)}" data-act="rvColor" data-arg="${v.id}:${c}" aria-label="${lineHex(c)}"></button>`).join('')}</div>`;
+      <h5 id="rv-livery">${this.tr('rv_livery')}</h5><div class="swatches">${cols.map((c) => c === null ? `<button class="swatch auto ${v.color == null && !(line && line.livery) ? 'on' : ''}" data-act="rvColor" data-arg="${v.id}:auto" aria-label="${this.tr('rv_livery_model')}">A</button>` : c === 'line' ? (line ? `<button class="swatch ${line.livery && v.color == null ? 'on' : ''}" style="background:${lineHex(line.color)}" data-act="rvColor" data-arg="${v.id}:line" aria-label="${this.tr('rv_livery_line')}">L</button>` : '') : `<button class="swatch ${v.color === c ? 'on' : ''}" style="background:${lineHex(c)}" data-act="rvColor" data-arg="${v.id}:${c}" aria-label="${lineHex(c)}"></button>`).join('')}</div>`;
   },
   iRoadStop(s) {
     if (s.kind === 'garage' && !s.owner) return this.iGarage(s);
@@ -73,20 +75,55 @@ export const RoadUIMixin = {
       const caps = Object.keys(roadCaps(m)).slice(0, 4).map((c) => cargoIcon(c)).join('');
       return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
     }).join('');
-    return `<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
+    return `${this.stopActions(s)}<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
       <h4>${this.tr('stop_serves')}</h4>
       ${towns.map((t) => `<button class="tag link" data-act="jump" data-arg="town:${t.id}">${icon('town', 'mini')}${esc(t.name)}</button>`).join('')}${inds.map((i) => `<button class="tag link" data-act="jump" data-arg="industry:${i.id}">${icon('factory', 'mini')}${esc(g.industries.displayName(i))}</button>`).join('')}
       ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'truck' ? 'stop_no_industry' : 'stop_no_town')}</p>` : ''}
-      <h4>${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}
+      <h4 id="rs-wait">${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}
       ${this.ratingBlock(s)}
-      ${this.stopTypeBlock(s)}
-      ${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
-      <h4>${this.tr('stop_vehicles', { n: vehs.length })}</h4>
+      <span id="rs-type"></span>${this.stopTypeBlock(s)}
+      <span id="rs-lines"></span>${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
+      <h4 id="rs-veh">${this.tr('stop_vehicles', { n: vehs.length })}</h4>
       ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
-      <h4>${this.tr('stop_buy')} ${this.helpBtn('transport')}</h4><div class="col">${buy}</div>
+      <h4 id="rs-buy">${this.tr('stop_buy')} ${this.helpBtn('transport')}</h4><div class="col">${buy}</div>
       <p class="muted small">${this.tr('stop_help_' + s.kind)}</p>
-      <h4>${this.tr('fin_heading')}</h4>${this.finBlock(s)}
+      <h4 id="rs-fin">${this.tr('fin_heading')}</h4>${this.finBlock(s)}
       <div class="row wrap"><button class="btn ghost danger" data-act="rvStopRemove" data-arg="${s.id}">${icon('bulldoze', 'mini')} ${this.tr('stop_remove')}</button></div>`;
+  },
+  // the actions a stop or a vehicle needs most, one tap away (touch first)
+  tactBtn(act, arg, ic, label, dis = false, cls = '') { return `<button class="tact ${cls}" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''}>${icon(ic)}<span>${label}</span></button>`; },
+  stopActions(s) {
+    const g = this.game, R = g.roads, b = (...a) => this.tactBtn(...a);
+    const people = s.kind === 'bus' || s.kind === 'tram';
+    const nx = R.nextType(s);
+    return `<div class="tactions" role="toolbar" aria-label="${this.tr('stop_actions')}">
+      ${people ? b('lineFromStop', s.id, 'route', this.tr('tm_new_line'), false, 'hl') : b('scrollTo', '#rs-buy', 'plus', this.tr('stop_buy'), false, 'hl')}
+      ${people ? b('scrollTo', '#rs-lines', 'layers', this.tr('act_routes')) : b('scrollTo', '#rs-veh', MODE_ICON_K[s.kind] || 'bus', this.tr('tm_vehicles'))}
+      ${s.kind === 'bus' ? b('scrollTo', '#rs-type', 'up', this.tr('act_upgrade'), !nx) : ''}
+      ${b('scrollTo', '#rs-wait', 'town', this.tr(people ? 'tm_pax' : 'waiting'))}
+      ${b('scrollTo', '#rs-fin', 'coin', this.tr('fin_heading'))}
+      ${b('rsRename', s.id, 'builder', this.tr('rename'))}
+    </div>`;
+  },
+  rvActions(v) {
+    const g = this.game, R = g.roads, b = (...a) => this.tactBtn(...a);
+    const line = R.lines.lineOf(v);
+    const best = this.rvBest(v);
+    const gar = v.state === 'stored' ? b('rvRelease', v.id, 'play', this.tr('garage_release'), false, 'hl') : b('rvGarage', v.id, 'depot', this.tr('rv_to_garage'), !R.garageNear(v) || !!v.goGarage);
+    return `<div class="tactions" role="toolbar" aria-label="${this.tr('vehicle_actions')}">
+      ${line ? b('jump', `line:${line.id}`, 'route', this.tr('line_line')) : b('scrollTo', '#rv-line', 'route', this.tr('line_line'))}
+      ${gar}
+      ${b('rvFollow', v.id, 'focus', this.tr('follow'), v.state === 'stored')}
+      ${b('rvReplaceBest', v.id, 'up', best ? this.tr('rv_replace_with', { name: best.name.split(' ')[0] }) : this.tr('rv_replace'), !best)}
+      ${b('scrollTo', '#rv-livery', 'palette', this.tr('livery'))}
+    </div>`;
+  },
+  // the newest unlocked model of the same kind and purpose, if it is better
+  rvBest(v) {
+    const g = this.game, m = roadModel(v.model);
+    if (!m) return null;
+    const c = ROAD_VEHICLES.filter((x) => x.kind === m.kind && x.id !== m.id && x.level <= g.progression.level && (x.role || '') === (m.role || '') && x.level > m.level && x.cap >= m.cap * 0.8 && x.cap <= m.cap * 2);
+    return c.sort((a, b) => b.level - a.level)[0] || null;
   },
   rvStatus(v) {
     const R = this.game.roads;
@@ -106,9 +143,9 @@ export const RoadUIMixin = {
     const cands = home ? R.stops.filter((s) => s.kind === m.kind && !s.owner && !v.stops.includes(s.id) && cheb(s.tile, home.tile) <= 40).map((s) => ({ s, ok: !!R.path(home.tile, s.tile) })).filter((x) => x.ok) : [];
     const add = cands.length ? cands.map((x) => `<button class="tag link" data-act="rvRouteAdd" data-arg="${v.id}:${x.s.id}">${icon('plus', 'mini')} ${esc(x.s.name)}</button>`).join('') : `<p class="muted small">${this.tr('rv_no_more_stops')}</p>`;
     const line = R.lines.lineOf(v);
-    return `<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
+    return `${this.rvActions(v)}<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
       <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}
-      ${this.vehLineBlock(v)}
+      <span id="rv-line"></span>${this.vehLineBlock(v)}
       ${line ? `<p class="muted small">${this.tr('rv_on_line', { name: esc(line.name) })}</p>` : `<h4>${this.tr('rv_route')}</h4><div class="rv-route">${route}</div>
       <h5>${this.tr('rv_add_stop')}</h5><div class="chips wrap">${add}</div>
       <p class="muted small">${this.tr('rv_route_help')}</p>`}
@@ -131,6 +168,9 @@ export const RoadUIMixin = {
       rvService: (a) => { const v = g().roads.byId(+a); if (!v) return; const r = g().roads.sendToGarage(v); if (r.error) this.error(r.error); else { v.service = true; this.toast(this.tr('rv_going_service', { name: v.name }), 'info', 'depot'); } re(); },
       rvRelease: (a) => { const v = g().roads.byId(+a); if (v) g().roads.releaseFromGarage(v); re(); },
       rvColor: (a) => { const [id, c] = a.split(':'); const v = g().roads.byId(+id); if (!v) return; const l = g().roads.lines.lineOf(v); if (c === 'auto') { v.color = null; if (l) l.livery = false; } else if (c === 'line') { v.color = null; if (l) l.livery = true; } else v.color = +c; re(); },
+      rsRename: async (a) => { const s = g().roads.stopById(+a); if (!s) return; const n = await this.prompt(this.tr('rename'), s.name); if (n && n.trim()) { s.name = n.trim().slice(0, 28); g().roads.rebuildStopMesh && g().roads.rebuildStopMesh(); re(); } },
+      rvFollow: (a) => { const v = g().roads.byId(+a); if (!v) return; this.followId = 'roadveh:' + v.id; g().focusOn({ type: 'roadveh', id: v.id }, 10); },
+      rvReplaceBest: (a) => { const v = g().roads.byId(+a); if (!v) return; const best = this.rvBest(v); if (!best) return; const r = g().roads.replaceVehicle(v, best.id); if (r.error) this.error(r.error); else { this.toast(this.tr('rv_replaced', { name: v.name, m: best.name }), 'good', 'check'); this.app.audio.play('coin'); } re(); },
       rvStopRemove: (a) => { const s = g().roads.stopById(+a); if (!s) return; const r = g().roads.removeStop(s); if (r.error) this.error(r.error); else g().select(null); },
     };
   },

@@ -152,7 +152,7 @@ export const LineUIMixin = {
   // lines at a stop (stop inspector)
   stopLinesBlock(s) {
     const L = this.game.roads.lines, ls = L.linesAt(s.id);
-    return `<h4>${this.tr('line_lines')} ${this.helpBtn('transport')}</h4><div class="chips wrap">${ls.map((l) => `<button class="tag link" data-act="jump" data-arg="line:${l.id}">${this.lineBadge(l)}</button>`).join('')}<button class="tag link" data-act="lineFromStop" data-arg="${s.id}">${icon('plus', 'mini')} ${this.tr('line_new_here')}</button></div>`;
+    return `<h4>${this.tr('line_lines')} ${this.helpBtn('buslines')}</h4><div class="chips wrap">${ls.map((l) => `<button class="tag link" data-act="jump" data-arg="line:${l.id}">${this.lineBadge(l)}</button>`).join('')}<button class="tag link" data-act="lineFromStop" data-arg="${s.id}">${icon('plus', 'mini')} ${this.tr('line_new_here')}</button></div>`;
   },
   // the line select in a vehicle's inspector
   vehLineBlock(v) {

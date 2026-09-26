@@ -33,7 +33,7 @@ const MAP_OUT = { construction: 'construction', trains: 'vehicles', road_vehicle
 export function cleanFin(f) {
   if (!f || typeof f !== 'object') return undefined;
   const n = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : 0);
-  return { m: Number.isInteger(f.m) && f.m >= 0 ? f.m : 0, rev: n(f.rev), cost: n(f.cost), lastRev: n(f.lastRev), lastCost: n(f.lastCost), lifeRev: n(f.lifeRev), lifeCost: n(f.lifeCost) };
+  return { m: Number.isInteger(f.m) && f.m >= 0 ? f.m : 0, rev: n(f.rev), cost: n(f.cost), lastRev: n(f.lastRev), lastCost: n(f.lastCost), lifeRev: n(f.lifeRev), lifeCost: n(f.lifeCost), pu: n(f.pu), cu: n(f.cu), lastPu: n(f.lastPu), lastCu: n(f.lastCu) };
 }
 const blankMonth = (m) => ({ m, inc: {}, exp: {}, cash: 0, debt: 0, value: 0 });
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
@@ -84,29 +84,43 @@ export class Ledger {
     if (ref) this.objBook(ref, -amt, cat);
   }
 
-  // per-object figures (trains, stations)
-  objBook(ref, amt, cat) {
+  // per-object figures (trains, road vehicles, stations)
+  objOf(ref) {
     const g = this.game;
-    let o = null;
-    if (ref.type === 'train') o = g.trains.byId(ref.id);
-    else if (ref.type === 'station') o = g.stations.byId(ref.id);
-    else if (ref.type === 'road' && g.roads) o = g.roads.byId(ref.id);
-    else if (ref.type === 'roadstop' && g.roads) o = g.roads.stopById(ref.id);
-    else if (ref.type === 'industry' && g.industries) o = g.industries.byId(ref.id);
-    if (!o) return;
-    const f = o.fin || (o.fin = { m: this.monthIndex(), rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0 });
+    if (ref.type === 'train') return g.trains.byId(ref.id);
+    if (ref.type === 'station') return g.stations.byId(ref.id);
+    if (ref.type === 'road' && g.roads) return g.roads.byId(ref.id);
+    if (ref.type === 'roadstop' && g.roads) return g.roads.stopById(ref.id);
+    if (ref.type === 'industry' && g.industries) return g.industries.byId(ref.id);
+    return null;
+  }
+  objFinOf(o) {
+    const f = o.fin || (o.fin = { m: this.monthIndex(), rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0, pu: 0, cu: 0, lastPu: 0, lastCu: 0 });
     this.objRoll(f);
+    return f;
+  }
+  objBook(ref, amt, cat) {
+    const o = this.objOf(ref);
+    if (!o) return;
+    const f = this.objFinOf(o);
     if (NON_PL.has(cat)) return;
     if (amt > 0) { f.rev += amt; f.lifeRev += amt; } else { f.cost -= amt; f.lifeCost -= amt; }
+  }
+  // travellers (and mail) or cargo units a vehicle delivered this month
+  objUnits(ref, c, n) {
+    const o = ref && this.objOf(ref);
+    if (!o || !(n > 0)) return;
+    const f = this.objFinOf(o);
+    if (c === 'PASSENGERS' || c === 'MAIL') f.pu = (f.pu || 0) + n; else f.cu = (f.cu || 0) + n;
   }
   objRoll(f) {
     const m = this.monthIndex();
     if (f.m === m) return;
-    if (f.m === m - 1) { f.lastRev = f.rev; f.lastCost = f.cost; } else { f.lastRev = 0; f.lastCost = 0; }
-    f.rev = 0; f.cost = 0; f.m = m;
+    if (f.m === m - 1) { f.lastRev = f.rev; f.lastCost = f.cost; f.lastPu = f.pu || 0; f.lastCu = f.cu || 0; } else { f.lastRev = 0; f.lastCost = 0; f.lastPu = 0; f.lastCu = 0; }
+    f.rev = 0; f.cost = 0; f.pu = 0; f.cu = 0; f.m = m;
   }
   objFin(o) {
-    if (!o.fin) return { rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0 };
+    if (!o.fin) return { rev: 0, cost: 0, lastRev: 0, lastCost: 0, lifeRev: 0, lifeCost: 0, pu: 0, cu: 0, lastPu: 0, lastCu: 0 };
     this.objRoll(o.fin);
     return o.fin;
   }
