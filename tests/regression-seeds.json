@@ -1,0 +1,4 @@
+{
+  "_comment": "Rail fuzzer seeds (src/debug/RailFuzz.js, world seed = seed * 1013) that exposed real bugs. Every entry must keep passing. 2/20/23/46: critical dependent seeds; the others each reproduced a fixed defect (see git log).",
+  "rail": [2, 3, 4, 7, 8, 14, 16, 17, 20, 21, 22, 23, 24, 32, 35, 36, 39, 40, 43, 44, 46]
+}

@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - name: core
+            suites: unit worldgen rail seeds network
+            quick: savefuzz monkey ui
+          - name: economy
+            suites: prodsave economy persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes
+            quick: ''
+          - name: transport
+            suites: transport mapsize company scenarios rivals touch buses overview traffic cities chains rollingstock stress audit
+            quick: ''
+    name: regression (${{ matrix.group.name }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Suites
+        run: node tests/run.mjs ${{ matrix.group.suites }}
+      - name: Quick suites
+        if: matrix.group.quick != ''
+        run: node tests/run.mjs ${{ matrix.group.quick }} --quick
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-${{ matrix.group.name }}
+          path: tests/output
+          if-no-files-found: ignore
