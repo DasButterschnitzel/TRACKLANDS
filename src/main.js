@@ -6,6 +6,7 @@ import { UI } from './ui/UI.js';
 import { AudioEngine } from './audio/Audio.js';
 import { SaveStore, migrate, validate, exportText, importText, downloadJSON } from './save/Save.js';
 import { Backups, healthOfGame } from './save/Backups.js';
+import { loadPacks } from './content/Packs.js';
 import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES, N, setMapSize } from './util.js';
@@ -69,6 +70,8 @@ class App {
     this.ui.relocalize();
     await this.store.init();
     this.backups = new Backups(this.store);
+    // creator content packs (assets/packs): checked, then added
+    try { await loadPacks(); } catch (e) { log.warn('packs', 'content packs not loaded', String(e && e.message || e)); }
     this.save = await this.loadNewestSave();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => this.onVisibility());

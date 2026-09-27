@@ -25,6 +25,7 @@ import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
 import { CHANGELOG } from '../changelog.js';
+import { PACKS } from '../content/Packs.js';
 import { healthOfGame, AUTOSAVE_CHOICES, BACKUP_CHOICES } from '../save/Backups.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
@@ -1107,8 +1108,15 @@ export class UI {
         <button class="btn" data-act="importSave">${this.tr('import_save')}</button>
         ${inGame ? `<button class="btn ghost" data-act="resetTutorial">${this.tr('reset_tutorial')}</button>` : ''}
         <button class="btn danger" data-act="resetGame">${this.tr('reset_game')}</button></div>
+      <h3>${this.tr('packs')}</h3>${this.packsBlock()}
       <div class="row wrap"><button class="btn ghost small" data-act="copyDiagnostics">${this.tr('copy_diagnostics')}</button></div>
       <p class="muted small">${this.tr('storage_info')} · <button class="linkbtn" data-act="panel" data-arg="changelog">v${GAME_VERSION} · ${this.tr('whats_new')}</button></p>`;
+  }
+
+  // Settings → Content packs: what loaded, and what was left out and why
+  packsBlock() {
+    if (!PACKS.list.length) return `<p class="muted small">${this.tr('packs_none')}</p>`;
+    return PACKS.list.map((p) => `<div class="card"><b>${esc(p.name || p.file)}</b> <small class="muted">${esc(p.version || '')}</small><br><small>${this.tr('packs_counts', { v: p.vehicles.length, s: p.scenarios.length })}</small>${p.errors.length ? `<ul class="health">${p.errors.slice(0, 8).map((e) => `<li class="warn">${esc(e.where)}: ${esc(e.what)}</li>`).join('')}</ul>${p.errors.length > 8 ? `<small class="muted">+${p.errors.length - 8}</small>` : ''}` : ''}</div>`).join('');
   }
 
   pChangelog() {

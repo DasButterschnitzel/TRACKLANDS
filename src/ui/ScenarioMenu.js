@@ -2,6 +2,7 @@
 // export, delete, import) and the scenario editor; plus the in-game goals
 // block and the end-of-scenario dialog.
 import { SCENARIOS, GOAL_KINDS, cleanScenario, MEDALS, medalFor } from '../world/Scenarios.js';
+import { PACKS } from '../content/Packs.js';
 import { CARGO_IDS, DIFFICULTY } from '../config.js';
 import { MAP_SIZES, fmt, escapeHtml as esc } from '../util.js';
 import { t } from '../i18n.js';
@@ -45,10 +46,11 @@ export function scenarioDialog(app) {
   const w = app.ui.modal(`<h2>${icon('objectives')} ${t('scenarios')}</h2>
     <h3>${t('campaign')} <small class="muted">${t('campaign_progress', { n: won, of: SCENARIOS.length })}</small></h3>
     <div class="scn-list">${SCENARIOS.map((s, i) => row(s, i)).join('')}</div>
+    ${PACKS.list.some((p) => p.scenarios.length) ? `<h3>${t('scn_pack')}</h3><div class="scn-list">${PACKS.list.flatMap((p) => p.scenarios).map((s) => row({ ...s, custom: true, name: s.name || s.id })).join('')}</div>` : ''}
     ${own.length ? `<h3>${t('scn_own')}</h3><div class="scn-list">${own.map((s) => row(s)).join('')}</div>` : ''}
     <div class="row wrap end"><button class="btn ghost" data-mbtn="import">${t('scn_import')}</button><button class="btn" data-mbtn="edit">${icon('plus', 'mini')} ${t('scn_editor')}</button><button class="btn ghost" data-mbtn="no">${t('close')}</button></div>`, { onCancel: () => {} });
   w.classList.add('scn-modal');
-  const all = [...SCENARIOS.map((s) => ({ ...cleanScenario(s), custom: false })), ...own];
+  const all = [...SCENARIOS.map((s) => ({ ...cleanScenario(s), custom: false })), ...PACKS.list.flatMap((p) => p.scenarios), ...own];
   w.querySelectorAll('[data-play]').forEach((b) => { b.onclick = () => { const sc = all.find((s) => s.id === b.dataset.play); if (!sc) return; w.remove(); app.startGame({ seed: sc.seed, difficulty: sc.difficulty, mapSize: sc.mapSize, startYear: sc.startYear, scenario: sc }); }; });
   w.querySelectorAll('[data-del]').forEach((b) => { b.onclick = () => { saveCustom(own.filter((s) => s.id !== b.dataset.del)); w.remove(); scenarioDialog(app); }; });
   w.querySelectorAll('[data-export]').forEach((b) => { b.onclick = () => {
