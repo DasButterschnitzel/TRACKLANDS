@@ -22,9 +22,11 @@ const LOWER_BETTER = new Set(['price', 'op']);
 const PAX = new Set(['PASSENGERS', 'MAIL']);
 const cargosOfGroups = (groups) => CARGO_IDS.filter((c) => groups.includes(CARGO[c].group));
 
+import { eraOfYear } from '../world/RailAI.js';
+
 export const CatalogUIMixin = {
   catState() {
-    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, sort: 'level', cmp: [], tab: 'vehicles', n: PAGE };
+    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, span: '', sort: 'level', cmp: [], tab: 'vehicles', n: PAGE };
     return this._cat;
   },
 
@@ -67,6 +69,14 @@ export const CatalogUIMixin = {
     return out;
   },
 
+  // era filter (Phase 10): current = the technology of the day (this era and
+  // the one before, available); historic = older generations; locked = not yet
+  catSpanOk(it, span) {
+    if (!span) return true;
+    if (span === 'locked') return !it.unlocked;
+    const cur = eraOfYear(this.game.ledger.year()), e = it.era || cur;
+    return span === 'current' ? it.unlocked && e >= cur - 1 : e < cur - 1;
+  },
   catFiltered() {
     const c = this.catState(), P = this.game.progression;
     const q = c.q.trim().toLowerCase();
@@ -76,7 +86,7 @@ export const CatalogUIMixin = {
       && (!c.era || it.era === +c.era) && (!c.role || it.role === c.role)
       && (!c.cargo || it.carries.includes(c.cargo))
       && (!c.power || it.power >= c.power) && (!c.speed || it.speed >= c.speed)
-      && (!c.owned || it.owned) && (!c.unlocked || it.unlocked) && (!c.fav || P.favs.has(it.key)));
+      && (!c.owned || it.owned) && (!c.unlocked || it.unlocked) && (!c.fav || P.favs.has(it.key)) && this.catSpanOk(it, c.span));
     const key = c.sort;
     const dir = LOWER_BETTER.has(key) || key === 'level' ? 1 : -1;
     list = list.sort((a, b) => (P.favs.has(b.key) - P.favs.has(a.key)) || dir * ((a[key] || 0) - (b[key] || 0)) || a.level - b.level);
@@ -206,7 +216,8 @@ export const CatalogUIMixin = {
     const modes = `<div class="chips wrap" role="group" aria-label="${this.tr('cat_mode')}">${CAT_MODES.map((m) => `<button class="chip ${c.mode === m ? 'on' : ''}" data-act="catMode" data-arg="${m}">${m === 'all' ? this.tr('cat_all') : m === 'wagon' ? this.tr('tm_wagon') : this.tr('tm_' + m)}</button>`).join('')}</div>`;
     const roles = [...new Set(all.filter((it) => c.mode === 'all' || it.mode === c.mode).map((it) => it.role))];
     const opt = (v, cur, label) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
-    const filters = `<div class="cat-filters">
+    const spans = `<div class="chips wrap" role="group" aria-label="${this.tr('cat_span')}">${['', 'current', 'historic', 'locked'].map((v) => `<button class="chip ${c.span === v ? 'on' : ''}" data-act="catSpan" data-arg="${v}">${this.tr('cat_span_' + (v || 'all'))}</button>`).join('')}</div>`;
+    const filters = `${spans}<div class="cat-filters">
       <input class="inp" type="search" placeholder="${this.tr('cat_search')}" value="${esc(c.q)}" data-input="catQuery" aria-label="${this.tr('cat_search')}"/>
       <select data-change="catEra" aria-label="${this.tr('cat_era')}">${opt('', c.era, this.tr('cat_era') + ': ' + this.tr('cat_all'))}${[1, 2, 3, 4, 5, 6].map((e) => opt(e, c.era, this.tr('era_' + e))).join('')}</select>
       <select data-change="catMaker" aria-label="${this.tr('cat_maker')}">${opt('', c.maker, this.tr('cat_maker') + ': ' + this.tr('cat_all'))}${MAKERS.filter((m) => all.some((it) => it.maker === m.id && (c.mode === 'all' || it.mode === c.mode))).map((m) => opt(m.id, c.maker, m.name)).join('')}</select>
@@ -278,6 +289,7 @@ export const CatalogUIMixin = {
         if (cnt) cnt.textContent = this.tr('cat_count', { n: list.length });
       },
       catEra: (el) => { c().era = el.value; c().n = PAGE; re(); },
+      catSpan: (a) => { c().span = a || ''; c().n = PAGE; re(); },
       catRole: (el) => { c().role = el.value; c().n = PAGE; re(); },
       catMaker: (el) => { c().maker = el.value; c().n = PAGE; re(); },
       catCargo: (el) => { c().cargo = el.value; c().n = PAGE; re(); },

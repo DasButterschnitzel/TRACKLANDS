@@ -6,6 +6,9 @@ import { INDUSTRIES, INDUSTRY_LEVEL_THRESH, INDUSTRY_INVEST, TOWN_ACCEPTS, CARGO
 import { cleanFin } from '../economy/Ledger.js';
 import { ModelBuilder, meshFrom, shade, MATS } from '../core/ModelBuilder.js';
 import { t as tr } from '../i18n.js';
+import { bandOf } from './Eras.js';
+
+const FARM_TYPES = new Set(['FARM', 'ORCHARD', 'LIVESTOCK_FARM', 'DAIRY_FARM']);
 
 const SEASON_FARM = { winter: 0.7, spring: 1, summer: 1.1, autumn: 1.2 };
 
@@ -354,6 +357,7 @@ export class IndustrySystem {
     // foundation slab
     mb.box(3.7, 0.5, 3.7, SLAB[ind.type] || 0x9a948a, { y: -0.42 });
     INDUSTRY_MODELS[ind.type](ctx);
+    this.eraProps(mb, bandOf(this.game.ledger ? this.game.ledger.year() : 1950), ind);
     const mesh = meshFrom(mb.build());
     root.add(mesh);
     for (const a of anims) {
@@ -378,6 +382,25 @@ export class IndustrySystem {
     this.group.add(root);
   }
 
+  // the era shows at every works (Eras.js): a brick chimney in the early
+  // years, a concrete water tower after the war, a floodlight mast later,
+  // solar panels today and a small wind turbine after 2025
+  eraProps(mb, band, ind) {
+    const farm = FARM_TYPES.has(ind.type), x = 1.5, z = 1.5;
+    if (band <= 1) {
+      if (farm) { mb.box(0.5, 0.45, 0.4, 0x8a4a32, { x, z }); mb.roof(0.56, 0.22, 0.46, 0x5a4a42, { x, y: 0.45, z }); }
+      else { mb.cyl(0.11, 0.14, 1.9, 8, 0x9a5a42, { x, z }); mb.cyl(0.13, 0.13, 0.08, 8, 0x5a3a2a, { x, y: 1.9, z }); }
+    } else if (band === 2) {
+      mb.cyl(0.05, 0.05, 1.1, 5, 0x8a8a84, { x, z }); mb.cyl(0.24, 0.2, 0.35, 10, 0xc8c4bc, { x, y: 1.1, z });
+    } else if (band === 3) {
+      mb.box(0.06, 1.6, 0.06, 0x6a7078, { x, z }); mb.box(0.32, 0.12, 0.14, 0xfff0c0, { x, y: 1.6, z, glow: true });
+    } else if (band === 4) {
+      for (let k = 0; k < 3; k++) mb.box(0.5, 0.03, 0.3, 0x2a3a5a, { x: x - 0.1, y: 0.12, z: z - 0.35 * k, rx: -0.35 });
+    } else {
+      mb.cyl(0.03, 0.04, 1.7, 6, 0xf0f2f4, { x, z }); mb.box(0.08, 0.08, 0.12, 0xf0f2f4, { x, y: 1.7, z });
+      for (let k = 0; k < 3; k++) mb.box(0.03, 0.55, 0.02, 0xf0f2f4, { x, y: 1.74, z: z - 0.07, rz: k * 2.094 });
+    }
+  }
   buildAllVisuals() { for (const ind of this.list) { this.buildVisual(ind); ind.rise = 0; } }
 
   updateVisuals(dt, time) {

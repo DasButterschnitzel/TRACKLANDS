@@ -28,6 +28,7 @@ import { PhotoModeMixin } from './PhotoMode.js';
 import { CompanyUIMixin } from './CompanyUI.js';
 import { CHANGELOG } from '../changelog.js';
 import { PACKS } from '../content/Packs.js';
+import { ERA_BANDS } from '../world/Eras.js';
 import { logoSVG, cleanLogo, randomLogo, LOGO_SHAPES, LOGO_SYMBOLS, LOGO_COLORS2 } from '../world/Logo.js';
 import { healthOfGame, AUTOSAVE_CHOICES, BACKUP_CHOICES } from '../save/Backups.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
@@ -708,6 +709,19 @@ export class UI {
 
   bar(p, cls = '') { return `<div class="bar ${cls}"><i style="width:${clamp(p, 0, 1) * 100}%"></i></div>`; }
 
+  // the company's milestones (Phase 10)
+  milestonesBlock() {
+    const g = this.game, H = g.history;
+    if (!H) return '';
+    const txt = ([y, k, a]) => {
+      if (k === 'region') return this.tr('ms_region', { region: this.tr('region_' + (REGIONS[a] ? REGIONS[a].id : 'green_valley')) });
+      if (k === 'era') return this.tr('ms_era', { era: this.tr('era_band_' + a) });
+      if (k === 'stations' || k === 'trains') return this.tr('ms_' + k, { n: a });
+      return this.tr('ms_' + k, { name: esc(String(a || '')) });
+    };
+    const rows = [[g.ledger.startYear, 'founded'], ...H.company].slice(-12);
+    return `<details class="card history"><summary>${this.tr('company_milestones')}</summary><div class="kv-list small">${rows.map((e) => `<div><span>${e[0]}</span><b>${e[1] === 'founded' ? this.tr('ms_founded', { name: esc(g.company.name) }) : txt(e)}</b></div>`).join('')}</div></details>`;
+  }
   pCompany() {
     const g = this.game, P = g.progression, S = g.stats.data, E = g.economy;
     const ev = E.event ? `<div class="card event">${icon('star')}<div><b>${this.tr('ev_' + E.event.id)}</b><small>${this.tr('ev_' + E.event.id + '_desc')} · ${fmtTime(E.event.dur - E.event.t)}</small></div></div>` : '';
@@ -719,6 +733,7 @@ export class UI {
     return `<div class="company-head"><div class="big-lvl">${P.level}</div><div><b>${this.tr('company_level')}</b>${this.bar(P.xp / P.xpNeeded())}<small>${fmt(P.xp)} / ${fmt(P.xpNeeded())} XP</small></div></div>
       ${ev}
       ${this.identityBlock()}
+      ${this.milestonesBlock()}
       ${this.rivalsBlock()}
       <div class="kv-grid">
         <div>${icon('coin')}<b>${fmt(E.coins)}</b><small>${this.tr('coins')}</small></div>
@@ -861,7 +876,7 @@ export class UI {
     const r = REGIONS[i];
     const info = P.regionUnlockInfo(i);
     const prevName = i > 0 ? this.tr('region_' + REGIONS[i - 1].id) : '';
-    return `<div class="card region-card"><div class="rc-head">${icon('lock')}<b>${this.tr('region_' + r.id)}</b><small>${this.tr('biome_' + r.biome)}</small></div>
+    return `<div class="card region-card"><div class="rc-head">${icon('lock')}<b>${this.tr('region_' + r.id)}</b><small>${this.tr('biome_' + ((g.world.biomes && g.world.biomes[i]) || r.biome))}</small></div>
       <p class="muted">${this.tr('region_' + r.id + '_desc')}</p>
       <div class="checks">
         <div class="chk ${info.okLevel ? 'ok' : ''}">${icon(info.okLevel ? 'check' : 'lock')}<span>${this.tr('unlock_level', { n: r.level })}</span></div>
@@ -1269,6 +1284,7 @@ export class UI {
       </div>
       <div class="pill-row"><span class="pill">${this.tr('stage_' + g.towns.stageName(t))}</span><span class="pill">${icon('town', 'mini')} ${fmt(t.pop)}</span>${t.tourist ? `<span class="pill">${this.tr('tourist_town')}</span>` : ''}</div>
       ${this.townIdentity(t)}
+      ${this.townHistory(t)}
       ${!g.progression.regionUnlocked(t.region) ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
       <h4 id="tw-growth">${next ? this.tr('growth_to', { name: next }) : this.tr('growth')}</h4>${bars}
       <p class="muted small">${this.tr('town_growth_help')}</p>
@@ -1278,6 +1294,19 @@ export class UI {
       <p class="muted small">${this.tr('town_delivered', { n: fmt(t.delivered) })}</p>
       <span id="tw-districts"></span>${this.townGrowthBlock(t)}
       <span id="tw-auth"></span>${this.authBlock(t)}`;
+  }
+  // the town's past (Phase 10): founded, stages, landmarks, its first
+  // station, and how much of it each architectural era built
+  townHistory(t) {
+    const H = this.game.history;
+    if (!H) return '';
+    const stages = ['hamlet', 'village', 'town', 'large_town', 'city', 'major_city', 'metropolis'];
+    const line = ([y, k, a]) => `<div><span>${y}</span><b>${k === 'stage' ? this.tr('hist_stage', { stage: this.tr('stage_' + (stages[a] || 'town')) }) : k === 'landmark' ? this.tr('hist_landmark', { what: this.tr('bld_' + a) }) : k === 'station' ? this.tr('hist_station', { name: esc(String(a)) }) : ''}</b></div>`;
+    const layers = H.townLayers(t);
+    const bar = layers.map((p, i) => (p ? `<i class="era-seg era-${i}" style="flex:${p}" title="${this.tr('era_band_' + ERA_BANDS[i])} ${p}%"></i>` : '')).join('');
+    const legend = layers.map((p, i) => (p ? `${this.tr('era_band_' + ERA_BANDS[i])} ${p}%` : '')).filter(Boolean).join(' · ');
+    return `<details class="card history"><summary>${this.tr('town_history')}</summary><div class="kv-list small"><div><span>${H.founded(t)}</span><b>${this.tr('hist_founded')}</b></div>${H.townLog(t).map(line).join('')}</div>
+      <div class="era-bar" role="img" aria-label="${this.tr('town_layers')}: ${legend}">${bar}</div><p class="muted small">${this.tr('town_layers')}: ${legend}</p></details>`;
   }
   // what kind of place this is: archetype, architecture, landmarks, the
   // transport it has, its largest station, the industry around it

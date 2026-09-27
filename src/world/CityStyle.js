@@ -63,7 +63,7 @@ export function pickArchetype(town, world, regions, index = 0, used = {}) {
     if (t === 1) { water++; wdir[0] += Math.sign(dx); wdir[1] += Math.sign(dz); } else if (t === 2) { mtn++; mdir[0] += Math.abs(Math.sign(dx)) * (Math.abs(dx) >= Math.abs(dz) ? 1 : 0); mdir[1] += Math.abs(Math.sign(dz)) * (Math.abs(dz) > Math.abs(dx) ? 1 : 0); } else land++;
   }
   const reg = regions[town.region] || {};
-  const biome = reg.biome || 'green';
+  const biome = (W.biomes && W.biomes[town.region]) || reg.biome || 'green';
   const s = {};
   for (const k of ARCHETYPE_IDS) s[k] = 1;
   if (town.tourist) s.tourism += 10;

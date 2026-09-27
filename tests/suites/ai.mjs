@@ -196,6 +196,31 @@ export async function run({ browser, base, quick }) {
   fs.mkdirSync(OUT, { recursive: true });
   await page.screenshot({ path: path.join(OUT, 'ai-network.png') });
   lines.push('     screenshot: tests/output/ai-network.png');
+
+  // ---- hard terrain (Phase 10): mountains and islands ----
+  // the planner reads the same terrain costs as the player: in the Alps it
+  // builds along valleys and pays for tunnels, on islands for bridges, and it
+  // still builds lines that pay and never touches anyone else's network
+  for (const preset of ['alpine', 'archipelago']) {
+    await world(page, { seed: 31013, rivals: 1, mapSize: 96, terrain: { preset } });
+    await months(page, quick ? 72 : 120);
+    const tr = await page.evaluate(() => {
+      const g = window.__tracklands.game, net = g.net, r = g.rivals.list[0], P = g.rivals.planner(r), M = P.metrics();
+      let bridges = 0, tunnels = 0, touch = 0;
+      for (let i = 0; i < net.conn.length; i++) {
+        if (!net.conn[i] || !net.own[i]) continue;
+        if (g.world.type[i] === 1) bridges++; else if (g.world.type[i] === 2) tunnels++;
+        for (let d = 0; d < 8; d++) if ((net.conn[i] >> d) & 1) {
+          const x = i % g.mapSize + [1, 1, 0, -1, -1, -1, 0, 1][d], z = Math.floor(i / g.mapSize) + [0, 1, 1, 1, 0, -1, -1, -1][d];
+          if (net.own[z * g.mapSize + x] !== net.own[i]) touch++;
+        }
+      }
+      const ops = r.rail.projects.filter((p) => p.stage === 'operate');
+      return { lines: ops.length, trains: r.trains().length, trips: r.trains().reduce((a, t) => a + t.trips, 0), value: r.value(), money: Math.round(r.money), bridges, tunnels, touch, unused: M.unusedTrack, dup: M.duplicateCorridors, finite: Number.isFinite(r.money), rejected: r.rail.history.filter((h) => h.outcome === 'rejected').length };
+    });
+    check(tr.finite && tr.touch === 0 && tr.dup === 0 && tr.unused < 0.15 && tr.lines >= 1 && tr.trips > 20,
+      `${preset}: ${tr.lines} lines, ${tr.trains} trains, ${tr.trips} trips, ${tr.bridges} bridge and ${tr.tunnels} tunnel tiles, ${(tr.unused * 100).toFixed(0)}% unused, ${tr.rejected} ideas turned down, value ${tr.value}`);
+  }
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();
   return { ok, lines };

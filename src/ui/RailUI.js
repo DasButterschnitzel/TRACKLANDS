@@ -18,6 +18,7 @@ import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
 import { SPACING_CHOICES } from '../trains/Lines.js';
 import { STATION_SERVICES } from '../rail/Stations.js';
+import { ERA_BANDS, bandOf } from '../world/Eras.js';
 
 const esc = escapeHtml;
 const $ = (s, r = document) => r.querySelector(s);
@@ -557,7 +558,19 @@ export const RailUIMixin = {
       <h4>${this.tr('trains_heading_here')}: ${trains.length}</h4>
       <div class="row wrap" id="st-up">${up.max ? `<span class="good">${this.tr('max_level')}</span>` : `<button class="btn primary" data-act="upgradeStation" data-arg="${s.id}" ${up.ok ? '' : 'disabled'}>${icon('up')} ${this.tr('upgrade_to', { name: this.tr('slvl_' + up.next) })} · ${fmt(up.cost)}●</button>${g.progression.level < up.lvlReq ? `<small class="muted">${this.tr('unlock_level', { n: up.lvlReq })}</small>` : ''}${up.research && !g.progression.research.has(up.research) ? `<small class="muted">${this.tr('requires')}: ${this.tr('res_' + up.research)}</small>` : ''}`}</div>
       <label class="set"><span>${this.tr('station_style')}</span><select data-change="stationStyle" data-id="${s.id}">${styles}</select></label>
+      ${this.eraBlock(s)}
       <p class="muted small">${this.tr('station_stats', { d: fmt(s.delivered), p: fmt(s.picked) })}</p>`;
+  },
+
+  // the station's age and look (Phase 10): opened, renovated, listed; the
+  // renovation brings it up to the day's style, a listing keeps it as it is
+  eraBlock(s) {
+    const S = this.game.stations, y = S.lookYear(s), band = ERA_BANDS[bandOf(y)];
+    let h = `<h4 id="st-era">${this.tr('st_era_heading')}</h4><p class="small">${this.tr('st_era_line', { y: s.yb || y, look: this.tr('era_band_' + band) })}${s.reno ? ' · ' + this.tr('st_renovated', { y: s.reno }) : ''}${s.heritage ? ' · <b>' + this.tr('st_listed') + '</b>' : ''}</p><div class="row wrap">`;
+    if (S.canRenovate(s)) h += `<button class="btn ghost small" data-act="renovateStation" data-arg="${s.id}">${icon('up', 'mini')} ${this.tr('st_renovate', { look: this.tr('era_band_' + ERA_BANDS[bandOf(this.game.ledger.year())]) })} · ${fmt(S.renovateCost(s))}●</button>`;
+    if (S.canList(s)) h += `<button class="btn ghost small" data-act="listStation" data-arg="${s.id}">${this.tr('st_list')}</button>`;
+    else if (s.heritage) h += `<button class="btn ghost small" data-act="unlistStation" data-arg="${s.id}">${this.tr('st_unlist')}</button>`;
+    return h + `</div><p class="muted small">${this.tr('st_era_help')}</p>`;
   },
 
   // storage by class: what each class holds and its room (equipment adds room)
@@ -608,10 +621,16 @@ export const RailUIMixin = {
   },
 
   railActions() {
+    const eraAct = {
+      renovateStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.renovate(st); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_renovated_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
+      listStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.setHeritage(st, true); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_listed_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
+      unlistStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; G.stations.setHeritage(st, false); this.refreshPanel && this.refreshPanel(); },
+    };
     const g = () => this.game;
     const b = () => this.bld;
     const re = () => this.refreshPanel();
     return {
+      ...eraAct,
       stService: (a) => { const [id, sv] = a.split(':'); const st = g().stations.byId(+id); if (st && g().stations.setService(st, sv)) { this.app.audio.play('click'); this.toast(this.tr('svc_set', { name: st.name, svc: this.tr('svc_' + sv) }), 'info', 'station'); this.renderInspector(); } },
       builder: (a) => this.openBuilder({ trainId: +a }),
       newTrain: () => this.openBuilder({}),

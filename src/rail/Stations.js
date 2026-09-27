@@ -14,6 +14,7 @@ import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
 import { stationComplexModel, depotModel, stationModel } from './StationModels.js';
 import { ownerIdx, validOwner } from '../world/Owners.js';
+import { bandOf } from '../world/Eras.js';
 
 export const STATION_SERVICES = ['mixed', 'passenger', 'freight'];
 const SERVICE_LOAD_MUL = 1.25;
@@ -300,7 +301,7 @@ export class StationSystem {
     return Object.assign({
       id: this.nextId++, tile, level: 0, style: this.game.progression.defaultStationStyle, name: '', stock: {}, claimed: {}, links: null, accepts: null, supplies: null,
       delivered: 0, picked: 0, created: this.game.time, warn: false, tracks: [{ tiles: [tile], role: 'any', dir: 'both', off: 0 }], facilities: [],
-      claims: new Map(), stats: freshStats(), build: 0,
+      claims: new Map(), stats: freshStats(), build: 0, yb: this.game.ledger ? this.game.ledger.year() : undefined,
     }, this.game.actor ? { owner: this.game.actor.id } : null, extra || {});
   }
 
@@ -984,6 +985,35 @@ export class StationSystem {
     return { x: dx * F.ax[0] + dz * F.ax[1], z: dx * F.pz[0] + dz * F.pz[1], y: this.game.net.railH(tile) - F.oy };
   }
 
+  // the year a station's look comes from: opened, or last renovated
+  lookYear(stn) { return stn.reno || stn.yb || (this.game.ledger ? this.game.ledger.year() : 1950); }
+  // renovation brings the buildings, canopies and lamps up to the day's style
+  renovateCost(stn) { return Math.round((600 + 900 * stn.level + 150 * stn.tracks.length) * this.game.economy.costs.mul()); }
+  canRenovate(stn) {
+    const g = this.game;
+    // (a company renovates its own stations only)
+    return (stn.owner || null) === (g.actor ? g.actor.id : null) && !stn.heritage && bandOf(this.lookYear(stn)) < bandOf(g.ledger.year());
+  }
+  renovate(stn) {
+    const g = this.game;
+    if (!this.canRenovate(stn)) return 'err_cannot_renovate';
+    const cost = this.renovateCost(stn);
+    if (!g.economy.canAfford(cost)) return 'err_no_money';
+    g.economy.spend(cost, 'upgrades', null, 'renovation');
+    stn.reno = g.ledger.year();
+    this.buildVisual(stn);
+    if (!stn.owner) g.events.emit('stationRenovated', stn);
+    return null;
+  }
+  // listed buildings keep their look for good (40 years or older)
+  canList(stn) { return !stn.owner && !stn.heritage && this.game.ledger.year() - this.lookYear(stn) >= 40; }
+  setHeritage(stn, on) {
+    if (on && !this.canList(stn)) return 'err_cannot_list';
+    stn.heritage = !!on;
+    if (on) this.game.events.emit('stationListed', stn);
+    return null;
+  }
+
   buildVisual(stn) {
     if (stn.mesh) { this.group.remove(stn.mesh); stn.mesh.geometry.dispose(); }
     const style = STATION_STYLES.find((s) => s.id === stn.style) || STATION_STYLES[0];
@@ -1000,6 +1030,7 @@ export class StationSystem {
     const mb = new ModelBuilder();
     const info = this.stationKind(stn, tracks);
     stn.kind = info.kind;
+    info.era = bandOf(this.lookYear(stn));
     stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1, info);
     // a competitor's station: a pole with a flag in its company colour at the
     // platform end (the building itself stays the town's style)
@@ -1146,7 +1177,7 @@ export class StationSystem {
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities, service: s.service || undefined,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
-        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, owner: s.owner || undefined, built: s.built || undefined,
+        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, owner: s.owner || undefined, built: s.built || undefined, yb: s.yb, reno: s.reno || undefined, heritage: s.heritage ? 1 : undefined,
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name, owner: d.owner || undefined })),
     };
@@ -1197,6 +1228,11 @@ export class StationSystem {
       if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
       if (validOwner(s.owner)) stn.owner = s.owner;
       if (Number.isFinite(+s.built) && s.built > 0) stn.built = Math.round(+s.built);
+      // opened, last renovated, listed (older saves: opened when the game began)
+      const yr = (v) => (Number.isInteger(v) && v >= 1700 && v <= 2300 ? v : undefined);
+      stn.yb = yr(s.yb) ?? this.loadYear;
+      stn.reno = yr(s.reno);
+      stn.heritage = !!s.heritage;
       this.list.push(stn);
       this.markTiles(stn);
     }

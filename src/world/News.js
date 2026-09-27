@@ -6,6 +6,7 @@
 // Saved with the game (the last MAX items); 'unread' counts items since the
 // panel was last opened.
 import { REGIONS } from '../config.js';
+import { ERA_BANDS } from './Eras.js';
 
 const MAX = 80;
 export const NEWS_KINDS = ['towns', 'industry', 'economy', 'company', 'weather'];
@@ -54,6 +55,9 @@ export class News {
     E.on('concessionGranted', (t) => this.add('economy', 'news_concession', { town: t.name }, { type: 'town', id: t.id }));
     E.on('contractExpired', (k) => this.add('economy', 'news_contract_failed', {}));
     E.on('eraChanged', (era) => this.add('economy', 'news_era', { era: 'era_' + era }));
+    E.on('eraBand', (b) => this.add('towns', 'news_era_band', { era: 'era_band_' + ERA_BANDS[b], what: 'era_band_' + ERA_BANDS[b] + '_desc' }));
+    E.on('stationRenovated', (s) => this.add('company', 'news_st_renovated', { name: s.name }, { type: 'station', id: s.id }));
+    E.on('stationListed', (s) => this.add('company', 'news_st_listed', { name: s.name }, { type: 'station', id: s.id }));
     E.on('rivalFreight', (r, a, b, c) => this.add('economy', 'news_rival_freight', { rival: r.name, a: g.industries.displayName(a), b: g.industries.displayName(b), cargo: 'cargo_' + c }));
     E.on('rivalForSale', (r) => this.add('economy', 'news_rival_for_sale', { rival: r.name }));
     E.on('rivalAcquired', (r, x) => this.add('economy', 'news_rival_acquired', { rival: r.name, s: x.stops, v: x.vehicles }));

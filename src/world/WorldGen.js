@@ -2,6 +2,7 @@
 // biomes, tree cover and placement of towns and industries.
 import { N, RNG, Noise2D, idx, tx, tz, inMap, clamp, lerp, smoothstep, hashStr } from '../util.js';
 import { REGIONS, BIOMES, WORLDGEN_VERSION } from '../config.js';
+import { resolveTerrain, normalizeTerrain, climateBiome } from './Terrain.js';
 
 export const T_LAND = 0, T_WATER = 1, T_MOUNTAIN = 2;
 
@@ -11,12 +12,16 @@ const SUFFIX = ['field', 'ridge', 'haven', 'ford', 'bridge', 'brook', 'vale', 'm
 // opts.hmap: an imported height map (Uint8Array of N*N, 0 = sea, 255 = peak).
 // It replaces the noise terrain: height, water and mountains follow the
 // image; regions, biomes, trees and sites are generated as usual.
+// opts.terrain (v4): a terrain preset and parameters (Terrain.js). Older
+// generator versions ignore it; the classic parameters leave every step as
+// it was, so a classic v4 world is the v3 world.
 export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
   const hmap = opts.hmap && opts.hmap.length === N * N ? opts.hmap : null;
   const seedNum = typeof seed === 'number' ? seed : hashStr(String(seed));
   const nBase = new Noise2D(seedNum + 1), nMtn = new Noise2D(seedNum + 2), nLake = new Noise2D(seedNum + 3);
   const nTree = new Noise2D(seedNum + 4), nWarp = new Noise2D(seedNum + 5), nMisc = new Noise2D(seedNum + 6);
   const rng = new RNG(seedNum + 7);
+  const tp = resolveTerrain(version >= 4 ? opts.terrain : null);
 
   const W = {
     seed: seedNum, genVersion: version,
@@ -30,6 +35,10 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
     tileH: new Float32Array(N * N),
     towns: [], industries: [],
   };
+  if (version >= 4) W.terrain = normalizeTerrain(opts.terrain);
+  // each region's look under the chosen climate (classic: the region's own)
+  W.biomes = REGIONS.map((r) => climateBiome(tp.climate, r.biome));
+  W.tp = tp;
 
   // Region centers jittered by seed (laid out for 64 tiles; larger maps
   // scale the layout, s = 1 on the classic map keeps it exactly)
@@ -43,6 +52,10 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
 
   const riverA = { phase: rng.range(0, 6.28), z: 20 * s + rng.range(-1.5, 1.5) };
   const riverB = { phase: rng.range(0, 6.28), x: 42 * s + rng.range(-1.5, 1.5) };
+  const extra = tp.rivers > 2 || tp.passes ? terrainExtras(W, seedNum, tp, centers, s, nWarp) : null;
+  // (terrain-aware presets widen seas and rivers on the larger maps)
+  const big = tp.smart ? Math.max(1, s * 0.75) : 1;
+  const rw = tp.riverWidth * (tp.smart ? Math.max(1, s * 0.6) : 1), nGeoV = new Noise2D(seedNum + 9);
 
   for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
     const i = idx(x, z);
@@ -55,14 +68,29 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
     }
     W.region[i] = r1;
     const wNear = 0.5 + 0.5 * smoothstep(0, 5, d2 - d1);
-    const b1 = BIOMES[REGIONS[r1].biome], b2 = BIOMES[REGIONS[r2].biome];
-    W.biomeMix[i] = { a: REGIONS[r1].biome, b: REGIONS[r2].biome, w: wNear };
-    const amp = lerp(b2.amp, b1.amp, wNear), mtn = lerp(b2.mtn, b1.mtn, wNear), lakes = lerp(b2.lakes, b1.lakes, wNear), treesP = lerp(b2.trees, b1.trees, wNear);
+    const b1 = BIOMES[W.biomes[r1]], b2 = BIOMES[W.biomes[r2]];
+    W.biomeMix[i] = { a: W.biomes[r1], b: W.biomes[r2], w: wNear };
+    let amp = lerp(b2.amp, b1.amp, wNear), mtn = lerp(b2.mtn, b1.mtn, wNear), lakes = lerp(b2.lakes, b1.lakes, wNear), treesP = lerp(b2.trees, b1.trees, wNear);
+    if (tp.relief !== 1) amp *= tp.relief;
+    if (tp.mountains !== 1) mtn = mtn * tp.mountains + Math.max(0, tp.mountains - 1) * 0.18;
+    if (tp.lakes) lakes += tp.lakes;
+    if (tp.forest) treesP += tp.forest;
 
     W.h0[i] = clamp(0.95 + amp * nBase.fbm(x * 0.07, z * 0.07, 4) * 1.4, 0.3, 3.2);
     const mn = nMtn.fbm(x * 0.1, z * 0.1, 4) * 0.5 + 0.5;
     const thr = 1.02 - mtn * 0.9;
     W.mtn[i] = mtn > 0 ? smoothstep(thr, thr + 0.14, mn) : 0;
+    const rz = riverA.z + 3 * Math.sin(x * 0.16 + riverA.phase) + 1.5 * Math.sin(x * 0.41 + 1.3);
+    const rx = riverB.x + 3 * Math.sin(z * 0.14 + riverB.phase) + 1.2 * Math.sin(z * 0.37);
+    if (extra && W.mtn[i] > 0 && extra.pass[i] < 2.4) W.mtn[i] *= smoothstep(0.9, 2.4, extra.pass[i]);
+    if (tp.valleys > 0) {
+      // rivers wear valleys into the hills: lower ground, fewer peaks by the water
+      let d = extra ? extra.river[i] : 99;
+      if (tp.rivers >= 1 && x > 10 * s) d = Math.min(d, Math.abs(z - rz));
+      if (tp.rivers >= 2 && z > 22 * s) d = Math.min(d, Math.abs(x - rx));
+      W.mtn[i] *= lerp(1, smoothstep(1, 2 + 4 * tp.valleys, d), tp.valleys);
+      W.h0[i] = Math.max(0.3, W.h0[i] - tp.valleys * 0.6 * (1 - smoothstep(0, 5, d)));
+    }
     if (hmap) { const v = hmap[i] / 255; W.h0[i] = 0.3 + clamp((v - 0.1) / 0.9, 0, 1) * 2.9; W.mtn[i] = smoothstep(0.7, 0.9, v); }
 
     let water = false;
@@ -78,15 +106,23 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
     }
     if (ln < -0.46 + lakes * 1.0) water = true;
     // coastal ocean along the west edge
-    if (REGIONS[r1].biome === 'coast' || (x < 8 * s && z > 18 * s && z < 48 * s)) {
-      const coastX = 4.5 + nMisc.noise(z * 0.12, 3.3) * 3;
+    const cw = tp.coastWidth * big, coast = tp.coast;
+    if (coast !== 'none' && (REGIONS[r1].biome === 'coast' || (x < 8 * s && z > 18 * s && z < 48 * s) || coast === 'ring' || coast === 'islands')) {
+      const coastX = (4.5 + nMisc.noise(z * 0.12, 3.3) * 3) * cw;
       if (x < coastX) water = true;
     }
+    if (coast === 'south' || coast === 'ring' || coast === 'islands') {
+      if (N - 1 - z < (4.5 + nMisc.noise(x * 0.12, 7.7) * 3) * cw) water = true;
+    }
+    if (coast === 'ring' || coast === 'islands') {
+      if (N - 1 - x < (4 + nMisc.noise(z * 0.12, 11.1) * 2.5) * cw || z < (3.5 + nMisc.noise(x * 0.12, 13.7) * 2) * cw) water = true;
+    }
+    // islands: the sea runs along the region borders
+    if (coast === 'islands' && d2 - d1 < (2.6 + 1.2 * nMisc.noise(x * 0.2, z * 0.2 + 17)) * cw) water = true;
     // rivers
-    const rz = riverA.z + 3 * Math.sin(x * 0.16 + riverA.phase) + 1.5 * Math.sin(x * 0.41 + 1.3);
-    if (x > 10 * s && Math.abs(z - rz) < 0.75) water = true;
-    const rx = riverB.x + 3 * Math.sin(z * 0.14 + riverB.phase) + 1.2 * Math.sin(z * 0.37);
-    if (z > 22 * s && Math.abs(x - rx) < 0.7) water = true;
+    if (tp.rivers >= 1 && x > 10 * s && Math.abs(z - rz) < 0.75 * rw) water = true;
+    if (tp.rivers >= 2 && z > 22 * s && Math.abs(x - rx) < 0.7 * rw) water = true;
+    if (extra && extra.river[i] < 0.72 * rw) water = true;
     if (water) { W.type[i] = T_WATER; W.mtn[i] = 0; } else if (W.mtn[i] > 0.35) W.type[i] = T_MOUNTAIN;
 
     const tn = nTree.fbm(x * 0.13 + 200, z * 0.13, 3) * 0.5 + 0.5;
@@ -95,9 +131,113 @@ export function generateWorld(seed, version = WORLDGEN_VERSION, opts = {}) {
     if (W.type[i] === T_MOUNTAIN && W.mtn[i] > 0.7) W.trees[i] = Math.min(W.trees[i], 1);
   }
 
-  placeSites(W, rng, version);
+  placeSites(W, rng, version, tp, nGeoV);
+  if (tp.smart) connectStart(W);
+  if (tp.fields > 0) placeFields(W, seedNum, tp);
   computeHeights(W);
   return W;
+}
+
+// v4: extra rivers (from an edge inland, never into the starting region)
+// and low passes between neighbouring regions, as distance fields
+function terrainExtras(W, seedNum, tp, centers, s, nWarp) {
+  const river = new Float32Array(N * N).fill(99), pass = new Float32Array(N * N).fill(99);
+  const regionAt = (x, z) => {
+    const wx = x + nWarp.fbm(x * 0.08, z * 0.08, 3) * 6, wz = z + nWarp.fbm(x * 0.08 + 40, z * 0.08 + 40, 3) * 6;
+    let d1 = 1e9, r1 = 0;
+    for (let r = 0; r < centers.length; r++) { const d = Math.hypot(wx - centers[r][0], wz - centers[r][1]); if (d < d1) { d1 = d; r1 = r; } }
+    return r1;
+  };
+  const stamp = (arr, px, pz, R) => {
+    for (let z = Math.max(0, Math.floor(pz - R)); z <= Math.min(N - 1, Math.ceil(pz + R)); z++) for (let x = Math.max(0, Math.floor(px - R)); x <= Math.min(N - 1, Math.ceil(px + R)); x++) {
+      const d = Math.hypot(x + 0.5 - px, z + 0.5 - pz), i = idx(x, z);
+      if (d < arr[i]) arr[i] = d;
+    }
+  };
+  const r2 = new RNG(seedNum + 11);
+  for (let k = 2; k < tp.rivers; k++) {
+    const side = r2.int(0, 3), u0 = r2.range(0.2, 0.8) * N, phase = r2.range(0, 6.28), amp = r2.range(2, 4) * Math.max(1, s * 0.8), len = r2.range(0.45, 0.9) * N;
+    let last = null;
+    for (let t = 0; t < len; t += 0.5) {
+      const u = u0 + amp * Math.sin(t * 0.15 + phase) + 1.2 * Math.sin(t * 0.4 + phase * 2);
+      const px = side === 0 ? t : side === 1 ? N - t : u, pz = side === 2 ? t : side === 3 ? N - t : u;
+      if (px < 0 || pz < 0 || px >= N || pz >= N) break;
+      let start = false;
+      for (const [ox, oz] of [[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) {
+        const qx = Math.round(px + ox), qz = Math.round(pz + oz);
+        if (inMap(qx, qz) && regionAt(qx, qz) === 0) { start = true; break; }
+      }
+      if (start) break;
+      stamp(river, px, pz, 7);
+      last = [px, pz];
+    }
+    // the source: a small lake where the river rises
+    if (last) for (let z = Math.round(last[1]) - 1; z <= Math.round(last[1]) + 1; z++) for (let x = Math.round(last[0]) - 1; x <= Math.round(last[0]) + 1; x++) if (inMap(x, z)) river[idx(x, z)] = Math.min(river[idx(x, z)], 0.3);
+  }
+  if (tp.passes) {
+    // every region reaches its two nearest neighbours through a low pass
+    const segs = new Set();
+    centers.forEach((c, a) => {
+      centers.map((d, b) => [b, Math.hypot(d[0] - c[0], d[1] - c[1])]).filter(([b]) => b !== a).sort((p, q) => p[1] - q[1]).slice(0, 2).forEach(([b]) => segs.add(a < b ? `${a},${b}` : `${b},${a}`));
+    });
+    for (const key of segs) {
+      const [a, b] = key.split(',').map(Number), A = centers[a], B = centers[b], L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      for (let t = 0; t <= L; t += 0.5) stamp(pass, A[0] + (B[0] - A[0]) * t / L, A[1] + (B[1] - A[1]) * t / L, 3);
+    }
+  }
+  return { river, pass };
+}
+
+// v4: every site of the starting region can be reached from the first town
+// over land (the player starts with little money): a lake or river that cuts
+// one off gets a ford
+function connectStart(W) {
+  const g = W.towns[0];
+  if (!g) return;
+  const land = (i) => W.type[i] !== 1;
+  for (let round = 0; round < 8; round++) {
+    const seen = new Uint8Array(N * N), q = [idx(g.x, g.z)];
+    seen[q[0]] = 1;
+    while (q.length) {
+      const i = q.pop(), x = i % N, z = (i / N) | 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, zz = z + dz;
+        if (!inMap(xx, zz)) continue;
+        const j = idx(xx, zz);
+        if (!seen[j] && land(j) && W.region[j] === 0) { seen[j] = 1; q.push(j); }
+      }
+    }
+    const cut = [...W.towns, ...W.industries].find((q2) => q2.region === 0 && !seen[idx(q2.x, q2.z)] && !seen[idx(q2.x + 1, q2.z + 1)]);
+    if (!cut) return;
+    let best = null, bd = 1e9;
+    for (let i = 0; i < N * N; i++) if (seen[i]) { const d = Math.hypot(i % N - cut.x, ((i / N) | 0) - cut.z); if (d < bd) { bd = d; best = i; } }
+    if (best === null) return;
+    const n = Math.max(1, Math.ceil(bd));
+    for (let k = 0; k <= n; k++) {
+      const x = Math.round(lerp(best % N, cut.x, k / n)), z = Math.round(lerp((best / N) | 0, cut.z, k / n));
+      for (const [dx, dz] of [[0, 0], [1, 0], [0, 1]]) if (inMap(x + dx, z + dz)) { const j = idx(x + dx, z + dz); if (W.type[j] === 1) { W.type[j] = 0; W.mtn[j] = 0; W.trees[j] = 0; } }
+    }
+  }
+}
+
+// v4: farmland in parcels around towns and farms, on open flat land
+const FARMS = new Set(['FARM', 'LIVESTOCK_FARM', 'DAIRY_FARM', 'ORCHARD']);
+function placeFields(W, seedNum, tp) {
+  W.fields = new Uint8Array(N * N);
+  const nF = new Noise2D(seedNum + 12);
+  const farms = W.industries.filter((f) => FARMS.has(f.type));
+  const sites = [...W.towns, ...W.industries];
+  for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
+    const i = idx(x, z);
+    if (W.type[i] !== 0 || W.trees[i] || W.mtn[i] > 0.05) continue;
+    if (sites.some((q) => x >= q.x - 1 && x <= q.x + 2 && z >= q.z - 1 && z <= q.z + 2)) continue;
+    const town = W.towns.some((t) => { const d = Math.max(Math.abs(t.x - x), Math.abs(t.z - z)); return d >= 4 && d <= 9; });
+    const farm = farms.some((f) => { const d = Math.max(Math.abs(f.x - x), Math.abs(f.z - z)); return d <= 5; });
+    if (!town && !farm) continue;
+    const v = nF.fbm(x * 0.22, z * 0.22, 2) * 0.5 + 0.5;
+    if (v > tp.fields * 0.5 + (farm ? 0.3 : 0)) continue;
+    W.fields[i] = 1 + (hashStr(`f${seedNum}:${x >> 1}:${z >> 1}`) % 3);
+  }
 }
 
 // site rules for the newer industries (world generation v3)
@@ -165,7 +305,10 @@ export function segDist(x, z, [x0, z0, x1, z1]) {
   return Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t));
 }
 
-function placeSites(W, rng, version) {
+// v4 geology: ore, coal and oil lie in broad seams; mines and wells prefer them
+const GEO = { MINE: 0, COPPER_MINE: 0, QUARRY: 0, COAL_MINE: 1, OIL_FIELD: 2 };
+
+function placeSites(W, rng, version, tp = {}, nGeo = null) {
   const used = new Set(['Greenfield']);
   const sites = [];
   const farEnough = (x, z, d) => sites.every((s) => Math.max(Math.abs(s.x - x), Math.abs(s.z - z)) >= d);
@@ -194,18 +337,39 @@ function placeSites(W, rng, version) {
 
   // larger maps: more towns and industries per region (same on 64 tiles)
   const area = (W.scale || 1) ** 2;
+  W.expect = [];
+  // v4 terrain-aware towns: by a river, lake or coast, on flat open ground
+  const townScore = (x, z) => {
+    let sc = 0, wet = false, h = 0, h2 = 0, n = 0;
+    for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) {
+      if (!inMap(x + dx, z + dz)) continue;
+      const i = idx(x + dx, z + dz), d = Math.max(Math.abs(dx), Math.abs(dz));
+      if (W.type[i] === 1 && d >= 2) wet = true;
+      if (d <= 2) { if (W.type[i] === 2) sc -= 0.4; h += W.h0[i] + W.mtn[i] * 6.5; h2 += (W.h0[i] + W.mtn[i] * 6.5) ** 2; n++; }
+    }
+    const sd = Math.sqrt(Math.max(0, h2 / n - (h / n) ** 2));
+    return sc + (wet ? 2.5 : 0) - sd * 3;
+  };
   REGIONS.forEach((reg, r) => {
     const c = W.centers[r];
-    const nTowns = area > 1 ? Math.round(reg.towns * area * 0.75) : reg.towns;
+    const regB = W.biomes && W.biomes[r] !== reg.biome ? { ...reg, biome: W.biomes[r] } : reg;
+    let nTowns = area > 1 ? Math.round(reg.towns * area * 0.75) : reg.towns;
+    if (tp.towns && tp.towns !== 1) nTowns = Math.max(1, Math.round(nTowns * tp.towns));
     // v3: each region also gets its newer industries (construction, food,
     // chemistry, automotive, energy, high tech)
     const list = version >= 3 ? [...reg.industries, ...(reg.extra || [])] : reg.industries;
-    const inds = area > 1 ? Array.from({ length: Math.round(list.length * area * 0.75) }, (_, k) => list[k % list.length]) : list;
+    const inds = area > 1 ? Array.from({ length: Math.round(list.length * area * 0.75) }, (_, k) => list[k % list.length]) : list.slice();
+    if (tp.industries && tp.industries > 1) { const n0 = inds.length; for (let k = 0; k < Math.round(n0 * (tp.industries - 1)); k++) inds.push(list[(k * 3 + 1) % list.length]); }
+    W.expect[r] = { towns: nTowns, industries: inds.length };
     // towns
     for (let t = 0; t < nTowns; t++) {
       let spot;
       if (r === 0 && t === 0) spot = [Math.round(c[0]), Math.round(c[1])];
-      else spot = findSpot(r, (x, z) => W.type[idx(x, z)] !== 1 || true, 9, 2, t === 0 ? [c[0], c[1], 5] : null) || findSpot(r, null, 6, 1, null);
+      else if (tp.smart) {
+        const cands = [];
+        for (let k = 0; k < 8; k++) { const sp = findSpot(r, null, 9, 2, t === 0 ? [c[0], c[1], 5] : null); if (sp) cands.push(sp); }
+        spot = cands.length ? cands.reduce((a, b) => (townScore(b[0], b[1]) > townScore(a[0], a[1]) ? b : a)) : findSpot(r, null, 6, 1, null);
+      } else spot = findSpot(r, (x, z) => W.type[idx(x, z)] !== 1 || true, 9, 2, t === 0 ? [c[0], c[1], 5] : null) || findSpot(r, null, 6, 1, null);
       if (!spot) continue;
       const name = r === 0 && t === 0 ? 'Greenfield' : nameGen(rng, used);
       clearArea(W, spot[0], spot[1], 3);
@@ -231,6 +395,8 @@ function placeSites(W, rng, version) {
         if (!spot) { spot = [g.x + 8, g.z - 3]; }
         lineClear(W, W.towns[0].x, W.towns[0].z, spot[0], spot[1]);
         corridor = [W.towns[0].x, W.towns[0].z, spot[0] + 0.5, spot[1] + 0.5];
+      } else if (tp.smart && nGeo && GEO[type] !== undefined && (spot = findSpot(r, (x, z) => nGeo.fbm(x * 0.07 + GEO[type] * 50, z * 0.07, 3) > 0.08 && (!SITE_RULE[type] || SITE_RULE[type](W, x, z, regB)) && (type !== 'MINE' && type !== 'COAL_MINE' || count(W, x, z, 4, (q) => q === 2) >= 1), 7, 1, null))) {
+        // on its seam (the fallbacks below find the usual spot otherwise)
       } else if (type === 'PORT') {
         spot = findSpot(r, (x, z) => {
           let w = 0;
@@ -248,7 +414,7 @@ function placeSites(W, rng, version) {
         // where it makes sense: quarries and copper by the hills, fisheries on
         // the coast, sand by water or in the desert, clay by a river or lake,
         // farms and orchards on flat land, power stations by cooling water
-        spot = findSpot(r, (x, z) => SITE_RULE[type](W, x, z, reg), 7, 1, null) || findSpot(r, (x, z) => SITE_RULE[type](W, x, z, reg), 4, 1, null);
+        spot = findSpot(r, (x, z) => SITE_RULE[type](W, x, z, regB), 7, 1, null) || findSpot(r, (x, z) => SITE_RULE[type](W, x, z, regB), 4, 1, null);
       }
       if (!spot) spot = findSpot(r, null, 7, 1, null) || findSpot(r, null, 4, 1, null);
       if (!spot) return;

@@ -7,6 +7,7 @@ import { BIOME_COLD } from './Environment.js';
 import { ModelBuilder } from '../core/ModelBuilder.js';
 
 const _c = new THREE.Color(), _c2 = new THREE.Color();
+const FIELD_COL = [0xd6bd62, 0x86b84c, 0x9a7a55];   // grain, green crops, ploughed soil
 
 export class WorldView {
   constructor(game, W) {
@@ -42,6 +43,9 @@ export class WorldView {
       if (inMap(x, z) && W.type[idx(x, z)] === 1) { nearWater = true; break; }
     }
     if (nearWater && h < 0.45) _c.lerp(_c2.set(mix.a === 'snow' ? 0xdfe6ea : 0xe0cf9a), 0.75);
+    // farmland (v4 terrain): parcels of grain, green crops and ploughed soil in rows
+    const fld = W.fields ? W.fields[i] : 0;
+    if (fld && !nearWater) _c.lerp(_c2.set(FIELD_COL[fld - 1]), 0.72).multiplyScalar(((fld === 3 ? tz(i) : tx(i)) & 1) ? 1.06 : 0.95);
     const mt = W.mtn[i];
     if (mt > 0.05 || slope > 0.9) {
       const rock = mix.a === 'desert' ? 0xb8845a : 0x8f8a84;

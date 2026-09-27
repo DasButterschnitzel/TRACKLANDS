@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, step, opp, tileCX, tileCZ, turnOf } from '../util.js';
 import { ModelBuilder } from '../core/ModelBuilder.js';
+import { signalStyle } from '../world/Eras.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _e = new THREE.Euler(), _c = new THREE.Color();
 const RED = 0xff4a3a, GREEN = 0x4ae07a, AMBER = 0xffc040, WHITE = 0xe8eef2;
@@ -31,7 +32,20 @@ export class RailFurniture {
     pm.cyl(0.02, 0.02, 0.8, 5, 0x5a5f66);
     pm.box(0.02, 0.18, 0.28, 0xe0a33a, { y: 0.6, z: 0.14 });
     this.flags = inst(pm.build(), vc, 200);
-    for (const m of [this.blades, this.stands, this.lamps, this.masts, this.flags]) game.scene.add(m);
+    // semaphores (signals put up before 1960, until 1995): a lattice post
+    // with a finial, and an arm that drops for stop and rises for clear
+    const sp = new ModelBuilder();
+    sp.box(0.05, 1.25, 0.05, 0x5a5448);
+    for (let y = 0.15; y < 1.2; y += 0.22) sp.box(0.09, 0.02, 0.02, 0x5a5448, { y });
+    sp.cone(0.04, 0.1, 6, 0x2a2a2a, { y: 1.25 });
+    sp.box(0.14, 0.03, 0.14, 0x3a3630, { y: 0 });
+    this.semas = inst(sp.build(), vc, 600);
+    const am = new ModelBuilder();
+    am.box(0.36, 0.06, 0.02, 0xc0392b, { x: 0.18 });
+    am.box(0.06, 0.065, 0.021, 0xf2f2f2, { x: 0.3 });
+    am.box(0.07, 0.07, 0.03, 0x2a2a2a, { x: -0.03 });
+    this.arms = inst(am.build(), vc, 600);
+    for (const m of [this.blades, this.stands, this.lamps, this.masts, this.flags, this.semas, this.arms]) game.scene.add(m);
     this.showAuto = false;
     this._t = 0;
     this.aspects = new Map();   // signal key -> 'red'|'green'
@@ -80,7 +94,8 @@ export class RailFurniture {
     this._t -= dt;
     const refreshAspects = this._t <= 0;
     if (refreshAspects) this._t = 0.25;
-    let nb = 0, ns = 0, nl = 0, nm = 0, nf = 0;
+    let nb = 0, ns = 0, nl = 0, nm = 0, nf = 0, nsem = 0;
+    const year = g.ledger ? g.ledger.year() : 2000;
     const lamp = (x, y, z, col) => {
       if (nl >= this.lamps.instanceMatrix.count) return;
       _m.makeTranslation(x, y, z);
@@ -112,10 +127,20 @@ export class RailFurniture {
       const len = Math.hypot(DX[d], DZ[d]);
       const rx = -DZ[d] / len, rz = DX[d] / len;
       const x = e.x + rx * 0.95 - DX[d] / len * 0.15, z = e.z + rz * 0.95 - DZ[d] / len * 0.15;
-      _q.setFromEuler(_e.set(0, Math.atan2(-DZ[d], DX[d]) + Math.PI / 2, 0)); _p.set(x, e.y + 0.05, z); _m.compose(_p, _q, _s);
-      this.masts.setMatrixAt(nm++, _m);
+      const yaw = Math.atan2(-DZ[d], DX[d]) + Math.PI / 2;
+      _q.setFromEuler(_e.set(0, yaw, 0)); _p.set(x, e.y + 0.05, z); _m.compose(_p, _q, _s);
       if (refreshAspects) this.aspects.set(key, this.signalAspect(key));
       const asp = this.aspects.get(key) || 'green';
+      if (signalStyle(sg.y, year) === 'semaphore' && nsem < this.semas.instanceMatrix.count) {
+        this.semas.setMatrixAt(nsem, _m);
+        // the arm points away from the track; clear raises it 45°
+        _q.setFromEuler(_e.set(0, yaw + Math.PI / 2, asp === 'red' ? 0 : 0.78, 'YXZ'));
+        _p.set(x, e.y + 0.05 + 1.1, z); _m.compose(_p, _q, _s);
+        this.arms.setMatrixAt(nsem++, _m);
+        lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.9, z - DZ[d] / len * 0.07, asp === 'red' ? RED : GREEN);
+        continue;
+      }
+      this.masts.setMatrixAt(nm++, _m);
       const col = asp === 'red' ? RED : sg.type === 'path' && asp === 'green' ? WHITE : GREEN;
       lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.95, z - DZ[d] / len * 0.07, col);
       if (sg.oneway) lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.82, z - DZ[d] / len * 0.07, AMBER);
@@ -134,7 +159,7 @@ export class RailFurniture {
       _q.identity(); _p.set(tileCX(tile) + 0.8, net.railH(tile) + 0.05, tileCZ(tile) + 0.8); _m.compose(_p, _q, _s);
       this.flags.setMatrixAt(nf++, _m);
     }
-    for (const [m, n] of [[this.blades, nb], [this.stands, ns], [this.lamps, nl], [this.masts, nm], [this.flags, nf]]) {
+    for (const [m, n] of [[this.blades, nb], [this.stands, ns], [this.lamps, nl], [this.masts, nm], [this.flags, nf], [this.semas, nsem], [this.arms, nsem]]) {
       m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
   }

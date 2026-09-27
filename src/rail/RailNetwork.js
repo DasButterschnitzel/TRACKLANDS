@@ -746,7 +746,7 @@ export class RailNetwork {
   serialize() {
     return {
       conn: b64(this.conn), tier: b64(this.tier), single: b64(this.single), own: this.own.some((x) => x) ? b64(this.own) : undefined,
-      signals: [...this.signals].map(([k, v]) => [k, v.type, v.oneway ? 1 : 0]),
+      signals: [...this.signals].map(([k, v]) => (v.y ? [k, v.type, v.oneway ? 1 : 0, v.y] : [k, v.type, v.oneway ? 1 : 0])),
       waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
     };
   }
@@ -769,10 +769,11 @@ export class RailNetwork {
     for (let i = 0; i < N * N; i++) if (!this.conn[i]) this.single[i] = 0; else if (this.single[i] > 1) this.single[i] = 1;
     if (Array.isArray(d.signals)) for (const e of d.signals) {
       if (!Array.isArray(e)) continue;
-      const [k, type, ow] = e;
+      const [k, type, ow, y] = e;
       if (typeof k !== 'number' || (type !== 'block' && type !== 'path')) continue;
       if (!this.hasDir(k >> 3, k & 7)) continue;
-      this.signals.set(k, { type, oneway: !!ow });
+      // (the year it was put up decides semaphore or colour light; older saves have none)
+      this.signals.set(k, Number.isInteger(y) && y >= 1700 && y <= 2300 ? { type, oneway: !!ow, y } : { type, oneway: !!ow });
     }
     if (Array.isArray(d.waypoints)) for (const e of d.waypoints) {
       if (!Array.isArray(e) || !this.conn[e[0]]) continue;

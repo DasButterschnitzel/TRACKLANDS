@@ -1006,3 +1006,13 @@ ul.health li.warn { color: var(--warn, #b07a10); }
 .logo-opts { display: flex; flex-direction: column; gap: 6px; }
 .logo-svg { flex: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
 .cswatch.small { width: 22px; height: 22px; }
+.ng-pinfo { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.ng-pinfo #ng-tstats { line-height: 1.35; }
+.ng-tparams .set input[type=range] { flex: 1; min-width: 0; }
+.ng-tparams .set output { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .ng-preview { flex-direction: column; align-items: stretch; } .ng-preview canvas { align-self: center; } }
+.era-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 6px 0 2px; gap: 2px; }
+.era-seg { display: block; min-width: 3px; }
+.era-seg.era-0 { background: #a8634a; } .era-seg.era-1 { background: #d8b878; } .era-seg.era-2 { background: #9a968e; }
+.era-seg.era-3 { background: #b07a4a; } .era-seg.era-4 { background: #7aa8c8; } .era-seg.era-5 { background: #5aa87a; }
+details.card.history > summary { cursor: pointer; font-weight: 600; }

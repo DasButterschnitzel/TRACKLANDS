@@ -162,7 +162,7 @@ export class Environment {
     const cam = g.camera;
     const tr = cam.target;
     const reg = g.world.region[Math.max(0, Math.min(N * N - 1, Math.floor(tr.z / TILE) * N + Math.floor(tr.x / TILE)))];
-    const coldHere = REGIONS[reg] ? BIOME_COLD[REGIONS[reg].biome] ?? 0.6 : 0.6;
+    const coldHere = REGIONS[reg] ? BIOME_COLD[(g.world.biomes && g.world.biomes[reg]) || REGIONS[reg].biome] ?? 0.6 : 0.6;
     const wet = st === 'rain' || st === 'storm';
     const snowy = st === 'snow' || st === 'blizzard' || (wet && coldHere >= 0.95) || (wet && this.season() === 'winter' && coldHere >= 0.8);
     const wantSnow = snowy && coldHere > 0.3 ? 1 : 0;

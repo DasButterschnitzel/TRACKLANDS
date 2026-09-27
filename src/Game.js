@@ -17,6 +17,7 @@ import { RailFurniture } from './rail/RailFurniture.js';
 import { Overlays } from './ui/Overlays.js';
 import { News } from './world/News.js';
 import { Company } from './world/Company.js';
+import { History } from './world/History.js';
 import { Rivals } from './world/Rivals.js';
 import { ScenarioRun, cleanScenario } from './world/Scenarios.js';
 import { roadModel } from './road/Roads.js';
@@ -87,7 +88,8 @@ export class Game {
     try { hm = save ? (typeof save.hmap === 'string' ? unb64(save.hmap) : null) : (opts.hmap || null); } catch (e) { hm = null; }
     this.hmap = hm;
     if (this.hmap && this.hmap.length !== this.mapSize * this.mapSize) this.hmap = null;
-    this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION, { hmap: this.hmap });
+    // the terrain preset and parameters (v4) travel with the save too
+    this.world = generateWorld(seed, save ? (save.worldGen || 1) : WORLDGEN_VERSION, { hmap: this.hmap, terrain: save ? save.terrain : opts.terrain });
     this.occupancy = { blocked: new Uint8Array(N * N), owner: new Int32Array(N * N) };
     this.stats = new Stats(this);
     this.progression = new Progression(this);
@@ -131,6 +133,9 @@ export class Game {
     this.overlays = new Overlays(this);
     this.news = new News(this);
     this.company = new Company(this);
+    this.history = new History(this);
+    // a new architectural era: works get their new fittings, streets their surface
+    this.events.on('eraBand', () => { this.industries.buildAllVisuals(); this.towns.eraRoads(); });
     this.rivals = new Rivals(this);
     this.scenario = null;
 
@@ -173,6 +178,8 @@ export class Game {
   }
 
   restore(s) {
+    // (the towns' building years of older saves are made up from the start year)
+    this.towns.loadYear = this.stations.loadYear = s.ledger && Number.isFinite(+s.ledger.startYear) ? +s.ledger.startYear : 1950;
     this.net.deserialize(s.net);
     this.stations.deserialize(s.stations);
     this.industries.deserialize(s.industries);
@@ -199,6 +206,7 @@ export class Game {
     this.roads.afterLoad();
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
     this.company.deserialize(s.company);
+    this.history.deserialize(s.history);
     this.urban.deserialize(s.urban);
     this.standing.deserialize(s.standing);
     // camera bookmarks and sandbox switches (builder games)
@@ -211,10 +219,10 @@ export class Game {
 
   serialize() {
     return {
-      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
+      saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, terrain: this.world.terrain, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), urban: this.urban.serialize(), standing: this.standing.serialize(), bookmarks: this.bookmarks && this.bookmarks.length ? this.bookmarks : undefined, sandbox: this.sandbox || undefined, rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), history: this.history.serialize(), urban: this.urban.serialize(), standing: this.standing.serialize(), bookmarks: this.bookmarks && this.bookmarks.length ? this.bookmarks : undefined, sandbox: this.sandbox || undefined, rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };

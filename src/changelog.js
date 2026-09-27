@@ -7,11 +7,17 @@ export const CHANGELOG = [
       'Competitor railways: companies with their own personalities plan, build, run, expand and modernize railways with their own money, and never touch yours',
       'A page for every competitor, a companies overlay, and a flag and livery for their stations and trains',
       'New games: up to eight competitors, when they start and how well they plan',
+      'Thirteen terrains, from gentle countryside to alpine, archipelago and a whole continent, with advanced settings and a preview of towns and building costs',
+      'Eras you can see: towns grow in layers from an old centre, stations age and can be renovated or listed, semaphores give way to colour lights',
+      'Town histories and company milestones, era filters in the catalogue, and six new trains where the eras had gaps',
     ],
     de: [
       'Konkurrierende Eisenbahnen: Firmen mit eigenem Charakter planen, bauen, betreiben, erweitern und modernisieren Strecken mit eigenem Geld und rühren deine nie an',
       'Eine Seite für jede Konkurrenzfirma, eine Firmen-Karte und Flagge und Lackierung für ihre Bahnhöfe und Züge',
       'Neue Spiele: bis zu acht Konkurrenten, wann sie starten und wie gut sie planen',
+      'Dreizehn Gelände, von sanftem Hügelland bis Alpen, Inselwelt und einem ganzen Kontinent, mit erweiterten Einstellungen und Vorschau auf Städte und Baukosten',
+      'Sichtbare Epochen: Städte wachsen in Schichten um einen alten Kern, Bahnhöfe altern und lassen sich renovieren oder unter Denkmalschutz stellen, Formsignale weichen Lichtsignalen',
+      'Stadtgeschichten und Firmen-Meilensteine, Epochenfilter im Katalog und sechs neue Züge, wo den Epochen welche fehlten',
     ],
   },
   {

@@ -4,7 +4,7 @@ export const CREATOR_NAME = ''; // Set to credit the creator in the Credits pane
 export const GAME_VERSION = '4.0.0';
 // World generator version. Saves remember theirs (no field = 1) so a loaded
 // world is always rebuilt exactly as it was; improvements apply to new games.
-export const WORLDGEN_VERSION = 3;   // v3: new industries per region, placed where they make sense
+export const WORLDGEN_VERSION = 4;   // v4: terrain presets and parameters (Terrain.js); the classic terrain is v3
 export const SAVE_VERSION = 3;
 
 // game mode presets (new game dialog, quick start): the choices they fill in
@@ -441,6 +441,14 @@ export const LOCOS = [
   { id: 'aurora', name: 'Aurora 230 Tilt', era: 5, kind: 'hst', role: 'passenger', speed: 230, accel: 2.3, power: 5200, freight: 0, pax: 100, wagons: 6, reliability: 0.97, load: 1.3, op: 170, price: 260000, rarity: 'rare', trait: 'tilting', level: 31, color: 0x7a4ab8, electric: true, duty: 'intercity', shape: 'tilt' },
   { id: 'boxline', name: 'Boxline IM Intermodal', era: 4, kind: 'electric', role: 'freight', speed: 180, accel: 1.8, power: 5000, freight: 90, pax: 0, wagons: 7, reliability: 0.97, load: 1.2, op: 135, price: 170000, rarity: 'epic', trait: 'intermodal', level: 32, color: 0x2f6fa8, electric: true, duty: 'freight', shape: 'modern', len: 2.0, special: true },
   { id: 'swift', name: 'Swift HS Multiple Unit', era: 5, kind: 'hst', role: 'passenger', speed: 280, accel: 3.0, power: 7000, freight: 0, pax: 110, wagons: 6, reliability: 0.98, load: 1.5, op: 230, price: 420000, rarity: 'epic', trait: 'high_accel', level: 33, color: 0xf4f4f0, electric: true, duty: 'highspeed', shape: 'hsmu', len: 2.0, mu: { cap: 16, carries: ['PASSENGERS'], loadMul: 1.4 } },
+  // Phase 10 content pass: the gaps in the eras (goods steam, today's shunter,
+  // regional and branch units, freight and regional trains of the future)
+  { id: 'coalgate', name: 'Coalgate 0-6-0 Goods', era: 1, kind: 'steam', role: 'freight', speed: 55, accel: 0.8, power: 700, freight: 26, pax: 0, wagons: 3, reliability: 0.9, load: 1.0, op: 30, price: 1700, rarity: 'common', trait: 'cargo_master', level: 4, color: 0x2a2a2e, duty: 'freight', shape: 'tank_small' },
+  { id: 'ecoshunt', name: 'Ecoshunt H5 Hybrid Shunter', era: 5, kind: 'diesel', role: 'mixed', speed: 70, accel: 1.4, power: 1000, freight: 22, pax: 8, wagons: 4, reliability: 0.99, load: 1.3, op: 14, price: 26000, rarity: 'uncommon', trait: 'cheap_op', level: 29, color: 0xe8c030, duty: 'shunter', shape: 'shunter', len: 1.3 },
+  { id: 'branch_bi', name: 'Branchline Bi-Mode Unit', era: 5, kind: 'diesel', role: 'passenger', speed: 160, accel: 2.2, power: 1800, freight: 0, pax: 56, wagons: 3, reliability: 0.98, load: 1.5, op: 60, price: 95000, rarity: 'uncommon', trait: 'city_hopper', level: 30, color: 0x3a8a9a, duty: 'local', shape: 'dmu', len: 1.6, mu: { cap: 14, carries: ['PASSENGERS'], loadMul: 1.5 } },
+  { id: 'metrolite', name: 'Metrolite 5 Regional EMU', era: 5, kind: 'electric', role: 'passenger', speed: 190, accel: 2.6, power: 3800, freight: 0, pax: 76, wagons: 4, reliability: 0.99, load: 1.6, op: 85, price: 140000, rarity: 'rare', trait: 'fast_loading', level: 32, color: 0xd84a4a, electric: true, duty: 'regional', shape: 'regio', len: 1.7, mu: { cap: 18, carries: ['PASSENGERS'], loadMul: 1.6 } },
+  { id: 'hydrolink', name: 'HydroLink H2 Regional', era: 6, kind: 'diesel', role: 'passenger', speed: 200, accel: 2.6, power: 4200, freight: 0, pax: 84, wagons: 4, reliability: 0.99, load: 1.6, op: 70, price: 380000, rarity: 'epic', trait: 'cheap_op', level: 42, color: 0x4ab0e0, duty: 'regional', shape: 'regio', len: 1.7, mu: { cap: 18, carries: ['PASSENGERS'], loadMul: 1.6 } },
+  { id: 'terafreight', name: 'TeraFreight E12', era: 6, kind: 'electric', role: 'freight', speed: 200, accel: 1.8, power: 12000, freight: 200, pax: 0, wagons: 9, reliability: 0.99, load: 1.2, op: 260, price: 900000, rarity: 'epic', trait: 'heavy_freight', level: 45, color: 0x2a4a3a, electric: true, duty: 'freight', shape: 'modern', len: 2.0 },
 ].sort((a, b) => a.level - b.level);   // unlock order (stable: Pioneer stays first)
 export const ERA_RESEARCH = { 4: 'electric_rail', 5: 'high_speed_rail', 6: 'maglev_tech' };
 export const TRAIN_UPGRADES = ['engine', 'capacity', 'accel', 'loading', 'efficiency'];

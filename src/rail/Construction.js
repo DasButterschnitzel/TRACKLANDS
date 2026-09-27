@@ -752,7 +752,7 @@ export class Construction {
       if (!g.economy.canAfford(cost)) { g.ui.error('err_no_money'); return; }
       g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_signal:1');
       const type = this.signalType === 'oneway' ? 'block' : this.signalType;
-      net.signals.set(key, { type, oneway: this.signalType === 'oneway' });
+      net.signals.set(key, { type, oneway: this.signalType === 'oneway', y: g.ledger.year() });
     } else if (!cur.oneway && this.signalUnlocked('oneway')) cur.oneway = true;
     else if (cur.type === 'block' && this.signalUnlocked('path') && cur.oneway) { cur.type = 'path'; cur.oneway = false; }
     else net.signals.delete(key);
@@ -805,7 +805,7 @@ export class Construction {
     const placed = plan.keys.slice(0, n);
     g.economy.spend(n * unit, 'construction', null, `~fin_n_signal:${n}`);
     const type = this.signalType === 'oneway' ? 'block' : this.signalType;
-    for (const k of placed) net.signals.set(k, { type, oneway: this.signalType === 'oneway' });
+    for (const k of placed) net.signals.set(k, { type, oneway: this.signalType === 'oneway', y: g.ledger.year() });
     net.bumpVersion();
     g.trains.onNetworkChanged(false);
     this.pushUndo({ type: 'signals', keys: placed, cost: n * unit });

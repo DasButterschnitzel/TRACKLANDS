@@ -1,6 +1,7 @@
 // Persistent storage (IndexedDB with localStorage fallback), save versioning
 // and migration, backups, export and import with validation.
 import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL, TRAIN_UPGRADES, WORLDGEN_VERSION } from '../config.js';
+import { normalizeTerrain } from '../world/Terrain.js';
 
 const DB = 'tracklands', STORE = 'saves', LS_KEY = 'tracklands.save', LS_BACKUP = 'tracklands.backup';
 
@@ -139,6 +140,8 @@ export function sanitize(d) {
   }
   // world generator version: anything but a known version means the original (1)
   if (d.worldGen !== undefined && !(Number.isInteger(d.worldGen) && d.worldGen >= 1 && d.worldGen <= WORLDGEN_VERSION)) delete d.worldGen;
+  // terrain preset and parameters (v4): cleaned, unknown ones fall back to classic
+  if (d.terrain !== undefined) d.terrain = normalizeTerrain(d.terrain);
   const E = d.economy;
   if (isObj(E)) {
     E.coins = num(E.coins, 0, 0);

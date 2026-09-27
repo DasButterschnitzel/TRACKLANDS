@@ -1,13 +1,13 @@
-# TRACKLANDS 4.0.0 — release audit (phases 1–8)
+# TRACKLANDS 5.0.0 — release audit (phases 1–10)
 
-Status per area. **PASS**: built, reachable in the game and covered by a named test suite. **DEFERRED**: deliberately not built, with the reason (no fake option is shown for it). **UNTESTED**: works in the headless browser but not checked on the named hardware.
+Status per area. **PASS**: built, reachable in the game and covered by a named test suite. **PARTIAL**: built, with a named part missing. **DEFERRED**: deliberately not built, with the reason (no fake option is shown for it). **UNTESTED**: works in the headless browser but not checked on the named hardware. **NOT EXECUTED**: a job exists but has not run (no credentials). Every requirement of phases 1–10 was re-read for this audit; rows that were DEFERRED in 4.0.0 and are now built say so.
 
-Suites run in CI on every push (core, economy, transport, qa groups) unless marked *local*: `fuzz`, `perf` and `gallery` run locally for the release.
+Suites run in CI on every push (static check, then the core, economy, transport and fuzz-fast groups and the three-browser smoke, `.github/workflows/tests.yml`) unless marked *deep*: those run in the integration, release and nightly tiers (`deep.yml`) and locally for the release.
 
 ## Phase 1 — base game
 | Area | Status | Evidence |
 |---|---|---|
-| World generation, 8 regions, pinned generators | PASS | `worldgen`, `seeds` |
+| World generation, 8 regions, pinned generators (v1–v4 fingerprints) | PASS | `worldgen`, `seeds` |
 | Track building (bridges, tunnels, tiers, undo) | PASS | `rail`, `build`, `tools` |
 | Cargo chains, towns, contracts, research, objectives | PASS | `economy`, `chains`, `towns` |
 | Saves (versioned, export/import, offline progress) | PASS | `unit`, `persist`, `importexport`, `prodsave` |
@@ -80,9 +80,9 @@ Suites run in CI on every push (core, economy, transport, qa groups) unless mark
 | Extreme weather, never destructive | PASS | `timectl` |
 | FIND, bookmarks, sandbox | PASS | `tools` |
 | Underground metro | DEFERRED | needs a second track layer under the terrain; not at production quality, so not offered |
-| Rail-building AI | DEFERRED | could not share the player's signalling safely |
+| Rail-building AI | PASS (Phase 9) | built on ownership: see Phase 9 |
 | Planning mode, blueprints | DEFERRED | need a second, non-simulated copy of the rail graph |
-| Era visuals | DEFERRED | eras exist as calendar, label and news; buildings do not change by era |
+| Era visuals | PASS (Phase 10) | see Phase 10 |
 
 ## Phase 8 — content, polish, QA
 | Area | Status | Evidence / reason |
@@ -99,9 +99,62 @@ Suites run in CI on every push (core, economy, transport, qa groups) unless mark
 | QA: content, pathfinding under load, long game with chaos, economy | PASS | `qa` |
 | Save fuzz 1000 cases | PASS | `savefuzz --cases=1000` (987 load, 13 rejected cleanly, 0 bad) |
 | Achievements, statistics, photo and cinematic mode | PASS | `qa` |
-| Terrain presets, advanced generator | DEFERRED | the generator has no terrain parameters besides a height map; no option is shown that it cannot honour |
-| World generation in a worker | DEFERRED | the generator shares tables with the renderer; a busy screen with a label is shown instead |
+| Terrain presets, advanced generator | PASS (Phase 10) | see Phase 10 |
+| World generation in a worker | DEFERRED | profiled in Phase 10: at most ~0.3 s at 192 × 192 with every preset (`worldgen` prints the slowest), so the busy screen suffices; the generator also reads the global map size |
 | Real GPUs, audio devices, phones | UNTESTED | everything ran on SwiftShader |
+
+## Phase 9 — competitor railways and hardening
+| Area | Status | Evidence / reason |
+|---|---|---|
+| Railway companies with personalities (freight, railway, regional, premium, conservative), 0–8 competitors, timing and skill | PASS | `ai`, new-game dialog (`terrain` opens it) |
+| The real game systems: track, stations, depots, trains through the player's construction code; own money, loans | PASS | `ai` (budget, ledger separation) |
+| Project stages discover → … → retire, one per tick; memory of rejected ideas | PASS | `ai` (save/load keeps stages) |
+| Corridor planning (dry run, detour and turn limits), stations sized by demand, through stations | PASS | `ai` |
+| Passing loops, double track with block signals, platform extension, extra platforms, bottleneck diagnosis | PASS | `ai` (loops and double track in the result line) |
+| Consists fitting the shortest platform, budget-aware locomotive choice, modernization by era, electrification | PASS | `ai`, `aidecades` *(deep)* |
+| Clean closure of unprofitable lines, bankruptcy (liquidation), acquisition by the player | PASS | `ai` (liquidation leaves nothing; takeover transfers trains, stations, track) |
+| Never griefing: ownership on every tile/station/train, courtesy distance, networks never touch, player tools cannot edit rival assets | PASS | `ai` (untouched player network, 0 links across owners) |
+| No cheating: the player's research never applies to rivals | PASS | `ai`, code review (`NO_FX`) |
+| Anti-spam: unused track, duplicate corridors, idle trains and stations, rebuild-and-close loops | PASS | `ai`, `aidecades` *(deep)* |
+| Determinism, thinking budget (two companies per step) | PASS | `ai` |
+| 50-year run with four companies | PASS | `aidecades` *(deep; 20 years in quick mode)* |
+| UI: company page, read-only cards, overlay, news (rate-limited), debug view | PASS | `ai` |
+| Four-track corridors | DEFERRED | double track with loops covers every demand the planner measures; a four-track corridor needs a junction layout the planner cannot yet verify safe |
+| AI demolition or terraforming | DEFERRED (by design) | companies never demolish buildings or change terrain |
+| CI tiers: static gate (stale service worker fails in seconds), fast gate, integration, release, nightly | PASS | `tools/check.mjs`, `tests.yml`, `deep.yml` |
+| Save fuzz tiers (150 + corpus per push, 400, 1000, 3000 sharded) and the failure corpus | PASS | `savefuzz --corpus` (the corpus catches a removed fix) |
+| Cross-browser smoke (Chromium, Firefox, WebKit) | PASS | `xbrowser`, `hardening` in the browsers job |
+| Browser hardening: context loss, no WebGL, no IndexedDB, full storage, no service worker, visibility, DPR 1–3, audio unlock, update from 4.0.0 | PASS | `hardening`, `xbrowser` |
+| Audio output in Firefox headless | UNTESTED | the container has no audio device; reported NOT TESTED by the suite |
+| Real-device cloud job (BrowserStack) | NOT EXECUTED | `tests/devicecloud.mjs` runs only with secrets; none are configured, and no result is claimed |
+
+## Phase 10 — terrain and eras
+| Area | Status | Evidence / reason |
+|---|---|---|
+| 13 terrain presets incl. the 12 asked for (countryside, plains, highlands, alpine, riverlands, lake country, coastal, archipelago, industrial basin, dry frontier, northern snowland, continental mega) | PASS | `worldgen` (every preset × seeds × map sizes playable; each looks like what it promises), `terrain` |
+| Generator parameters under Advanced; preview (towns, industries, shares) with regenerate, random and seed entry | PASS | `terrain` (phone viewport, touch) |
+| Rivers, valleys, passes, coasts, islands, lakes | PASS | `worldgen` (water and relief per preset) |
+| Geology (ore, coal and oil seams) for mines and wells | PASS | `worldgen` (industries complete and on land); visible in placement only |
+| Town placement by terrain; city shape by terrain | PASS | `worldgen`; archetypes and street plans follow water and mountains (`cities`) |
+| Climates (biomes, plants, roofs), farmland | PASS | `worldgen`, `terrain` |
+| Generator versioning (v4), terrain saved, old saves never regenerated | PASS | `worldgen` (v1–v4 fingerprints), `terrain` (save and reload), `prodsave` |
+| Preset validation (start region over land, complete regions, sites on land, water and mountain limits) | PASS | `worldgen` |
+| AI on hard terrain (alpine, archipelago) | PASS | `ai` |
+| Construction-cost breakdown in the preview | PASS | `terrain` |
+| Mega map warning; continental suggests 192 × 192 | PASS | `terrain` |
+| 4096-tile maps | DEFERRED | not offered: the tile simulation, renderer and saves are built for at most 192 × 192 |
+| Era bands; buildings by construction year; historic cores; renewal after 45 years | PASS | `eras` |
+| Era-starting worlds (1900 vs 1990) | PASS | `eras` |
+| Stations by era; renovation; heritage listing | PASS | `eras` |
+| Signals by era (semaphores → colour lights) | PASS | `eras` |
+| Industries and town streets by era | PASS | `eras` (news and rebuild on a new era), screenshots |
+| Airports, ports, level crossings and catenary by era | DEFERRED | shared instanced models with one look; era variants need new model sets. No option claims otherwise |
+| Era news, town history, company milestones | PASS | `eras` |
+| Catalogue era filter (All, Current, Historic, Locked) | PASS | `eras` |
+| Sandbox era (calendar) and terrain controls | PASS | `eras` (sandbox calendar); the terrain is fixed once a world exists, so the sandbox shows it |
+| Content pass: missing train types per era | PASS | six new trains (goods steam, hybrid shunter, bi-mode unit, regional EMU, hydrogen regional, heavy electric freight); `qa` content checks, `makers` |
+| Competitors and eras | PASS | modernization by era, electrification, station renovation (`ai`) |
+| Benchmarks, memory audit, stress | PASS | `bench`, `stress`, `perf` *(deep)* |
 
 ## Standing constraints
 | Rule | Status |

@@ -6,6 +6,7 @@ import { TOWN_REQ, TOWN_POP, TOWN_RADIUS, TOWN_BUILDINGS, TOWN_PRODUCTION, BIOME
 import { ModelBuilder, MATS, shade } from '../core/ModelBuilder.js';
 import { heightAt } from './WorldGen.js';
 import { ARCHETYPES, FAMILIES, LANDMARKS, LANDMARK_STAGE, HEIGHT_ORDER, pickArchetype, streetAt, planDist } from './CityStyle.js';
+import { bandOf, ERA_CAP, ERA_FROM, ERA_PALETTE, ROAD_COL, mixHex, historicYear } from './Eras.js';
 
 const CLASSES = ['hamlet', 'village', 'small_town', 'town', 'large_town', 'city', 'large_city', 'metropolis', 'megalopolis'];
 // (saves store the index: new types only ever go at the end)
@@ -756,13 +757,16 @@ export class TownSystem {
   // Physical growth: the town moves towards its target layout at most
   // `budget` buildings at a time (new plots from the centre out, then
   // replacements by denser buildings), so growth is visible month by month.
-  layout(t, animate, budget = Infinity) {
+  // history: the first layout of a new world, whose buildings get years from
+  // the town's past (an old centre, newer edges)
+  layout(t, animate, budget = Infinity, history = false) {
     const g = this.game;
     const occ = g.occupancy;
     const R = TOWN_RADIUS[t.stage];
     const target = this.buildTarget(t);
     const cands = this.candidateTiles(t);
-    const want = new Map();
+    const want = new Map(), base = new Map(), years = new Map();
+    const now = this.year();
     let civicPlaced = false, plazaPlaced = false;
     // landmarks: one as a town, a second as a city, a third as a metropolis
     const lms = this.arch(t).landmarks.filter((id, k) => t.stage >= LANDMARK_STAGE[k]);
@@ -782,13 +786,17 @@ export class TownSystem {
       if (!civicPlaced && t.stage >= 1 && c.d === 1) { arch = 'civic'; civicPlaced = true; }
       else if (!plazaPlaced && t.stage >= 3 && c.d === 2 && c.h < 0.5) { arch = 'plaza'; plazaPlaced = true; }
       else { const k = lmDone.findIndex((done, j) => !done && c.d === 2 + j && c.h >= 0.5); if (k >= 0) { arch = lms[k]; lmDone[k] = true; } }
-      want.set(i, arch);
+      // what the year builds: no towers before the war, no glass before the seventies
+      const y = history ? historicYear(g.ledger.startYear, c.d, R, c.h) : now;
+      base.set(i, arch); years.set(i, y);
+      want.set(i, this.eraArch(arch, y));
     }
     // keep matching buildings; the rest are changes, done within the budget
     const keep = [], stale = [];
     const has = new Map(t.buildings.map((b) => [b.tile, b]));
     for (const b of t.buildings) {
-      if (want.get(b.tile) === b.arch) { keep.push(b); want.delete(b.tile); } else stale.push(b);
+      // an older building of the same kind stays until it is due for renewal
+      if (want.get(b.tile) === b.arch || (base.get(b.tile) === (b.base || b.arch) && this.keepOld(t, b, now))) { keep.push(b); want.delete(b.tile); } else stale.push(b);
     }
     // new plots first (nearest the centre), then replacements, then clear-outs
     const adds = [...want].filter(([tile]) => !has.has(tile));
@@ -796,7 +804,7 @@ export class TownSystem {
     const outs = stale.filter((b) => !want.has(b.tile));
     let left = budget, k = 0;
     const place = (tile, arch) => {
-      const b = this.addBuilding(t, tile, arch, animate ? 0.15 + k * 0.06 : -1);
+      const b = this.addBuilding(t, tile, arch, animate ? 0.15 + k * 0.06 : -1, years.get(tile), base.get(tile));
       if (b) { keep.push(b); occ.blocked[tile] = 1; occ.owner[tile] = t.id; if (animate && LANDMARKS.includes(arch)) this.game.events.emit('townLandmark', t, arch); }
       k++;
     };
@@ -817,6 +825,24 @@ export class TownSystem {
     this.game.world.view && this.game.world.view.clearTreesMany(t.buildings.map((b) => b.tile).concat(this.roadTiles(t)));
   }
 
+  year() { return this.game.ledger ? this.game.ledger.year() : 1950; }
+  // the type a year builds in place of `arch` (Eras.js)
+  eraArch(arch, y) {
+    const band = bandOf(y);
+    for (let n = 0; n < 4 && ERA_FROM[arch] && band < ERA_FROM[arch][0]; n++) arch = ERA_FROM[arch][1];
+    const hi = HEIGHT_ORDER.indexOf(arch), cap = HEIGHT_ORDER.indexOf(ERA_CAP[band]);
+    return hi > cap ? ERA_CAP[band] : arch;
+  }
+  // an older building of the kind the plan wants: landmarks and the historic
+  // core (built before 1945, within two rings of the centre) stay for good;
+  // the rest is rebuilt in the style of the day once it is 45 years old
+  keepOld(t, b, now) {
+    if (LANDMARKS.includes(b.arch) || b.heritage) return true;
+    const y = b.y || now;
+    if (y < 1945 && Math.max(Math.abs(tx(b.tile) - t.x), Math.abs(tz(b.tile) - t.z)) <= 2) return true;
+    return now - y < 45;
+  }
+
   roadTiles(t) {
     const R = TOWN_RADIUS[t.stage];
     const out = [];
@@ -824,9 +850,10 @@ export class TownSystem {
     return out;
   }
 
-  addBuilding(t, tile, arch, delay) {
+  addBuilding(t, tile, arch, delay, year, baseArch) {
     const pool = this.pools[arch], rpool = this.roofPools[arch];
-    const b = { tile, arch, town: t.id, pool, rpool, slot: -1, rslot: -1 };
+    const b = { tile, arch, town: t.id, pool, rpool, slot: -1, rslot: -1, y: Number.isFinite(year) ? year : this.year() };
+    if (baseArch && baseArch !== arch) b.base = baseArch;
     b.slot = pool.add(b); b.rslot = rpool.add(b);
     if (b.slot < 0 || b.rslot < 0) { if (b.slot >= 0) pool.remove(b); if (b.rslot >= 0) rpool.remove(b); return null; }
     const x = tx(tile), z = tz(tile);
@@ -851,7 +878,7 @@ export class TownSystem {
     // sit on the lowest corner so buildings never float
     let h = 1e9;
     for (const [ox, oz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) h = Math.min(h, heightAt(W, wx + ox, wz + oz));
-    const biome = BIOMES[REGIONS[t.region].biome];
+    const biome = BIOMES[(W.biomes && W.biomes[t.region]) || REGIONS[t.region].biome];
     const F = this.family(t);
     b.pos = [wx, h - 0.05, wz];
     b.rot = rot;
@@ -866,6 +893,10 @@ export class TownSystem {
     if (arch === 'block' || arch === 'hotel') b.wall = shade(rng.pick(F.walls), rng.range(0.9, 1.0));
     if (arch === 'warehouse' || arch === 'plaza' || arch === 'park' || arch === 'stadium' || arch === 'tv_tower' || arch === 'lighthouse') b.wall = 0xffffff;
     if (lm && b.wall !== 0xffffff) b.wall = shade(F.walls[0], 1.02);
+    // the look of the year it was built (Eras.js), over the family's palette
+    const EP = ERA_PALETTE[bandOf(b.y)];
+    if (!lm && b.wall !== 0xffffff) b.wall = mixHex(b.wall, rng.pick(EP.walls), EP.mix);
+    if (!lm && (pitched || arch === 'apartment' || arch === 'block' || arch === 'shop')) b.roofC = mixHex(b.roofC, rng.pick(EP.roofs), EP.mix * 0.8);
     b.t = delay >= 0 ? -delay : 1;
     this.writeBuilding(b, delay >= 0 ? 0 : 1);
     pool.set(b.slot, this._m, b.wall); rpool.set(b.rslot, this._m, b.roofC);
@@ -942,10 +973,13 @@ export class TownSystem {
     if (this.game.traffic) this.game.traffic.townChanged(t);
   }
 
+  // town streets are resurfaced with the era: setts, then asphalt
+  eraRoads() { if (this.roadMat) this.roadMat.color.setHex(ROAD_COL[bandOf(this.year())]); }
   buildAll() {
+    this.eraRoads();
     for (const t of this.list) {
       if (t.savedBld && t.savedBld.length) this.restoreBuildings(t);
-      else this.layout(t, false);
+      else this.layout(t, false, Infinity, true);
       t.savedBld = null;
     }
   }
@@ -955,9 +989,12 @@ export class TownSystem {
     t.buildings = [];
     // road tiles within the radius belong to the town (as in layout)
     for (const c of this.candidateTiles(t)) { if (c.d > TOWN_RADIUS[t.stage]) continue; const i = idx(c.x, c.z); if (c.road && (!occ.owner[i] || occ.owner[i] === t.id) && W.type[i] === 0) occ.owner[i] = t.id; }
-    for (const [tile, a] of t.savedBld) {
+    const R = TOWN_RADIUS[t.stage];
+    for (const [tile, a, y, ba] of t.savedBld) {
       if (W.type[tile] !== 0 || g.net.conn[tile] || g.net.special.has(tile) || (occ.blocked[tile] && occ.owner[tile] !== t.id)) continue;
-      const b = this.addBuilding(t, tile, ARCH[a], -1);
+      // (older saves have no building years: the town's past is made up as for a new world)
+      const yr = Number.isInteger(y) && y >= 1700 && y <= 2300 ? y : historicYear(this.loadYear || 1950, Math.max(Math.abs(tx(tile) - t.x), Math.abs(tz(tile) - t.z)), R, (hashStr(`h${tile}`) % 100) / 100);
+      const b = this.addBuilding(t, tile, ARCH[a], -1, yr, ARCH[ba]);
       if (b) { t.buildings.push(b); occ.blocked[tile] = 1; occ.owner[tile] = t.id; }
     }
     this.buildRoads(t);
@@ -1044,7 +1081,7 @@ export class TownSystem {
     return this.list.map((t) => {
       const cl = {};
       for (const k in t.cleared || {}) if (t.cleared[k] > now) cl[k] = Math.round(t.cleared[k]);
-      return { id: t.id, mat: t.mat ? Math.round(t.mat) : undefined, kind: t.kind, plan: t.plan || 'grid3', axis: t.axis || undefined, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, bld: t.buildings.map((b) => [b.tile, ARCH.indexOf(b.arch)]), renewed: t.renewed || undefined, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
+      return { id: t.id, mat: t.mat ? Math.round(t.mat) : undefined, kind: t.kind, plan: t.plan || 'grid3', axis: t.axis || undefined, stage: t.stage, progress: t.progress, pop: Math.round(t.pop), delivered: t.delivered, received: t.received, bld: t.buildings.map((b) => (b.base ? [b.tile, ARCH.indexOf(b.arch), b.y, ARCH.indexOf(b.base)] : [b.tile, ARCH.indexOf(b.arch), b.y])), renewed: t.renewed || undefined, auth: this.game.authority ? this.game.authority.serializeTown(t) : undefined, cleared: Object.keys(cl).length ? cl : undefined };
     });
   }
   deserialize(arr) {

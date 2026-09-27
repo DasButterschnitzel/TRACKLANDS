@@ -11,6 +11,7 @@
 // Nothing here changes how much anything earns or costs: it only records,
 // plus loans, which the player takes and repays explicitly.
 import { consistCost } from '../trains/Consist.js';
+import { bandOf } from '../world/Eras.js';
 
 export const MONTH_S = 60;                 // game seconds per month
 export const LOG_MAX = 250;
@@ -174,6 +175,8 @@ export class Ledger {
     }
     this.cur = blankMonth(c.m + 1);
     if (this.era(this.year(c.m)) !== this.era(this.year(c.m + 1))) g.events.emit('eraChanged', this.era(this.year(c.m + 1)));
+    // the architectural eras (Eras.js): what towns build from now on
+    if (bandOf(this.year(c.m)) !== bandOf(this.year(c.m + 1))) g.events.emit('eraBand', bandOf(this.year(c.m + 1)));
     g.events.emit('monthClosed', c);
   }
 

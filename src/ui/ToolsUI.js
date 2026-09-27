@@ -5,6 +5,7 @@
 import { fmt, escapeHtml as esc } from '../util.js';
 import { icon } from './icons.js';
 import { WEATHER_IDS } from '../world/Environment.js';
+import { ERA_BANDS, bandOf } from '../world/Eras.js';
 
 const MAX_BOOKMARKS = 12;
 // commands FIND also offers (a command palette: Ctrl+K or F, then type)
@@ -78,7 +79,11 @@ export const ToolsUIMixin = {
     return `<p class="muted small">${this.tr('sandbox_help')}</p>
       <div class="row wrap">${btn('sbMoney', 1000000, 'sb_money')}${btn('sbRegions', 1, 'sb_regions', 'map')}${btn('sbLevel', 5, 'sb_level', 'up')}${btn('sbEvent', 1, 'sb_event', 'town')}</div>
       <label class="set"><span>${this.tr('sb_weather')}</span><select data-change="sbWeather">${WEATHER_IDS.map((w) => `<option value="${w}" ${g.env.weather === w ? 'selected' : ''}>${this.tr('wx_' + w)}</option>`).join('')}</select></label>
-      <label class="set tog"><span>${this.tr('sb_authority')}</span><input type="checkbox" data-change="sbAuthority" ${S.ignoreAuthority ? 'checked' : ''}/><i></i></label>`;
+      <label class="set tog"><span>${this.tr('sb_authority')}</span><input type="checkbox" data-change="sbAuthority" ${S.ignoreAuthority ? 'checked' : ''}/><i></i></label>
+      <h4>${this.tr('sb_era')}</h4><p class="small">${this.tr('sb_era_now', { y: g.ledger.year(), look: this.tr('era_band_' + ERA_BANDS[bandOf(g.ledger.year())]) })}</p>
+      <div class="row wrap">${[-25, -10, 10, 25].map((n) => `<button class="btn ghost small" data-act="sbYear" data-arg="${n}">${n > 0 ? '+' : ''}${n} ${this.tr('sb_years')}</button>`).join('')}</div>
+      <p class="muted small">${this.tr('sb_era_help')}</p>
+      <p class="small">${this.tr('sb_terrain', { t: this.tr('terrain_' + ((g.world.terrain && g.world.terrain.preset) || 'classic')) })}${g.world.terrain && Object.keys(g.world.terrain).length > 1 ? ' · ' + this.tr('sb_terrain_custom') : ''}</p>`;
   },
 
   toolsActions() {
@@ -98,6 +103,15 @@ export const ToolsUIMixin = {
       bmAdd: () => { const b = this.addBookmark(); if (b) this.toast(this.tr('bm_added', { name: b.name }), 'good', 'pin'); re(); },
       bmGo: (a) => { const b = (g().bookmarks || [])[+a]; if (b) { g().camera.focus(b.x, b.z, b.zoom); if (window.innerWidth < 760) this.closePanel(); } },
       bmDel: (a) => { const B = g().bookmarks || []; B.splice(+a, 1); re(); },
+      sbYear: (a) => {
+        const G = g(); if (G.difficultyId !== 'builder') return;
+        const L = G.ledger, y0 = L.year(), b0 = bandOf(y0), e0 = L.era(y0);
+        L.startYear = Math.max(1800, Math.min(2100, L.startYear + (+a | 0)));
+        const y1 = L.year();
+        if (bandOf(y1) !== b0) G.events.emit('eraBand', bandOf(y1));
+        if (L.era(y1) !== e0) G.events.emit('eraChanged', L.era(y1));
+        re();
+      },
       sbMoney: (a) => { if (g().difficultyId !== 'builder') return; g().economy.earn(+a, 'grant', false, null, '~sandbox'); re(); },
       sbRegions: () => { const G = g(); if (G.difficultyId !== 'builder') return; const C = G.world.centers || []; let last = -1; for (let i = 0; i < C.length; i++) if (C[i] && !G.progression.regions.has(i)) { G.progression.regions.add(i); G.world.view.revealRegion(i); last = i; } if (last >= 0) G.events.emit('regionUnlocked', last); re(); },
       sbLevel: (a) => { const P = g().progression; if (g().difficultyId !== 'builder') return; P.level = Math.min(50, P.level + (+a)); g().events.emit('levelUp', P.level); re(); },

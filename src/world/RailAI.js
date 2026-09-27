@@ -28,6 +28,7 @@ import { MONTH_S } from '../economy/Ledger.js';
 import { log } from '../core/Log.js';
 import { NO_FX } from './Owners.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
+import { bandOf } from './Eras.js';
 
 // ---------- personalities ----------
 // pax/freight: preference weights; risk: debt tolerance (0..1); reserve:
@@ -120,7 +121,7 @@ export class RailPlanner {
     for (const p of ops) this.observe(p);
     if (this.r.money > 0) for (const p of this.rng('ops').shuffle(ops.slice())) if (this.improve(p)) break;
     // yearly: review results, modernize the fleet
-    if (m % 12 === 0) { for (const p of ops) this.review(p); this.modernize(); }
+    if (m % 12 === 0) { for (const p of ops) this.review(p); this.modernize(); this.renovate(); }
     // strategic thinking (spread over companies by their index)
     if ((m + this.r.idx) % this.L.think === 0) this.think(m);
   }
@@ -632,7 +633,7 @@ export class RailPlanner {
         const n = Math.min(plan.keys.length, Math.floor((this.r.money - this.reserve() * 0.5) / unit));
         if (n <= 0) continue;
         g.economy.spend(n * unit, 'construction', null, 'signals');
-        for (const k of plan.keys.slice(0, n)) net.signals.set(k, { type: 'block', oneway: false });
+        for (const k of plan.keys.slice(0, n)) net.signals.set(k, { type: 'block', oneway: false, y: this.year() });
       }
       net.bumpVersion(); g.trains.onNetworkChanged(false);
     });
@@ -730,6 +731,18 @@ export class RailPlanner {
     this.as(() => g.trains.sell(o));
     this.remember('modern', COOLDOWN.modern);
     this.note('modern', `replaces ${oldM.name} by ${newM.name} on ${this.endName(worst.p.a)} → ${this.endName(worst.p.b)}`, { project: worst.p.id });
+  }
+  // one station a year is brought up to the day's style once it is two
+  // architectural eras behind (Eras.js), when there is money to spare
+  renovate() {
+    const g = this.game, S = g.stations;
+    if (this.blocked('renovate') || this.r.money < this.reserve() * 2) return;
+    const now = bandOf(this.year());
+    const st = S.list.filter((s) => s.owner === this.r.id && bandOf(S.lookYear(s)) <= now - 2).sort((a, b) => S.lookYear(a) - S.lookYear(b))[0];
+    if (!st) return;
+    const err = this.as(() => S.renovate(st));
+    this.remember('renovate', 12);
+    if (!err) this.note('renovate', `renovates ${st.name}`, {});
   }
   electrify(p) {
     const g = this.game, S = g.stations;

@@ -8,6 +8,7 @@
 // platform edges at ±0.69, platforms 0.24 high, 0.32 wide.
 import { shade } from '../core/ModelBuilder.js';
 import { PAL } from '../style.js';
+import { ERA_STATION, mixHex } from '../world/Eras.js';
 
 const POST = 0x4a4f55, BENCH = 0x7a5a3a, LAMP = 0xfff0c0, PLAT = PAL.platform, EDGE = PAL.platformEdge, CLOCK = 0xf4f0e6;
 const GLASS = 0x3a4a5a, GLASS_MODERN = 0x9ec8e0, STEEL = 0x6a7580, SIGN = 0x2f5f8a;
@@ -46,8 +47,8 @@ function clockTower(mb, x, z, y, h, wall, roof) {
 function signBoard(mb, x, y, z, w = 0.5) { mb.box(w, 0.12, 0.03, SIGN, { x, y, z }); mb.box(w - 0.08, 0.03, 0.035, 0xf0f0f0, { x, y: y + 0.045, z }); }
 
 // ---------- platforms ----------
-function platforms(mb, tracks, kind, level, roof) {
-  const modern = kind === 'hs' || kind === 'grand';
+function platforms(mb, tracks, kind, level, roof, eraModern = false) {
+  const modern = kind === 'hs' || kind === 'grand' || eraModern;
   const freightKind = kind === 'freight' || kind === 'yard' || kind === 'intermodal';
   for (const tk of tracks) {
     const plen = tk.x1 - tk.x0 - 0.1, cx = (tk.x0 + tk.x1) / 2;
@@ -94,7 +95,7 @@ function passengerBuilding(mb, kind, level, style, B) {
   const wall = style.wall, roof = style.roof;
   switch (kind) {
     case 'village': {
-      block(mb, midX, bz, 1.5, 0.8, 0.62, wall, roof, { y: y0, gable: 0.42 });
+      block(mb, midX, bz, 1.5, 0.8, 0.62, wall, roof, { y: y0, gable: style.gable === false ? 0 : 0.42 });
       mb.box(0.1, 0.34, 0.1, shade(wall, 0.7), { x: midX + 0.45, y: y0 + 0.9, z: bz + 0.15 });           // chimney
       mb.box(0.24, 0.36, 0.03, shade(roof, 0.8), { x: midX, y: y0, z: bz - 0.41 });                    // door
       for (const x of [-0.5, 0.5]) mb.box(0.24, 0.05, 0.06, 0x6a9a4a, { x: midX + x, y: y0 + 0.2, z: bz - 0.43 });  // flower boxes
@@ -102,15 +103,15 @@ function passengerBuilding(mb, kind, level, style, B) {
       break;
     }
     case 'town': {
-      block(mb, midX, bz, 2.0, 0.85, 0.8, wall, roof, { y: y0, gable: 0.5 });
+      block(mb, midX, bz, 2.0, 0.85, 0.8, wall, roof, { y: y0, gable: style.gable === false ? 0 : 0.5 });
       mb.box(0.3, 0.42, 0.03, shade(roof, 0.8), { x: midX, y: y0, z: bz - 0.44 });
       clockTower(mb, midX + 1.1, bz + 0.1, y0, 2.0, wall, roof);
       signBoard(mb, midX, y0 + 0.84, bz - 0.46, 0.8);
       break;
     }
     case 'city': {
-      block(mb, midX, bz, 2.8, 0.95, 1.0, wall, roof, { y: y0, gable: 0.5 });
-      for (const s of [1, -1]) block(mb, midX + s * 1.85, bz + 0.05, 0.9, 0.8, 0.72, shade(wall, 0.95), roof, { y: y0, gable: 0.32 });
+      block(mb, midX, bz, 2.8, 0.95, 1.0, wall, roof, { y: y0, gable: style.gable === false ? 0 : 0.5 });
+      for (const s of [1, -1]) block(mb, midX + s * 1.85, bz + 0.05, 0.9, 0.8, 0.72, shade(wall, 0.95), roof, { y: y0, gable: style.gable === false ? 0 : 0.32 });
       clockTower(mb, midX, bz + 0.1, y0 + 1.0, 1.3, wall, roof);
       mb.box(0.5, 0.5, 0.04, shade(roof, 0.8), { x: midX, y: y0, z: bz - 0.49 });
       signBoard(mb, midX, y0 + 1.05, bz - 0.5, 1.1);
@@ -160,7 +161,7 @@ function passengerBuilding(mb, kind, level, style, B) {
       break;
     }
     default: { // halt / level 0 with more tracks
-      block(mb, midX, bz, 1.4, 0.8, 0.62, wall, roof, { y: y0, gable: 0.4 });
+      block(mb, midX, bz, 1.4, 0.8, 0.62, wall, roof, { y: y0, gable: style.gable === false ? 0 : 0.4 });
     }
   }
 }
@@ -241,6 +242,10 @@ function facilityModels(mb, facilities, B) {
 // info: { kind, terminal: 0|-1|1 (which end has the buffer stops), cramped }
 export function stationComplexModel(mb, level, style, tracks, facilities, cramped, info = {}) {
   const kind = info.kind || (level === 0 ? 'halt' : ['halt', 'village', 'town', 'city', 'central', 'grand'][level]);
+  // the era it was built or renovated in (Eras.js): the default style takes
+  // the era's materials; every style gets the era's roofs and fittings
+  const E = info.era != null ? ERA_STATION[info.era] : null;
+  if (E) style = { ...style, wall: style.id === 'classic' ? mixHex(style.wall, E.wall, 0.75) : style.wall, roof: style.id === 'classic' ? mixHex(style.roof, E.roof, 0.75) : style.roof, gable: E.gable };
   const zs = tracks.map((t) => t.z);
   const zMax = Math.max(...zs), zMin = Math.min(...zs);
   const x0 = Math.min(...tracks.map((t) => t.x0)), x1 = Math.max(...tracks.map((t) => t.x1));
@@ -248,7 +253,7 @@ export function stationComplexModel(mb, level, style, tracks, facilities, crampe
   const y0 = Math.max(...tracks.map((t) => t.y));
   const B = { midX, bz: zMax + 1.55, y0, x0, x1, zMin, zMax };
   const goods = kind === 'freight' || kind === 'yard' || kind === 'intermodal';
-  platforms(mb, tracks, kind, level, style.roof);
+  platforms(mb, tracks, kind, level, style.roof, !!(E && E.modern));
   if (kind === 'halt' && tracks.length === 1) {
     const tk = tracks[0], cx = (tk.x0 + tk.x1) / 2;
     for (const x of [-0.35, 0.35]) mb.cyl(0.025, 0.025, 0.5, 5, POST, { x: cx + x, y: tk.y + 0.24, z: tk.z + 0.92 });

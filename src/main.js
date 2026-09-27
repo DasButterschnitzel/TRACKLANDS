@@ -11,6 +11,7 @@ import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES, N, setMapSize } from './util.js';
 import { generateWorld } from './world/WorldGen.js';
+import { TERRAIN_IDS, TERRAIN_PRESETS, TERRAIN_RANGES, TERRAIN_CHOICES, resolveTerrain, normalizeTerrain, terrainStats } from './world/Terrain.js';
 import { readHeightmap } from './world/Heightmap.js';
 import { scenarioDialog } from './ui/ScenarioMenu.js';
 import { icon } from './ui/icons.js';
@@ -285,13 +286,14 @@ class App {
     this.startGame({ seed: Math.floor(Math.random() * 1e9), ...GAME_PRESETS.classic.opts, mapSize: 64, startYear: 1950 });
   }
 
-  // a small picture of the world a seed makes (terrain, water, regions)
-  drawPreview(canvas, seed, size) {
+  // a small picture of the world a seed makes (terrain, water, regions,
+  // towns and industries); returns the terrain statistics for the dialog
+  drawPreview(canvas, seed, size, terrain) {
     if (this.game) return false;          // (the generator uses the global map size)
     const prev = N;
     setMapSize(size);
     let W;
-    try { W = generateWorld(seed); } catch (e) { setMapSize(prev); return false; }
+    try { W = generateWorld(seed, undefined, { terrain }); } catch (e) { setMapSize(prev); return false; }
     const n = N, ctx = canvas.getContext('2d'), img = ctx.createImageData(n, n);
     let lo = Infinity, hi = -Infinity;
     for (let i = 0; i < n * n; i++) { const h = W.tileH[i]; if (h < lo) lo = h; if (h > hi) hi = h; }
@@ -300,15 +302,21 @@ class App {
       let r, gC, b;
       if (W.type[i] === 1) { r = 70; gC = 130; b = 200; } else if (h > 0.75) { r = 170 + h * 60; gC = 165 + h * 60; b = 160 + h * 60; } else { r = 90 + h * 70; gC = 140 + h * 50; b = 70 + h * 30; }
       if (W.trees && W.trees[i]) { r *= 0.8; gC *= 0.9; b *= 0.8; }
+      if (W.fields && W.fields[i]) { r = r * 0.5 + 105; gC = gC * 0.5 + 90; b = b * 0.5 + 30; }
       // region borders
       const x = i % n, z = (i / n) | 0;
       if ((x + 1 < n && W.region[i + 1] !== W.region[i]) || (z + 1 < n && W.region[i + n] !== W.region[i])) { r *= 0.7; gC *= 0.7; b *= 0.7; }
       img.data[k] = r; img.data[k + 1] = gC; img.data[k + 2] = b; img.data[k + 3] = 255;
     }
+    // towns white, industries amber (drawn at 2× so they read on a phone)
+    const dot = (x, z, c) => { for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) { if (x + dx >= n || z + dz >= n) continue; const k = ((z + dz) * n + x + dx) * 4; img.data[k] = c[0]; img.data[k + 1] = c[1]; img.data[k + 2] = c[2]; } };
+    for (const f of W.industries) dot(f.x, f.z, [240, 170, 40]);
+    for (const tw of W.towns) dot(tw.x, tw.z, [255, 255, 255]);
     canvas.width = n; canvas.height = n;
     ctx.putImageData(img, 0, 0);
+    const st = terrainStats(W, n);
     setMapSize(prev);
-    return true;
+    return st;
   }
 
   newGameDialog() {
@@ -320,6 +328,16 @@ class App {
       <div class="diffs">${Object.keys(DIFFICULTY).map((d) => `<label class="diff"><input type="radio" name="diff" value="${d}" ${d === 'standard' ? 'checked' : ''}/><b>${t('diff_' + d)}</b><small>${t('diff_' + d + '_desc')}</small></label>`).join('')}</div>
       <h3>${t('ng_world')}</h3>
       <div class="diffs ng-size">${MAP_SIZES.map((n) => `<label class="diff"><input type="radio" name="size" value="${n}" ${n === 64 ? 'checked' : ''}/><b>${t('size_' + n)}</b><small>${t('size_' + n + '_desc')}</small></label>`).join('')}</div>
+      <label class="set"><span>${t('ng_terrain')}</span><select id="ng-terrain">${TERRAIN_IDS.map((p) => `<option value="${p}">${t('terrain_' + p)}</option>`).join('')}</select></label>
+      <p class="muted small" id="ng-tdesc">${t('terrain_classic_desc')}</p>
+      <details class="ng-more" id="ng-tadv"><summary>${t('ng_terrain_adv')}</summary>
+        <div class="ng-tparams">${Object.entries(TERRAIN_RANGES).map(([k, [lo, hi, st]]) => `<label class="set"><span>${t('tp_' + k)}</span><span class="row"><input type="range" data-tp="${k}" min="${lo}" max="${hi}" step="${st}" aria-label="${t('tp_' + k)}"/><output data-tpo="${k}"></output></span></label>`).join('')}
+        ${Object.entries(TERRAIN_CHOICES).map(([k, os]) => `<label class="set"><span>${t('tp_' + k)}</span><select data-tp="${k}">${os.map((o) => `<option value="${o}">${t('tp_' + k + '_' + o)}</option>`).join('')}</select></label>`).join('')}
+        ${['passes', 'smart'].map((k) => `<label class="set"><span>${t('tp_' + k)}</span><input type="checkbox" data-tp="${k}"/></label>`).join('')}</div>
+        <p class="muted small">${t('ng_terrain_adv_help')}</p>
+        <button class="btn ghost small" id="ng-treset">${t('ng_terrain_reset')}</button>
+      </details>
+      <p class="card warn" id="ng-mega" hidden>${icon('warn')} ${t('ng_mega_warn')}</p>
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
       <p class="muted small">${t('ng_heightmap_help')}</p>
@@ -331,12 +349,46 @@ class App {
       </details>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ind_rule')}</span><select id="ng-ind">${['off', 'on'].map((o) => `<option value="${o}">${t('ind_rule_' + o)}</option>`).join('')}</select></label>
-      ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><small class="muted">${t('map_preview')}</small></div>`}
+      ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><div class="ng-pinfo"><small class="muted">${t('map_preview')}</small><div id="ng-tstats" class="small"></div><button class="btn ghost small" id="ng-regen">${t('ng_regen')}</button></div></div>`}
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
     // the map preview follows the seed and the size
     const seedNum = () => { const raw = w.querySelector('#ng-seed').value.trim() || seed; return /^\d+$/.test(raw) ? parseInt(raw, 10) % 4294967296 : hashStr(raw); };
+    // the terrain: a preset, adjusted in the advanced settings
+    const tSel = w.querySelector('#ng-terrain');
+    const tFill = () => {
+      const P = resolveTerrain({ preset: tSel.value });
+      w.querySelectorAll('[data-tp]').forEach((el) => { const k = el.dataset.tp; if (el.type === 'checkbox') el.checked = !!P[k]; else el.value = String(P[k]); });
+      tOut();
+      w.querySelector('#ng-tdesc').textContent = t('terrain_' + tSel.value + '_desc');
+    };
+    const tOut = () => w.querySelectorAll('[data-tpo]').forEach((o) => { o.textContent = w.querySelector(`[data-tp=${o.dataset.tpo}]`).value; });
+    const terrain = () => {
+      const spec = { preset: tSel.value };
+      w.querySelectorAll('[data-tp]').forEach((el) => { const k = el.dataset.tp; spec[k] = el.type === 'checkbox' ? el.checked : TERRAIN_RANGES[k] ? +el.value : el.value; });
+      return normalizeTerrain(spec);
+    };
+    const size = () => +w.querySelector('input[name=size]:checked').value;
+    const mega = () => { w.querySelector('#ng-mega').hidden = size() < 192; };
     let pt = null;
-    const preview = () => { clearTimeout(pt); pt = setTimeout(() => { const c = w.querySelector('#ng-map'); if (c) this.drawPreview(c, seedNum(), +w.querySelector('input[name=size]:checked').value); }, 150); };
+    const preview = () => { clearTimeout(pt); mega(); pt = setTimeout(() => {
+      const c = w.querySelector('#ng-map');
+      if (!c) return;
+      const st = this.drawPreview(c, seedNum(), size(), terrain());
+      const box = w.querySelector('#ng-tstats');
+      if (st && box) box.innerHTML = `${t('ng_tstats', { w: st.water, m: st.mountain, f: st.forest, fl: st.fields, n: st.towns, i: st.industries })}<br>${t('ng_tcost', { flat: st.cross.flat, slope: st.cross.slope, bridge: st.cross.bridge, tunnel: st.cross.tunnel, c: t('tcost_' + st.cost) })}`;
+    }, 150); };
+    tSel.addEventListener('change', () => {
+      tFill();
+      // a preset made for a bigger map suggests it
+      const want = TERRAIN_PRESETS[tSel.value].size;
+      if (want) { const r = w.querySelector(`input[name=size][value="${want}"]`); if (r) r.checked = true; }
+      preview();
+    });
+    w.querySelectorAll('[data-tp]').forEach((el) => el.addEventListener(el.type === 'range' ? 'input' : 'change', () => { tOut(); preview(); }));
+    w.querySelector('#ng-treset').onclick = () => { tFill(); preview(); };
+    tFill();
+    const regen = w.querySelector('#ng-regen');
+    if (regen) regen.onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); preview(); };
     w.querySelector('#ng-seed').addEventListener('input', preview);
     w.querySelectorAll('input[name=size]').forEach((r) => r.addEventListener('change', preview));
     preview();
@@ -365,7 +417,7 @@ class App {
         try { hmap = await readHeightmap(file, mapSize); } catch (e) { this.ui.toast(t('ng_heightmap_bad'), 'error'); return; }
       }
       w.remove();
-      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals, industryRule, rivalTiming, aiLevel });
+      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals, industryRule, rivalTiming, aiLevel, terrain: terrain() });
     };
   }
 
