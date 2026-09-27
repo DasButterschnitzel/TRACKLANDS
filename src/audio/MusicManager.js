@@ -9,7 +9,11 @@
 // Playlist with shuffle, next / previous, pause, volume (Settings), crossfade
 // between tracks, metadata for the now-playing display, and moods: the next
 // track is picked by weight, preferring tracks tagged with the current
-// context (menu, peaceful, busy, night, winter, city, industrial).
+// context (menu, peaceful, busy, night, winter, city, industrial) and the
+// calendar era (steam, diesel, electric, modern, future). Repeat: all (the
+// playlist goes on), one (the same track again) or off (stop at the end of
+// the list when not shuffling). Shuffle and repeat are kept in the settings;
+// a short "now playing" note shows when a track starts (setting).
 const BASE = 'assets/music/';
 const FADE = 3;          // seconds of crossfade
 
@@ -22,7 +26,9 @@ export class MusicManager {
     this.cur = null;              // { i, el, src, gain }
     this.paused = false;
     this.shuffle = true;
+    this.repeat = 'all';          // 'all' | 'one' | 'off'
     this.context = 'menu';
+    this.era = '';
     this.onChange = null;
   }
 
@@ -48,7 +54,9 @@ export class MusicManager {
   nowPlaying() { return this.cur ? this.tracks[this.cur.i] : null; }
 
   // the context the game is in (menu, peaceful, busy, night, winter, city, industrial)
-  setContext(ctx) { this.context = ctx; }
+  setContext(ctx, era = this.era) { this.context = ctx; this.era = era || ''; }
+  // how likely a track is now: its weight, ×3 for the current mood, ×2 for the era
+  score(t) { return t.weight * (t.mood.includes(this.context) ? 3 : 1) * (this.era && t.era === this.era ? 2 : 1); }
 
   pick() {
     const n = this.tracks.length;
@@ -56,7 +64,7 @@ export class MusicManager {
     if (!this.shuffle) return this.cur ? (this.cur.i + 1) % n : 0;
     const recent = new Set(this.history.slice(-Math.min(3, n - 1)));
     let sum = 0;
-    const w = this.tracks.map((t, i) => { if (recent.has(i)) return 0; const x = t.weight * (t.mood.includes(this.context) ? 3 : 1); sum += x; return x; });
+    const w = this.tracks.map((t, i) => { if (recent.has(i)) return 0; const x = this.score(t); sum += x; return x; });
     if (sum <= 0) return Math.floor(Math.random() * n);
     let r = Math.random() * sum;
     for (let i = 0; i < n; i++) { r -= w[i]; if (r <= 0) return i; }
@@ -83,7 +91,7 @@ export class MusicManager {
     this.cur = { i, el, src, gain };
     this.history.push(i);
     if (this.history.length > 50) this.history.shift();
-    el.addEventListener('ended', () => { if (this.cur && this.cur.el === el) this.next(); });
+    el.addEventListener('ended', () => { if (this.cur && this.cur.el === el) this.onEnded(); });
     el.addEventListener('error', () => { if (this.cur && this.cur.el === el) { this.cur = null; setTimeout(() => this.next(), 1000); } });
     el.play().catch(() => {});
     this.paused = false;
@@ -95,6 +103,14 @@ export class MusicManager {
     try { x.gain.gain.cancelScheduledValues(now); x.gain.gain.setValueAtTime(x.gain.gain.value, now); x.gain.gain.linearRampToValueAtTime(0.0001, now + FADE); } catch (e) { /* closed */ }
     setTimeout(() => { try { x.el.pause(); x.src.disconnect(); x.gain.disconnect(); } catch (e) { /* gone */ } }, FADE * 1000 + 200);
   }
+  // a track ended: again (repeat one), the next, or stop at the end of the list
+  onEnded() {
+    if (!this.cur) return;
+    if (this.repeat === 'one') { this.play(this.cur.i); return; }
+    if (this.repeat === 'off' && !this.shuffle && this.cur.i >= this.tracks.length - 1) { this.stop(); this.paused = true; if (this.onChange) this.onChange(null); return; }
+    this.next();
+  }
+  cycleRepeat() { this.repeat = this.repeat === 'all' ? 'one' : this.repeat === 'one' ? 'off' : 'all'; return this.repeat; }
   next() { if (this.has()) this.play(this.pick()); }
   prev() {
     if (this.history.length < 2) return;
@@ -110,6 +126,8 @@ export class MusicManager {
   // called every frame: start when allowed, follow the music setting
   update() {
     const s = this.audio.game.settings;
+    if (s.musicShuffle != null) this.shuffle = !!s.musicShuffle;
+    if (s.musicRepeat) this.repeat = s.musicRepeat;
     if (!this.has() || !this.audio.ctx) return;
     if (!s.music) { if (this.cur && !this.paused) this.pause(); return; }
     if (!this.cur && !this.paused) this.next();

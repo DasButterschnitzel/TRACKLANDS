@@ -449,7 +449,7 @@ export class AudioEngine {
       const big = g.towns ? g.towns.list.some((t) => t.stage >= 4) : false;
       ctx = env && env.night > 0.5 ? 'night' : env && env.snow > 0.3 ? 'winter' : T >= 12 ? 'busy' : big ? 'city' : 'peaceful';
     }
-    M.setContext(ctx);
+    M.setContext(ctx, g && g.ledger ? g.ledger.era() : '');
     M.update();
   }
 

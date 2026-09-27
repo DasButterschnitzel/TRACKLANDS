@@ -43,6 +43,9 @@ const esc = escapeHtml;
 export class UI {
   constructor(app) {
     this.app = app;          // main app (settings, store, actions)
+    // "now playing": a short note when a music track starts (setting)
+    const M = app.audio && app.audio.musicMgr;
+    if (M) M.onChange = (t) => { if (t && !M.paused && app.settings.nowPlaying !== false) this.toast(`♪ ${t.title}${t.artist ? ' — ' + t.artist : ''}`, 'info', 'play'); if (this.panel === 'settings') this.refreshPanel(); };
     this.game = null;
     this.panel = null;
     this.handlers = {};
@@ -1075,8 +1078,10 @@ export class UI {
     const t = M.nowPlaying();
     return `<div class="card music-now">${icon('play', 'mini')}<div><b>${t ? escapeHtml(t.title) : this.tr('music_stopped')}</b>${t && t.artist ? `<small>${escapeHtml(t.artist)}</small>` : ''}</div>
       <div class="row"><button class="icon-btn small" data-act="musicPrev" aria-label="${this.tr('music_prev')}">${icon('left')}</button><button class="icon-btn small" data-act="musicToggle" aria-label="${this.tr('music_toggle')}">${icon(M.paused || !t ? 'play' : 'pause')}</button><button class="icon-btn small" data-act="musicNext" aria-label="${this.tr('music_next')}">${icon('right')}</button>
-      <button class="chip mini ${M.shuffle ? 'on' : ''}" data-act="musicShuffle"><b>${this.tr('music_shuffle')}</b></button></div></div>
-      <p class="muted small">${this.tr('music_count', { n: M.tracks.length })}</p>`;
+      <button class="chip mini ${M.shuffle ? 'on' : ''}" data-act="musicShuffle" aria-pressed="${M.shuffle}"><b>${this.tr('music_shuffle')}</b></button>
+      <button class="chip mini ${M.repeat !== 'off' ? 'on' : ''}" data-act="musicRepeat" data-tip="${this.tr('music_repeat_' + M.repeat)}"><b>${this.tr('music_repeat')}: ${this.tr('music_repeat_' + M.repeat)}</b></button></div></div>
+      <details class="playlist"><summary>${this.tr('music_count', { n: M.tracks.length })}</summary>${M.tracks.map((x, i) => `<button class="fin-row ${t === x ? 'on' : ''}" data-act="musicPlay" data-arg="${i}"><span>${t === x ? icon('play', 'mini') + ' ' : ''}${escapeHtml(x.title)}</span><small>${escapeHtml([x.artist, x.era ? this.tr('era_' + x.era) : '', x.mood.join(', ')].filter(Boolean).join(' · '))}</small></button>`).join('')}</details>
+      <label class="set tog"><span>${this.tr('music_now_toast')}</span><input type="checkbox" ${this.app.settings.nowPlaying !== false ? 'checked' : ''} data-change="settingBool" data-key="nowPlaying"/><i></i></label>`;
   }
   pSettings() {
     const s = this.app.settings;
@@ -1368,7 +1373,9 @@ export class UI {
       musicPrev: () => { this.app.audio.musicMgr.prev(); this.refreshPanel(); },
       musicNext: () => { this.app.audio.musicMgr.next(); this.refreshPanel(); },
       musicToggle: () => { this.app.audio.musicMgr.toggle(); this.refreshPanel(); },
-      musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.refreshPanel(); },
+      musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.app.setSetting('musicShuffle', M.shuffle); this.refreshPanel(); },
+      musicRepeat: () => { const M = this.app.audio.musicMgr; this.app.setSetting('musicRepeat', M.cycleRepeat()); this.refreshPanel(); },
+      musicPlay: (a) => { const M = this.app.audio.musicMgr; if (M.play(+a)) this.refreshPanel(); },
       roadMode: (a) => { if (a === 'tram' && !g().roads.kindUnlocked('tram')) { this.error('err_locked'); return; } if (a === 'lane' && !g().progression.research.has('bus_lanes')) { this.toast(this.tr('lane_locked'), 'info', 'research'); return; } g().construction.roadMode = a; this.renderToolbar(); },
       roadType: (a) => { const why = g().roads.typeLocked(a); if (why) { this.toast(this.tr(why.key, why), 'info', 'road'); return; } g().construction.roadType = a; this.renderToolbar(); },
       stopKind: (a) => { if (!g().roads.kindUnlocked(a)) { this.error('err_locked'); return; } g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
