@@ -576,6 +576,9 @@ export const STATION_STYLES = [
   { id: 'brick', roof: 0x4a4f58, wall: 0xb0664a, unlock: { level: 5 } },
   { id: 'alpine_timber', roof: 0x5a3a2a, wall: 0xd8b888, unlock: { region: 'alpine_pass' } },
   { id: 'modern', roof: 0x3a8f8a, wall: 0xdfe6ea, unlock: { level: 18 } },
+  { id: 'harbour', roof: 0x2f5e8a, wall: 0xf2efe6, unlock: { region: 'coastal_reach' } },
+  { id: 'art_deco', roof: 0x2a2f3a, wall: 0xe6d3a8, unlock: { level: 12 } },
+  { id: 'steel_glass', roof: 0x9aa3ac, wall: 0xcfe0ea, unlock: { level: 25 } },
 ];
 export const DECORATIONS = [
   { id: 'oak', cost: 5, unlock: { level: 1 } },

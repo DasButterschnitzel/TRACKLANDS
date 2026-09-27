@@ -26,6 +26,7 @@ import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
 import { CHANGELOG } from '../changelog.js';
 import { PACKS } from '../content/Packs.js';
+import { logoSVG, cleanLogo, randomLogo, LOGO_SHAPES, LOGO_SYMBOLS, LOGO_COLORS2 } from '../world/Logo.js';
 import { healthOfGame, AUTOSAVE_CHOICES, BACKUP_CHOICES } from '../save/Backups.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
@@ -756,6 +757,11 @@ export class UI {
     return `<h3>${this.tr('identity')}</h3>
       <label class="set"><span>${this.tr('company_name')}</span><input class="inp" maxlength="32" value="${escapeHtml(C.name)}" data-change="companyName" aria-label="${this.tr('company_name')}"/></label>
       <div class="set"><span>${this.tr('company_color')}</span><div class="cswatches">${sw}</div></div>
+      <div class="set logo-set"><span>${this.tr('company_logo')}</span><div class="logo-edit">${logoSVG(C.logo, C.color, C.name, 64)}
+        <div class="logo-opts"><select data-change="logoShape" aria-label="${this.tr('logo_shape')}">${LOGO_SHAPES.map((x) => `<option value="${x}" ${C.logo.shape === x ? 'selected' : ''}>${this.tr('logo_shape_' + x)}</option>`).join('')}</select>
+        <select data-change="logoSymbol" aria-label="${this.tr('logo_symbol')}">${LOGO_SYMBOLS.map((x) => `<option value="${x}" ${C.logo.symbol === x ? 'selected' : ''}>${this.tr('logo_sym_' + x)}</option>`).join('')}</select>
+        <div class="cswatches">${LOGO_COLORS2.map((c) => `<button class="cswatch small ${C.logo.color2 === c ? 'on' : ''}" style="background:#${c.toString(16).padStart(6, '0')}" data-act="logoColor2" data-arg="${c}" aria-label="${this.tr('logo_color2')}" aria-pressed="${C.logo.color2 === c}"></button>`).join('')}</div>
+        <button class="btn ghost small" data-act="logoRandom">${this.tr('logo_random')}</button></div></div></div>
       <div class="card">${icon('company')} <b>${this.tr('hq_title')}</b> <small>${hq ? this.tr(town ? 'hq_in' : 'hq_built_at', { town: town ? escapeHtml(town.name) : '' }) : this.tr('hq_none')}</small>
         <div class="row wrap">${hq ? `<button class="btn ghost small" data-act="jumpHQ">${icon('focus', 'mini')} ${this.tr('show')}</button>` : ''}<button class="btn small" data-act="hqPlace">${icon('company', 'mini')} ${this.tr(hq ? 'hq_move' : 'hq_build', { n: fmt(C.hqCost()) })}</button></div>
         <p class="muted small">${this.tr('hq_help')}</p></div>`;
@@ -1394,6 +1400,8 @@ export class UI {
       decorType: (a) => { const d = DECORATIONS.find((x) => x.id === a); if (!g().progression.isUnlocked(d.unlock)) { this.error('err_locked'); return; } g().construction.decor = a; this.renderToolbar(); },
       heatmap: () => this.toggleHeatmap(),
       companyColor: (a) => { const G = g(); G.company.color = +a; G.company.buildVisual(); this.refreshPanel(); },
+      logoColor2: (a) => { const C = g().company; C.logo = cleanLogo({ ...C.logo, color2: +a }); C.buildVisual(); this.refreshPanel(); },
+      logoRandom: () => { const C = g().company; C.logo = randomLogo(C.name, (C.logo.seed || 0) + 1); C.buildVisual(); this.refreshPanel(); },
       hqPlace: () => { this.closePanel(); g().construction.setTool('hq'); this.toast(this.tr('hq_hint', { n: fmt(g().company.hqCost()) }), 'info', 'company'); },
       jumpHQ: () => { const G = g(), h = G.company.hq; if (h) { this.closePanel(); G.camera.focus(tileCX(h.tile) + 1, tileCZ(h.tile) + 1, 14); } },
       weatherInfo: () => this.toast(this.weatherText(), 'info', 'w_' + (g().settings.weather ? g().env.weather : 'clear')),
@@ -1474,7 +1482,9 @@ export class UI {
       ...this.lineInputs(),
       ...this.transportInputs(),
       ...this.catalogInputs(),
-      companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
+      logoShape: (el) => { const C = this.game.company; C.logo = cleanLogo({ ...C.logo, shape: el.value }); C.buildVisual(); this.refreshPanel(); },
+      logoSymbol: (el) => { const C = this.game.company; C.logo = cleanLogo({ ...C.logo, symbol: el.value }); C.buildVisual(); this.refreshPanel(); },
+      companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.game.company.buildVisual(); this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); this.refreshPanel(); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingNum: (el) => { const v = parseInt(el.value, 10); if (Number.isFinite(v)) this.app.setSetting(el.dataset.key, v); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },

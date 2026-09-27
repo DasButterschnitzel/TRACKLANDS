@@ -6,6 +6,8 @@
 import { N, TILE, idx, cheb } from '../util.js';
 import { ModelBuilder, meshFrom } from '../core/ModelBuilder.js';
 import { heightAt } from './WorldGen.js';
+import * as THREE from 'three';
+import { cleanLogo, defaultLogo, logoCanvas } from './Logo.js';
 
 export const COMPANY_COLORS = [0x2f6b4a, 0x2f5e9a, 0x9a2f3a, 0xc9793a, 0x6a4a9a, 0x2f8a8a, 0x3a3d42, 0xd0a030];
 export const HQ_COST = 3000;
@@ -16,6 +18,7 @@ export class Company {
     this.name = 'Tracklands Rail Co.';
     this.color = COMPANY_COLORS[0];
     this.hq = null;          // { tile, town, built }
+    this.logo = defaultLogo();   // badge: shape, symbol, second colour (src/world/Logo.js)
     this.month = -1;
     this.mesh = null;
   }
@@ -101,6 +104,15 @@ export class Company {
     mb.box(0.5, 0.3, 0.02, c, { x: -0.65, y: 3.6, z: -0.9 });
     mb.box(0.8, 0.02, 0.8, 0x6aa852, { x: -0.9, z: 0.9 });
     const mesh = meshFrom(mb.build());
+    // the company's logo on a sign in front of the headquarters
+    try {
+      const tex = new THREE.CanvasTexture(logoCanvas(this.logo, this.color, this.name, 128));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+      sign.position.set(-0.2, 1.9, 0.43);
+      sign.userData.logo = true;
+      mesh.add(sign);
+    } catch (e) { /* no canvas (tests without DOM): no sign */ }
     const x = (this.hq.tile % N + 1) * TILE, z = (Math.floor(this.hq.tile / N) + 1) * TILE;
     mesh.position.set(x, heightAt(g.world, x, z) + 0.05, z);
     mesh.userData.hq = true;
@@ -108,11 +120,12 @@ export class Company {
     g.scene.add(mesh);
   }
 
-  serialize() { return { name: this.name, color: this.color, hq: this.hq }; }
+  serialize() { return { name: this.name, color: this.color, hq: this.hq, logo: this.logo }; }
   deserialize(d) {
     if (!d || typeof d !== 'object') return;
     if (typeof d.name === 'string' && d.name.trim()) this.name = d.name.trim().slice(0, 32);
     if (COMPANY_COLORS.includes(d.color)) this.color = d.color;
+    this.logo = cleanLogo(d.logo);
     if (d.hq && Number.isInteger(d.hq.tile) && d.hq.tile >= 0 && d.hq.tile < N * N) {
       this.hq = { tile: d.hq.tile, town: Number.isInteger(d.hq.town) ? d.hq.town : null, built: +d.hq.built || 0 };
       this.claim(true);

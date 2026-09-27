@@ -75,6 +75,7 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Campaign:** the six built-in scenarios open one after another. A win earns gold, silver or bronze by how early it came.
 - **Content packs:** vehicles and scenarios as JSON in `assets/packs` (see its README). Every entry is checked against a schema; bad entries are left out and listed in Settings → Content packs.
 - **Help and controls:** FIND doubles as a command palette (`Ctrl+K`), km/h or mph, a haptics switch, and handbook pages for roads, ports and airports, reputation, fleet care, saves and shortcuts.
+- **Branding:** a company logo (shape, symbol or initials, second colour, "surprise me") in the company panel and on a sign at the headquarters; three more station styles (harbour, art deco, steel and glass).
 - **New games:** quick start from the title, game mode presets (relaxed builder, classic, tycoon challenge) and a map preview of the chosen seed and size. Terrain presets and an advanced generator are not offered: the generator has no terrain parameters besides an imported height map, and the game shows no options it cannot honour.
 
 ## Tests
