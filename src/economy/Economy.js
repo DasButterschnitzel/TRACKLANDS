@@ -1,12 +1,12 @@
 // Coins, construction costs, delivery revenue, operating costs, contracts,
 // random world events, daily challenges and the recovery grant.
-import { cheb, RNG, hashStr, dateKey, tx, tz } from '../util.js';
+import { cheb, RNG, hashStr, dateKey, tx, tz, N, LAYERS } from '../util.js';
 import {
   CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit, CARGO_CLASS } from '../config.js';
 import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from '../rail/RailNetwork.js';
 import { layerOf } from '../util.js';
 import { heritageFare } from './Fleet.js';
-import { NO_FX } from '../world/Owners.js';
+import { NO_FX, ownerIdx } from '../world/Owners.js';
 
 export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
 
@@ -71,6 +71,32 @@ export class Economy {
     if (!ref || !g.rivals || !g.rivals.list.length) return null;
     const o = ref.type === 'train' ? g.trains.byId(ref.id) : ref.type === 'station' ? g.stations.byId(ref.id) : ref.type === 'depot' ? g.stations.depotById(ref.id) : null;
     return o && o.owner ? g.rivals.byId(o.owner) : null;
+  }
+  // the monthly upkeep of tunnels, viaducts and underground or elevated
+  // stations, per company (Phase 11): the player's goes to the ledger, each
+  // rival pays its own. Returns {owner index: {track, station}} for the tests.
+  infraUpkeep() {
+    const g = this.game, net = g.net, NN = N * N, U = COSTS.upkeep, sums = {};
+    if (!net) return sums;
+    const add = (o, k, v) => { const s = sums[o] || (sums[o] = { track: 0, station: 0 }); s[k] += v; };
+    for (let L = 1; L < LAYERS; L++) {
+      const rate = U.tile[L];
+      for (let i = L * NN, e = (L + 1) * NN; i < e; i++) if (net.conn[i] || net.special.has(i)) add(net.own[i], 'track', rate);
+    }
+    for (const s of g.stations.list) {
+      const L = layerOf(s.tile);
+      if (L) add(ownerIdx(s.owner), 'station', U.station[L] * Math.max(1, g.stations.allTiles(s).length) * (1 + (s.level || 0) * 0.25));
+    }
+    for (const [o, s] of Object.entries(sums)) {
+      const r = +o ? g.rivals && g.rivals.byId('r' + o) : null;
+      if (+o && !r) continue;
+      for (const k of ['track', 'station']) {
+        const n = Math.round(s[k]);
+        if (!n) continue;
+        if (r) r.pay(n, 'maint_' + k); else this.spend(n, 'maint_' + k, null, 'fin_upkeep');
+      }
+    }
+    return sums;
   }
   // every coin in or out is booked once in the company ledger (ref: the
   // object it belongs to, {type, id}; note: short text for the log)

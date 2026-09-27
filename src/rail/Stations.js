@@ -295,6 +295,9 @@ export class StationSystem {
       for (const t of g.towns.list) { const d = cheb(tile, idx(t.x, t.z)); if (d < bd) { bd = d; best = t; } }
       base = `${best ? best.name : 'Frontier'} ${tr('halt')}`;
     }
+    // below the ground or on a viaduct (Phase 11): a metro name
+    const L = layerOf(tile);
+    if (L) base = tr(L === 3 ? 'st_elev_name' : 'st_metro_name', { n: base.replace(' ' + tr('halt'), '') });
     let name = base, k = 2;
     while (used.has(name)) name = `${base} ${k++}`;
     return name;
@@ -692,7 +695,7 @@ export class StationSystem {
       if (j < 0) return { error: 'err_out_of_map' };
       const r = net.tileBlockedReason(j);
       if (r) return { error: r, bad: j };
-      if (net.kind(j) !== K_NORMAL) return { error: 'err_bad_terrain', bad: j };
+      if (!STATION_KINDS_OK.has(net.kind(j))) return { error: 'err_bad_terrain', bad: j };
       if (net.conn[j] || net.special.has(j)) return { error: 'err_occupied', bad: j };
       if (g.decor.at(j)) return { error: 'err_occupied', bad: j };
       tiles.push(j);
@@ -721,7 +724,7 @@ export class StationSystem {
         p = step(p, diag);
         if (p < 0) { ok = false; break; }
         if (i < k) {
-          if (net.conn[p] || net.special.has(p) || net.tileBlockedReason(p) || net.kind(p) !== K_NORMAL || g.decor.at(p)) { ok = false; break; }
+          if (net.conn[p] || net.special.has(p) || net.tileBlockedReason(p) || !STATION_KINDS_OK.has(net.kind(p)) || g.decor.at(p)) { ok = false; break; }
         } else if (p !== m) ok = false;
         path.push(p);
       }
@@ -791,7 +794,7 @@ export class StationSystem {
     if (net.special.has(B) || net.waypoints.has(B)) return { error: 'err_occupied', bad: B };
     const r = net.tileBlockedReason(B);
     if (r) return { error: r, bad: B };
-    if (net.kind(B) !== K_NORMAL) return { error: 'err_bad_terrain', bad: B };
+    if (!STATION_KINDS_OK.has(net.kind(B))) return { error: 'err_bad_terrain', bad: B };
     if (net.conn[B]) {
       // existing plain straight track can become platform
       const back = (dOut + 4) & 7;
@@ -1033,14 +1036,22 @@ export class StationSystem {
     const free = (b) => b >= 0 && W.type[b] === 0 && (!occ.blocked[b] || occ.owner[b] === -stn.id) && !g.net.conn[b] && !g.net.special.has(b) && !(g.roads && g.roads.hasRoad && g.roads.hasRoad(b));
     const tiles = this.allTiles(stn).map((t) => baseTile(t));
     for (const b of tiles) if (free(b)) return b;
-    for (const b of tiles) for (let d = 0; d < 8; d++) { const n = step(b, d); if (free(n)) return n; }
+    for (let r = 1; r <= 3; r++) for (const b of tiles) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || !inMap(tx(b) + dx, tz(b) + dz)) continue;
+      const n = idx(tx(b) + dx, tz(b) + dz);
+      if (free(n)) return n;
+    }
+    // in a dense centre: stairs down from the pavement of a street above
+    const road = (b) => b >= 0 && g.roads && g.roads.hasRoad && g.roads.hasRoad(b);
+    for (const b of tiles) if (road(b)) return b;
+    for (const b of tiles) for (let d = 0; d < 8; d++) { const n = step(b, d); if (road(n)) return n; }
     return -1;
   }
   placeEntrance(stn) {
     const occ = this.game.occupancy;
     if (stn.entrance >= 0 && occ.owner[stn.entrance] === -stn.id) { occ.blocked[stn.entrance] = 0; occ.owner[stn.entrance] = 0; }
     stn.entrance = this.isUnderground(stn) ? this.entranceTile(stn) : -1;
-    if (stn.entrance >= 0) { occ.blocked[stn.entrance] = 3; occ.owner[stn.entrance] = -stn.id; }
+    if (stn.entrance >= 0 && !(this.game.roads && this.game.roads.hasRoad && this.game.roads.hasRoad(stn.entrance))) { occ.blocked[stn.entrance] = 3; occ.owner[stn.entrance] = -stn.id; }
   }
   buildVisual(stn) {
     if (stn.mesh) { stn.mesh.parent && stn.mesh.parent.remove(stn.mesh); stn.mesh.geometry.dispose(); }
@@ -1089,6 +1100,8 @@ export class StationSystem {
         const e = meshFrom(em.build());
         const b = stn.entrance, W = this.game.world;
         e.position.set(tileCX(b), W.tileH[b] + 0.02, tileCZ(b));
+        // (on a street: a small stairway at the pavement's corner)
+        if (this.game.roads && this.game.roads.hasRoad && this.game.roads.hasRoad(b)) { e.scale.setScalar(0.55); e.position.x += TILE * 0.36; e.position.z += TILE * 0.36; e.position.y += 0.04; }
         e.rotation.y = F.yaw;
         e.userData.station = stn.id;
         stn.entMesh = e;
@@ -1115,7 +1128,12 @@ export class StationSystem {
     if (stn.service !== 'passenger' && ((freightTracks && freightTracks === n) || (!towns && inds) || stn.service === 'freight')) kind = stn.facilities.includes('container_crane') ? 'intermodal' : n >= 3 ? 'yard' : 'freight';
     else if (hs && stn.level >= 2) kind = 'hs';
     else kind = stn.level === 0 ? (n > 1 ? 'village' : 'halt') : ['halt', 'village', 'town', 'city', 'central', 'grand'][stn.level];
-    return { kind, terminal };
+    // metro and viaduct stations (Phase 11): cut-and-cover or deep, side or
+    // island platforms, and a large interchange once it has four tracks
+    const L = layerOf(stn.tile);
+    if (L === 1 || L === 2) kind = n >= 4 ? 'metro_hub' : L === 2 ? 'metro_deep' : 'metro_cut';
+    else if (L === 3 && stn.service !== 'freight') kind = 'metro_elev';
+    return { kind, terminal, platform: n === 1 ? 'side' : n === 2 ? 'island' : 'multi' };
   }
 
   buildDepotVisual(dep) {

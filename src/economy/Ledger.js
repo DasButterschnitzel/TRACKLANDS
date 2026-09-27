@@ -202,7 +202,7 @@ export class Ledger {
     let track = 0;
     for (let i = 0; i < net.conn.length; i++) if (net.conn[i]) track += E.costs.trackTile(net.tier[i] | 0, net.kind(i)) * 0.5;
     let stations = 0;
-    for (const s of g.stations.mine()) stations += E.costs.station() * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
+    for (const s of g.stations.mine()) stations += E.costs.station(s.tile) * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
     stations += g.stations.myDepots().length * E.costs.depot() * 0.5;
     if (g.company) stations += g.company.value();
     const shares = g.industries ? g.industries.stakeValue() : 0;

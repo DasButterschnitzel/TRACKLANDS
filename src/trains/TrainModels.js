@@ -416,6 +416,20 @@ function electricLoco(mb, m, L, P, detail) {
     pantograph(mb, -L / 2 + 0.42, FLOOR + H + 0.02, true, -1);
     return;
   }
+  if (shape.startsWith('metro')) {
+    // metro sets (Phase 11): a boxy car with many wide doors, no pantograph
+    // (a third-rail shoe on each bogie); the automated set has no cab window
+    // band, the walk-through set a gangway band along its side
+    underframe(mb, L, DARK); bogiesAt(mb, L);
+    const early = shape === 'metro_early', hc = shape === 'metro_hc', auto = shape === 'metro_auto', wt = shape === 'metro_wt';
+    const H = unitCar(mb, L, P, { cab: auto ? 'round' : wt ? 'wedge' : 'flat', doors: early ? 3 : hc || wt ? 5 : 4, H: early ? 0.48 : hc ? 0.58 : 0.54 });
+    for (const x of [-L / 2 + 0.3, L / 2 - 0.3]) for (const z of [W / 2 + 0.03, -W / 2 - 0.03]) mb.box(0.14, 0.03, 0.03, 0x8a8f96, { x, y: FLOOR - 0.13, z });   // shoe gear
+    if (early) mb.box(L - 0.4, 0.06, W * 0.5, shade(body, 0.8), { y: FLOOR + H + 0.02 });                            // clerestory
+    if (wt) mb.box(L - 0.3, 0.035, W + 0.01, shade(accent, 1.15), { y: FLOOR + H - 0.1 });                            // gangway band
+    if (auto) mb.box(0.03, 0.12, W * 0.6, 0x3fc8b8, { x: L / 2 - 0.02, y: FLOOR + H * 0.55, glow: true });           // light bar, no driver
+    if (hc) mb.box(0.5, 0.05, W * 0.5, shade(DARK, 1.3), { x: 0, y: FLOOR + H });                                        // roof air conditioning
+    return;
+  }
   const heavy = shape === 'box3';
   const sleek = shape === 'sleek';
   if (shape === 'early') {

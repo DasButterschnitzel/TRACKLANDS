@@ -153,6 +153,10 @@ export const COSTS = {
   viaduct: 80,          // per tile of elevated viaduct
   portal: 900, shaft: 1400, rampElev: 600,
   ugStation: 4.5, elevStation: 2.2,   // station cost factors underground / on a viaduct
+  // monthly upkeep of the structures (Phase 11): per tile of shallow tunnel,
+  // deep tunnel and viaduct, and per platform tile of a station below or
+  // above the ground (pumps, ventilation, lifts, lighting). Surface track costs nothing.
+  upkeep: { tile: [0, 1.2, 2.4, 0.8], station: [0, 6, 10, 3] },
   station: 150,
   stationUpgrade: [0, 400, 1500, 6000, 25000, 70000],
   stationUpgradeLevel: [1, 2, 6, 12, 20, 28], // company level needed for station level index
@@ -406,7 +410,7 @@ export const ROAD_TYPE_IDS = Object.keys(ROAD_TYPES);   // (saves store the inde
 export const STREET_LIMIT = 60;
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express', 'intermodal', 'tilting'];
 // what a locomotive is best at (filters, compare, advisor); effects come from traits and stats
-export const DUTIES = ['shunter', 'local', 'regional', 'intercity', 'express', 'freight', 'heavy', 'mixed', 'mountain', 'highspeed'];
+export const DUTIES = ['shunter', 'local', 'regional', 'intercity', 'express', 'freight', 'heavy', 'mixed', 'mountain', 'highspeed', 'metro'];
 export const LOCOS = [
   { id: 'pioneer', name: 'Pioneer 0-4-0', era: 1, kind: 'steam', role: 'mixed', speed: 60, accel: 0.9, power: 400, freight: 12, pax: 10, wagons: 2, reliability: 0.9, load: 1.0, op: 20, price: 600, rarity: 'common', trait: 'cheap_op', level: 1, color: 0x2f6b4a, duty: 'shunter', shape: 'tank_small' },
   { id: 'ironhill', name: 'Ironhill 2-6-0', era: 1, kind: 'steam', role: 'freight', speed: 72, accel: 0.8, power: 650, freight: 20, pax: 6, wagons: 3, reliability: 0.9, load: 1.0, op: 32, price: 1400, rarity: 'common', trait: 'mountain_goat', level: 3, color: 0x3a3f4a, duty: 'mixed', shape: 'mogul' },
@@ -454,6 +458,13 @@ export const LOCOS = [
   { id: 'metrolite', name: 'Metrolite 5 Regional EMU', era: 5, kind: 'electric', role: 'passenger', speed: 190, accel: 2.6, power: 3800, freight: 0, pax: 76, wagons: 4, reliability: 0.99, load: 1.6, op: 85, price: 140000, rarity: 'rare', trait: 'fast_loading', level: 32, color: 0xd84a4a, electric: true, duty: 'regional', shape: 'regio', len: 1.95, mu: { cap: 18, carries: ['PASSENGERS'], loadMul: 1.6 } },
   { id: 'hydrolink', name: 'HydroLink H2 Regional', era: 6, kind: 'diesel', role: 'passenger', speed: 200, accel: 2.6, power: 4200, freight: 0, pax: 84, wagons: 4, reliability: 0.99, load: 1.6, op: 70, price: 380000, rarity: 'epic', trait: 'cheap_op', level: 42, color: 0x4ab0e0, duty: 'regional', shape: 'regio', len: 1.7, mu: { cap: 18, carries: ['PASSENGERS'], loadMul: 1.6 } },
   { id: 'terafreight', name: 'TeraFreight E12', era: 6, kind: 'electric', role: 'freight', speed: 200, accel: 1.8, power: 12000, freight: 200, pax: 0, wagons: 9, reliability: 0.99, load: 1.2, op: 260, price: 900000, rarity: 'epic', trait: 'heavy_freight', level: 45, color: 0x2a4a3a, electric: true, duty: 'freight', shape: 'modern', len: 2.2 },
+  // Phase 11: metro sets (fixed multiple units, third rail, fast doors); they
+  // need Urban Railways (and the later families their own research)
+  { id: 'metro_classic_a', name: 'Underline A Stock', era: 2, req: 'urban_rail', kind: 'electric', role: 'passenger', speed: 70, accel: 2.4, power: 900, freight: 0, pax: 46, wagons: 3, reliability: 0.93, load: 1.8, op: 30, price: 38000, rarity: 'common', trait: 'city_hopper', level: 16, color: 0x8a2f2f, electric: true, metro: true, duty: 'metro', shape: 'metro_early', len: 1.45, mu: { cap: 18, carries: ['PASSENGERS'], loadMul: 2.0 } },
+  { id: 'metro_classic_c', name: 'Underline C Stock', era: 3, req: 'urban_rail', kind: 'electric', role: 'passenger', speed: 80, accel: 2.8, power: 1300, freight: 0, pax: 54, wagons: 4, reliability: 0.95, load: 1.9, op: 32, price: 52000, rarity: 'common', trait: 'fast_loading', level: 19, color: 0xd8dcdf, electric: true, metro: true, duty: 'metro', shape: 'metro', len: 1.55, mu: { cap: 20, carries: ['PASSENGERS'], loadMul: 2.1 } },
+  { id: 'metro_hc', name: 'Transit HC-6 High-Capacity Set', era: 4, req: 'high_capacity_metro', kind: 'electric', role: 'passenger', speed: 90, accel: 3.0, power: 2000, freight: 0, pax: 70, wagons: 5, reliability: 0.97, load: 2.2, op: 38, price: 88000, rarity: 'uncommon', trait: 'fast_loading', level: 24, color: 0x2f6fa8, electric: true, metro: true, duty: 'metro', shape: 'metro_hc', len: 1.7, mu: { cap: 24, carries: ['PASSENGERS'], loadMul: 2.4 } },
+  { id: 'metro_auto', name: 'Glidepath Automated Metro', era: 5, req: 'auto_metro', kind: 'electric', role: 'passenger', speed: 90, accel: 3.4, power: 2200, freight: 0, pax: 64, wagons: 4, reliability: 0.99, load: 2.4, op: 26, price: 125000, rarity: 'rare', trait: 'high_accel', level: 30, color: 0xeef2f4, electric: true, metro: true, duty: 'metro', shape: 'metro_auto', len: 1.6, mu: { cap: 22, carries: ['PASSENGERS'], loadMul: 2.6 } },
+  { id: 'metro_wt', name: 'Openway Walk-Through Set', era: 5, req: 'high_capacity_metro', kind: 'electric', role: 'passenger', speed: 100, accel: 3.2, power: 2600, freight: 0, pax: 80, wagons: 6, reliability: 0.98, load: 2.5, op: 34, price: 150000, rarity: 'rare', trait: 'fast_loading', level: 32, color: 0x3a8a5a, electric: true, metro: true, duty: 'metro', shape: 'metro_wt', len: 1.8, mu: { cap: 26, carries: ['PASSENGERS'], loadMul: 2.6 } },
 ].sort((a, b) => a.level - b.level);   // unlock order (stable: Pioneer stays first)
 export const ERA_RESEARCH = { 4: 'electric_rail', 5: 'high_speed_rail', 6: 'maglev_tech' };
 export const TRAIN_UPGRADES = ['engine', 'capacity', 'accel', 'loading', 'efficiency'];

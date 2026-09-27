@@ -4,7 +4,7 @@
 // town lower it. It gates a few big projects (permits). Approval is always
 // immediate and rule based; the town panel shows the rating, the recent
 // changes with their reasons and every permit with its threshold.
-import { hashStr, tx, tz } from '../util.js';
+import { hashStr, tx, tz , layerOf} from '../util.js';
 import { MONTH_S } from '../economy/Ledger.js';
 import { ARCHETYPES, PROTECTED } from './CityStyle.js';
 
@@ -156,6 +156,8 @@ export class Authority {
     if (!town) return;
     const freight = this.game.stations.stationKind ? ['freight', 'yard'].includes(this.game.stations.stationKind(stn).kind) : false;
     if (freight) this.change(town, -3 * this.weight(town, 'freight'), 'auth_freight_in_town');
+    // a metro station under the town is welcome: a little entrance, no line through the streets
+    else if (layerOf(stn.tile) === 1 || layerOf(stn.tile) === 2) this.change(town, 5, 'auth_new_metro');
     else this.change(town, 3, 'auth_new_station');
   }
 

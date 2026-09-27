@@ -112,6 +112,15 @@ export class RailFuzz extends RailTests {
     this.note(`signal ${t}/${d}`);
   }
 
+  // a train left on a piece of track cut off from every stop of its route
+  // (the fuzzer bulldozed the link): it rightly reports no route (seed 32)
+  stranded(t) {
+    const g = this.g, comp = g.net.components();
+    if (t.problem !== 'no_route' || !t.steps.length || !(t.route || []).length) return false;
+    const c = comp[t.steps[0].tile];
+    return t.route.every((r) => { const st = g.stations.byId(r.st); return !st || g.stations.allTiles(st).every((x) => comp[x] !== c); });
+  }
+
   randomConsist() {
     const g = this.g, rng = this.rng;
     const minTierOk = (m) => (m.maglev ? 3 : m.electric ? 2 : 0) <= this.tier;
@@ -312,7 +321,7 @@ export class RailFuzz extends RailTests {
     res.trains = T.trains.length;
     res.saveErr = this.saveRoundTrip();
     res.deadlocks = T.incidents.length;
-    res.ok = !res.graph && !res.headings && !res.geoBad && !res.jumps && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)));
+    res.ok = !res.graph && !res.headings && !res.geoBad && !res.jumps && !res.bodyGaps && !res.overlaps && !res.keyConflicts && !res.nan && !res.errors && !res.saveErr && res.stuck.length === 0 && (res.trips > 0 || T.trains.every((t) => (t.mode === 'auto' && ['no_cargo', 'no_demand', 'no_stations'].includes(t.problem)) || this.stranded(t)));
     if (!res.trips) res.states = T.trains.map((t) => `${t.name}:${t.state}/${t.problem}/${t.mode} tgt=${t.target} route=${(t.route || []).length}`).join(' ') + ` stations=${g.stations.list.length} sites=${this.sites.length}`;
     res.detail = `${res.graph ? 'GRAPH ' + res.graph + ' ' : ''}${res.headings ? 'HEADINGS ' + res.headings + ' ' : ''}${res.jumps ? 'JUMPS ' + res.jumps + ' (' + res.firstJump + ') ' : ''}gaps ${res.bodyGaps || 0} trains ${res.trains} trips ${res.trips} overlaps ${res.overlaps} keys ${res.keyConflicts} nan ${res.nan} errors ${res.errors} stuck ${res.stuck.join(',') || 0} deadlocks ${res.deadlocks} save ${res.saveErr || 'ok'}`;
     return res;

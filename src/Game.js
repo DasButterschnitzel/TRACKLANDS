@@ -96,6 +96,8 @@ export class Game {
     this.progression = new Progression(this);
     this.economy = new Economy(this);
     this.ledger = new Ledger(this);
+    // tunnels, viaducts and underground stations cost upkeep every month (Phase 11)
+    this.events.on('monthClosed', () => this.economy.infraUpkeep());
     if (save) { this.progression.deserialize(save.progression); this.stats.deserialize(save.stats); }
     if (opts.legacy) { this.progression.legacy = { count: opts.legacy.count }; for (const id of opts.legacy.achievements || []) this.progression.achievements.add(id); for (const id of opts.legacy.owned || []) this.progression.owned.add(id); this.progression.recomputeFx(); }
 

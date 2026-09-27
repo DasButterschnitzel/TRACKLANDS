@@ -3,8 +3,8 @@
 // editor with per-stop options, station editor (tracks, platforms, roles,
 // facilities, statistics) and the overlay menu.
 import * as THREE from 'three';
-import { facilitySlots } from '../config.js';
-import { TILE, fmt, escapeHtml, clamp, tileCX, tileCZ } from '../util.js';
+import { facilitySlots, COSTS } from '../config.js';
+import { TILE, fmt, escapeHtml, clamp, tileCX, tileCZ, layerOf } from '../util.js';
 import {
   CARGO, CARGO_IDS, LOCOS, WAGONS, WAGON_IDS, STATION, FACILITIES, PLATFORM_ROLES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, KMH_PER_TILE_S, CONSIST, wagonsFor, locoLen,
 } from '../config.js';
@@ -394,6 +394,16 @@ export const RailUIMixin = {
     return `<div class="svc-row"><span class="sub-label">${this.tr('svc_label')}</span><div class="seg small" role="group" aria-label="${this.tr('svc_label')}">${seg}</div><span class="pill" data-tip="${this.tr('lay_' + lt + '_desc')}">${this.tr('lay_' + lt)}</span></div>
       <p class="muted small">${this.tr('svc_' + sv + '_desc')}</p>`;
   },
+  // below or above the ground (Phase 11): the level, the platform
+  // arrangement, the street entrance and what the structure costs each month
+  metroPills(s) {
+    const L = layerOf(s.tile);
+    if (!L) return '';
+    const S = this.game.stations, k = S.stationKind(s), U = COSTS.upkeep.station[L];
+    const up = Math.round(U * Math.max(1, S.allTiles(s).length) * (1 + (s.level || 0) * 0.25));
+    const ent = s.entrance;
+    return `<div class="pill-row metro-pills"><span class="pill">${this.tr('st_layer')}: ${this.tr('layer_' + L)}</span><span class="pill">${this.tr('plat_' + k.platform)}</span>${ent != null && ent >= 0 ? `<button class="pill link" data-act="jumpTile" data-arg="${ent}">${icon('town', 'mini')} ${this.tr('st_entrance')}</button>` : ''}<span class="pill" data-tip="${this.tr('fin_upkeep')}">${this.tr('st_upkeep', { n: fmt(up) + '●' })}</span></div>`;
+  },
   stationActions(s, up) {
     const b = (act, arg, ic, label, dis = false, tip = '') => `<button class="tact" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''} ${tip ? `data-tip="${esc(tip)}"` : ''}>${icon(ic)}<span>${label}</span></button>`;
     return `<div class="tactions st" role="toolbar" aria-label="${this.tr('station_actions')}">
@@ -539,6 +549,7 @@ export const RailUIMixin = {
     const supplies = [...(s.supplies || [])];
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
     return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
+      ${this.metroPills(s)}
       ${this.stationActions(s, up)}
       ${this.serviceBlock(s)}
       ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}${adv}

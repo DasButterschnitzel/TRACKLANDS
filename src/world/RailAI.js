@@ -21,7 +21,7 @@
 //
 // Randomness is seeded by world seed, company and month, so a world plays
 // out the same way given the same player-independent conditions.
-import { N, TILE, RNG, hashStr, cheb, idx, tx, tz, step } from '../util.js';
+import { N, TILE, RNG, hashStr, cheb, idx, tx, tz, step, onLayer, layerOf, inMap, DX, DZ } from '../util.js';
 import { LOCOS, CARGO, RESEARCH, INDUSTRIES, TOWN_PRODUCTION } from '../config.js';
 import { autoBuild, computeStats, locoModel, consistCost } from '../trains/Consist.js';
 import { MONTH_S } from '../economy/Ledger.js';
@@ -136,6 +136,8 @@ export class RailPlanner {
     const perYear = st.projects.filter((p) => p.started != null && p.started > m - 12).length;
     if (perYear >= this.P.growth) return;
     if (this.r.money < this.reserve() + 2000) return;
+    // now and then a metro for a big city (Phase 11): rare and only when it pays
+    if (this.metroIdea()) return;
     const cand = this.discover();
     if (!cand) return;
     const p = { id: st.nextId++, stage: 'evaluate', kind: cand.kind, cargo: cand.cargo, a: cand.a, b: cand.b, est: cand.est, started: m, trains: [], stations: [], depot: null, tiles: 0, mode: 'single', loops: 0, cd: {}, rev: [], hist: [] };
@@ -481,6 +483,109 @@ export class RailPlanner {
     return r ? r.steps.map((s) => s.tile) : [];
   }
 
+  // ---------- metro (Phase 11) ----------
+  // a company with passengers at heart looks every two years at the largest
+  // cities of its regions; one that has none yet and has grown to a city
+  // gets a short underground line (a surface depot, a portal, two metro
+  // stations) when the company can pay for it and the estimate says it
+  // earns its upkeep. At most one metro per company.
+  metroIdea() {
+    const g = this.game, P = this.P;
+    if (P.pax < 0.4 || this.blocked('metro') || this.st.projects.some((p) => p.kind === 'metro')) return false;
+    this.remember('metro', 24);
+    const era = eraOfYear(this.year());
+    if (!LOCOS.some((m) => m.metro && m.era <= era)) return false;
+    const PR = g.progression;
+    const towns = g.towns.list.filter((t) => PR.regionUnlocked(t.region) && t.stage >= 4 && !this.metroIn(t)).sort((a, b) => b.pop - a.pop).slice(0, 3);
+    for (const t of towns) {
+      const plan = this.metroPlan(t);
+      if (!plan) continue;
+      // the estimate: city passengers against the running cost and the upkeep
+      const upkeep = (plan.tunnel * 1.2 + 6 * 3 * 2 * 1.25) * 12;
+      const rev = Math.min(t.pop, 40000) * 0.35;
+      if (rev < upkeep * 2 + TRAIN_OP * 12) { this.note('reject', `no metro for ${t.name}: it would not pay (${Math.round(rev)} against ${Math.round(upkeep)} upkeep a year)`); continue; }
+      if (this.r.money < this.reserve() + plan.cost * 1.4) { this.note('reject', `no metro for ${t.name} yet: ${Math.round(plan.cost)} is more than it can spare`); return false; }
+      return this.metroBuild(t, plan);
+    }
+    return false;
+  }
+  // a metro station (anyone's) already under the town
+  metroIn(t) {
+    const g = this.game, r = g.towns.radius(t) + 2;
+    return g.stations.list.some((s) => { const L = layerOf(s.tile); return (L === 1 || L === 2) && cheb(s.tile, idx(t.x, t.z)) <= r; });
+  }
+  // the geometry: a straight tunnel from beyond the town centre out to open
+  // land, where a short surface spur carries the depot
+  metroPlan(t) {
+    const g = this.game, net = g.net, C = g.construction;
+    const rng = this.rng('metro:' + t.id);
+    for (const d of rng.shuffle([0, 2, 4, 6])) {
+      const at = (k) => { const x = t.x + DX[d] * k, z = t.z + DZ[d] * k; return inMap(x, z) ? idx(x, z) : -1; };
+      const F = at(-5);
+      if (F < 0) continue;
+      // the portal: the first spot 12-20 tiles out with four free surface tiles
+      let k = -1;
+      for (let kk = 12; kk <= 20 && k < 0; kk++) {
+        let ok = true;
+        for (let j = kk; j <= kk + 3 && ok; j++) { const i = at(j); if (i < 0 || net.conn[i] || net.tileBlockedReason(i) || !net.isUnlocked(i) || this.courtesy(i)) ok = false; }
+        if (ok) k = kk;
+      }
+      if (k < 0) continue;
+      let ok = true;
+      for (let j = -5; j < k && ok; j++) { const i = at(j); const u = i < 0 ? -1 : onLayer(i, 1); if (u < 0 || net.conn[u] || net.special.has(u) || net.tileBlockedReason(u)) ok = false; }
+      if (!ok) continue;
+      const tunnel = C.planTrack(at(k), F, 2, 1);
+      if (!tunnel || !tunnel.ok) continue;
+      const cost = tunnel.cost + g.economy.costs.station(onLayer(at(0), 1)) * 6 + 4 * g.economy.costs.trackTile(2, 0) + g.economy.costs.depot() + 60000 * g.economy.costs.mul();
+      return { d, k, at, tunnel: k + 5, cost, axis: d === 0 || d === 4 ? 0 : 1 };
+    }
+    return null;
+  }
+  metroBuild(t, plan) {
+    const g = this.game, S = g.stations, C = g.construction, net = g.net, at = plan.at, k = plan.k;
+    const p = { id: this.st.nextId++, stage: 'construct', kind: 'metro', cargo: 'PASSENGERS', a: { t: 'town', id: t.id }, b: { t: 'town', id: t.id }, est: { roi: 0 }, started: this.month(), trains: [], stations: [], depot: null, tiles: 0, mode: 'double', loops: 0, cd: {}, rev: [], hist: [], plat: 3, sites: [] };
+    const built = [];
+    const undo = () => this.as(() => {
+      for (const id of p.stations) { const s = S.byId(id); if (s) S.remove(s); }
+      const dep = S.depotById(p.depot); if (dep) S.removeDepot(dep);
+      for (const i of built.reverse()) if (net.conn[i] && net.own[i] === this.r.idx && !net.special.has(i)) C.removeTrackOp(i);
+    });
+    const err = this.newLine(() => {
+      const spent0 = this.r.spent;
+      let r = C.trackOp(at(k + 3), at(k), 2, 'double');
+      if (r.error) return 'spur: ' + r.error;
+      for (let j = k; j <= k + 3; j++) built.push(at(j));
+      r = C.trackOp(at(k), at(-5), 2, 'double', false, 1);
+      if (r.error) return 'tunnel: ' + r.error;
+      for (let j = -5; j < k; j++) built.push(onLayer(at(j), 1));
+      for (const [a, len] of [[-1, 3], [k - 4, 3]]) {
+        const res = S.build(onLayer(at(a), 1), plan.axis);
+        if (res.error) return 'station: ' + res.error;
+        p.stations.push(res.station.id);
+        for (let n = 1; n < len; n++) S.extendPlatform(res.station, 0, 1).ok || S.extendPlatform(res.station, 0, 0);
+      }
+      // the depot beside the surface spur
+      for (let j = k + 1; j <= k + 3 && !p.depot; j++) for (const side of [(plan.d + 2) & 7, (plan.d + 6) & 7]) {
+        const dt = step(at(j), side);
+        if (dt < 0 || p.depot || S.placeError(dt, 'depot')) continue;
+        const res = S.buildDepot(dt);
+        if (res.depot && net.conn[dt]) p.depot = res.depot.id; else if (res.depot) S.removeDepot(res.depot);
+      }
+      if (!p.depot) return 'no depot site';
+      p.cost = this.r.spent - spent0;
+      return null;
+    });
+    if (err) { undo(); this.remember('metro', 60); this.note('fail', `metro for ${t.name} failed: ${err}`); return false; }
+    this.st.projects.push(p);
+    p.stage = 'operate'; p.opened = this.month();
+    p.tiles = this.corridorTiles(p).length;
+    this.addTrain(p);
+    this.st.lastNew = this.month();
+    this.note('open', `opens a metro in ${t.name} (${plan.tunnel} tiles of tunnel)`, { project: p.id });
+    g.events.emit('rivalProject', this.r, p, 'open');
+    return true;
+  }
+
   // ---------- trains ----------
   // a sensible train: the role fits the cargo, the era allows the loco, the
   // track allows the traction, and the train fits the shortest platform
@@ -489,9 +594,11 @@ export class RailPlanner {
   // between cities a fast one
   chooseLoco(p, tier, budget = Infinity) {
     const era = eraOfYear(this.year());
-    const want = p.kind === 'pax' ? 'passenger' : 'freight';
+    const want = p.kind === 'freight' ? 'freight' : 'passenger';
     const mul = this.game.economy.costs.mul();
-    const cands = LOCOS.filter((m) => !m.mu && m.era <= era && (m.role === want || m.role === 'mixed') && minTierOf(m) <= tier && (p.kind === 'pax' ? m.pax > 0 : m.freight > 0) && m.price * mul * 1.3 <= budget);
+    // a metro line runs metro sets only (and no other line ever does)
+    if (p.kind === 'metro') return LOCOS.filter((m) => m.metro && m.era <= era && m.price * mul * 1.3 <= budget).sort((a, b) => b.era - a.era || b.pax - a.pax)[0] || null;
+    const cands = LOCOS.filter((m) => !m.mu && !m.metro && m.era <= era && (m.role === want || m.role === 'mixed') && minTierOf(m) <= tier && (p.kind === 'pax' ? m.pax > 0 : m.freight > 0) && m.price * mul * 1.3 <= budget);
     if (!cands.length) return null;
     const P = this.P, big = p.kind === 'pax' ? Math.min(...[p.a, p.b].map((e) => (this.endObj(e) || { pop: 0 }).pop)) : 0;
     const local = p.kind === 'pax' && big < 1500 && !P.premium;
@@ -505,7 +612,7 @@ export class RailPlanner {
     const tier = Math.min(...this.corridorTiles(p).map((t) => g.net.tier[t]).concat([3]));
     const m = this.chooseLoco(p, tier, Math.max(0, this.r.money - this.reserve() * 0.5));
     if (!m) return null;
-    const cargos = p.kind === 'pax' ? ['PASSENGERS', 'MAIL'] : [p.cargo];
+    const cargos = p.kind === 'pax' ? ['PASSENGERS', 'MAIL'] : p.kind === 'metro' ? ['PASSENGERS'] : [p.cargo];
     let vs = autoBuild(m.id, cargos, { research: this.r.research(), fx: NO_FX });
     const plat = Math.min(...stns.map((s) => Math.min(...s.tracks.map((tk) => tk.tiles.length))));
     const maxLen = plat * TILE * 1.0;

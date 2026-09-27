@@ -19,7 +19,7 @@
 // service interval (and feels longer than riding), in-vehicle time counts by
 // the mode's comfort, each change adds a penalty (walking, handling). Results
 // are cached until the services change (at most MAX_AGE seconds of game time).
-import { cheb, tx, tz } from '../util.js';
+import { cheb, tx, tz, layerOf } from '../util.js';
 import { KMH_PER_TILE_S, ROAD_VEHICLES, CARGO, STOP_MODE } from '../config.js';
 
 export const RS = 1000000;                              // road stop keys start here
@@ -31,6 +31,7 @@ export const COMFORT = { rail: 1.0, tram: 1.05, road: 1.15, water: 1.0, air: 0.9
 const WAIT_W = 1.5;          // waiting feels longer than riding
 export const XFER = { pax: 45, freight: 30 };   // seconds per change of vehicle
 const WALK_S = 6;            // seconds per tile on foot (or moving freight across a yard)
+const STAIRS_S = 20;         // seconds per flight of stairs between levels (Phase 11)
 const MAX_AGE = 12;          // rebuild at least this often (game seconds)
 const AUTO_WAIT = 90;        // trains without a timetable: an irregular service
 const AUTO_LINKS = 40;       // links per station of an auto service (nearest first)
@@ -284,8 +285,12 @@ export class TransportNetwork {
     const tilesOf = (k) => { const o = this.nodes.get(k).o; return o.road ? (R ? R.stopTiles(o) : [o.tile]) : S.allTiles(o); };
     const T = new Map(keys.map((k) => [k, tilesOf(k)]));
     const dist = (a, b) => { let d = Infinity; for (const u of T.get(a)) for (const w of T.get(b)) { const x = cheb(u, w); if (x < d) d = x; } return d; };
+    // stairs and escalators (Phase 11): a flight per level between a metro
+    // platform, a viaduct and the street
+    const FLIGHTS = [0, -1, -2, 1];
+    const stairs = (a, b) => Math.abs(FLIGHTS[layerOf(this.nodes.get(a).tile)] - FLIGHTS[layerOf(this.nodes.get(b).tile)]);
     const link = (a, b, d, mul = 1) => {
-      const w = (12 + WALK_S * d) / mul;
+      const w = (12 + WALK_S * d + STAIRS_S * stairs(a, b)) / mul;
       this.edge(a, b, { svc: -1, mode: 'walk', ivt: w, wait: 0, dist: d, walk: true });
       this.edge(b, a, { svc: -1, mode: 'walk', ivt: w, wait: 0, dist: d, walk: true });
     };

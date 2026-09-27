@@ -757,12 +757,14 @@ export class TrainSystem {
   // steam), then departs the other way. Units with cabs at both ends change
   // ends quickly; a locomotive now at the rear propels the train, a steam
   // engine at the front runs tender first. Nothing is lifted, turned or moved.
+  isMetro(t) { const L = t.veh && t.veh.find((v) => v.k === 'L'); return !!(L && locoModel(L.id).metro); }
   afterReverse(t, next) {
     t.flipped = false;
     const front = t.veh[0], rear = t.veh[t.veh.length - 1];
     const cabs = canLead(front) && canLead({ ...rear, r: !rear.r });
     const steam = t.veh.some((v) => v.k === 'L' && locoModel(v.id).kind.startsWith('steam'));
-    t.rev = { p: 0, dur: cabs ? 0.9 : steam ? 2.4 : 1.8, steam, next };
+    // (a metro set changes ends quickly: the driver walks through, or there is none)
+    t.rev = { p: 0, dur: cabs ? (this.isMetro(t) ? 0.5 : 0.9) : steam ? 2.4 : 1.8, steam, next };
     t.state = 'reversing'; t.stateT = 0; t.v = 0;
     t.visualSig = null;
     this.game.events.emit('trainRunaround', t);
@@ -1297,7 +1299,8 @@ export class TrainSystem {
     const eff = Math.max(STATION.minPlatformEff, this.platformFraction(t, stn));
     t.platEff = eff;
     const rate = S.loadRate(stn, [...Object.keys(stn.stock), ...t.cargo.map((l) => l.c)]) * t._st.load * eff;
-    t.loadTime = 1.2 + (moved + planned) / Math.max(1, rate) + (opt.dwell || 0);
+    // metro sets open wide doors on both sides: a short fixed dwell (Phase 11)
+    t.loadTime = (this.isMetro(t) ? 0.6 : 1.2) + (moved + planned) / Math.max(1, rate) + (opt.dwell || 0);
     t.waitFull = !!opt.full && opt.act !== 'unload' && opt.act !== 'none';
     t.minLoad = !t.waitFull && opt.minLoad && opt.act !== 'unload' && opt.act !== 'none' ? opt.minLoad : 0;
     t.trips++;
