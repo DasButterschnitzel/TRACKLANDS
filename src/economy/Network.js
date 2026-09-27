@@ -321,6 +321,20 @@ export class TransportNetwork {
     }
   }
 
+  // a station complex (Phase 11): every stop and station reachable on foot
+  // from this one (walking links, also across levels), with the walk time
+  complex(o, max = 12) {
+    this.ensure();
+    const k0 = nodeKey(o);
+    if (!this.nodes.has(k0)) return [];
+    const seen = new Map([[k0, 0]]), q = [k0];
+    while (q.length && seen.size < max) {
+      const k = q.shift();
+      for (const e of this.nodes.get(k).out) if (e.walk && !seen.has(e.to)) { seen.set(e.to, seen.get(k) + e.ivt); q.push(e.to); }
+    }
+    return [...seen].filter(([k]) => k !== k0).map(([k, w]) => ({ o: this.nodes.get(k).o, key: k, walk: Math.round(w) })).sort((a, b) => a.walk - b.walk);
+  }
+
   // ---------- queries ----------
   svcOfTrain(t) { this.ensure(); return this.byTrain.get(t.id) || null; }
   svcOfLine(id) { this.ensure(); return this.byLine.get(id) || null; }

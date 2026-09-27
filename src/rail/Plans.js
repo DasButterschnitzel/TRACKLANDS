@@ -116,12 +116,13 @@ export class Plans {
   // every step checked, the costs broken down, the state of the project
   validate(p) {
     const g = this.game;
-    const steps = p.steps.map((s) => {
-      const r = this.dry(s);
-      // a signal on track the same project lays first is fine
-      if (r.later && p.steps.some((o) => (o.op === 'track' || o.op === 'pair') && this.dry(o).tiles.includes(s.key >> 3))) r.error = null;
-      return r;
-    });
+    const steps = p.steps.map((s) => this.dry(s));
+    // a signal on track the same project lays first is fine
+    if (steps.some((r) => r.later)) {
+      const laid = new Set();
+      p.steps.forEach((s, k) => { if (s.op === 'track' || s.op === 'pair') for (const t of steps[k].tiles) laid.add(t); });
+      p.steps.forEach((s, k) => { if (steps[k].later && laid.has(s.key >> 3)) steps[k].error = null; });
+    }
     const cost = { track: 0, structure: 0, station: 0, signal: 0, total: 0 };
     for (const r of steps) { cost[r.kind] = (cost[r.kind] || 0) + r.cost; cost.total += r.cost; }
     const bad = steps.map((r, k) => (r.error ? k : -1)).filter((k) => k >= 0);

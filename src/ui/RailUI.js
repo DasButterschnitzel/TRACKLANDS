@@ -17,7 +17,7 @@ import { vehicleToken, resolvePaint, customToken, parseCustom, isPreset, STRIPES
 import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
 import { SPACING_CHOICES } from '../trains/Lines.js';
-import { STATION_SERVICES } from '../rail/Stations.js';
+import { STATION_SERVICES, AMENITIES } from '../rail/Stations.js';
 import { ERA_BANDS, bandOf } from '../world/Eras.js';
 
 const esc = escapeHtml;
@@ -311,7 +311,11 @@ export const RailUIMixin = {
       (t.state === 'load' || t.state === 'depart' ? at : to)[i].push(t);
     }
     const mark = (t) => `<button class="tmark ${t === focus ? 'me' : ''}" data-act="jump" data-arg="train:${t.id}" data-tip="${esc(t.name)}" aria-label="${esc(t.name)}">${icon('train', 'mini')}</button>`;
-    const parts = l.stops.map((id, i) => `<span class="lseg">${to[i].map(mark).join('')}</span><span class="lnode"><button class="tag link" data-act="jump" data-arg="station:${id}">${esc((S.byId(id) || {}).name || '?')}</button>${at[i].map(mark).join('')}</span>`);
+    // interchanges: other lines at the same station, and stations a walk away
+    const others = (id) => g.lines.list().filter((o) => o !== l && o.stops.includes(id)).length;
+    const walk = (id) => { const st = S.byId(id); return st && g.network && g.network.complex ? g.network.complex(st, 6).length : 0; };
+    const xmark = (id) => { const n = others(id), w = walk(id), st = S.byId(id); return `${st && layerOf(st.tile) ? `<i class="xm metro" data-tip="${this.tr('st_layer')}: ${this.tr('layer_' + layerOf(st.tile))}">${icon('tunnel', 'mini')}</i>` : ''}${n ? `<i class="xm" data-tip="${this.tr('x_lines', { n })}">⇄${n}</i>` : ''}${w ? `<i class="xm walk" data-tip="${this.tr('x_walk', { n: w })}">🚶${w}</i>` : ''}`; };
+    const parts = l.stops.map((id, i) => `<span class="lseg">${to[i].map(mark).join('')}</span><span class="lnode"><button class="tag link" data-act="jump" data-arg="station:${id}">${esc((S.byId(id) || {}).name || '?')}</button>${xmark(id)}${at[i].map(mark).join('')}</span>`);
     return `<div class="ldiag" style="--lc:${l.color}">${parts.join('')}<span class="lseg back" aria-hidden="true">↺</span></div>`;
   },
 
@@ -393,6 +397,20 @@ export const RailUIMixin = {
     const seg = STATION_SERVICES.map((k) => `<button class="${sv === k ? 'on' : ''}" data-act="stService" data-arg="${s.id}:${k}" aria-pressed="${sv === k}" data-tip="${this.tr('svc_' + k + '_desc')}">${this.tr('svc_' + k)}</button>`).join('');
     return `<div class="svc-row"><span class="sub-label">${this.tr('svc_label')}</span><div class="seg small" role="group" aria-label="${this.tr('svc_label')}">${seg}</div><span class="pill" data-tip="${this.tr('lay_' + lt + '_desc')}">${this.tr('lay_' + lt)}</span></div>
       <p class="muted small">${this.tr('svc_' + sv + '_desc')}</p>`;
+  },
+  // the station complex (Phase 11): the stations and stops a short walk away
+  // (other levels included, with stairs), and the access amenities
+  complexBlock(s) {
+    const g = this.game, S = g.stations;
+    const cx = g.network && g.network.complex ? g.network.complex(s) : [];
+    const kindIcon = (o) => (o.road ? 'bus' : layerOf(o.tile) ? 'tunnel' : 'station');
+    const list = cx.slice(0, 6).map((c) => `<button class="pill link" data-act="jump" data-arg="${c.o.road ? 'roadstop' : 'station'}:${c.o.id}" data-tip="${this.tr('walk_s', { n: c.walk })}">${icon(kindIcon(c.o), 'mini')} ${esc(c.o.name || '?')} <small>${Math.max(1, Math.round(c.walk / 60))} ${this.tr('min')}</small></button>`).join('');
+    const amen = s.owner || s.service === 'freight' ? '' : AMENITIES.map((a) => {
+      const has = S.hasAmenity(s, a), e = has ? null : S.amenityError(s, a);
+      return `<button class="chip small ${has ? 'on' : ''}" data-act="stAmen" data-arg="${s.id}:${a}" ${has || (e && e !== 'err_no_money') ? 'disabled' : ''} data-tip="${this.tr('amen_' + a + '_desc')}${e && !has ? ' · ' + this.tr(e) : ''}">${icon(a === 'pr' ? 'car' : 'bike', 'mini')}<b>${this.tr('amen_' + a)}</b>${has ? '' : `<small>${fmt(S.amenityCost(a))}●</small>`}</button>`;
+    }).join('');
+    if (!list && !amen) return '';
+    return `${list ? `<h4>${this.tr('st_complex')}</h4><div class="pill-row complex">${list}</div>` : ''}${amen ? `<div class="pill-row amen">${amen}</div>` : ''}`;
   },
   // below or above the ground (Phase 11): the level, the platform
   // arrangement, the street entrance and what the structure costs each month
@@ -550,6 +568,7 @@ export const RailUIMixin = {
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
     return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
       ${this.metroPills(s)}
+      ${this.complexBlock(s)}
       ${this.stationActions(s, up)}
       ${this.serviceBlock(s)}
       ${s.warn ? `<div class="card warn">${icon('warn')} ${this.tr('station_congested')}</div>` : ''}${adv}
@@ -745,6 +764,7 @@ export const RailUIMixin = {
       overlay: (a) => { g().overlays.set(a); this.renderOverlayMenu(); this.renderToolbar(); if (g().overlays.mode) this.toast(this.tr('ov_' + a + '_desc'), 'info', 'layers'); },
       overlayMenu: () => this.toggleOverlayMenu(),
       trackMode: (a) => { g().construction.setTrackMode(a); if (a === 'role') g().overlays && g().overlays.set && g().overlays.set('roles'); },
+      stAmen: (a) => { const [id, k] = a.split(':'); const st = g().stations.byId(+id); if (!st) return; const e = g().stations.buildAmenity(st, k); if (e) this.error(e); else { this.toast(this.tr('amen_built', { a: this.tr('amen_' + k) }), 'good', 'station'); g().select({ type: 'station', id: st.id }); } },
       pairSide: (a) => g().construction.setPairSide(+a),
       pairRoles: (a) => g().construction.setPairRoles(a),
       roleSel: (a) => g().construction.setRoleSel(+a),

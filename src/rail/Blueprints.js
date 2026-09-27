@@ -18,6 +18,7 @@ export const DEFAULT_BLUEPRINTS = [
   { id: 'd_cross', name: 'bp_crossover', builtin: true, runs: [[0, 0, 10, 0, 0], [0, 1, 10, 1, 0], [3, 0, 4, 1, 0], [6, 1, 7, 0, 0]], stations: [], depots: [], signals: [] },
   { id: 'd_siding', name: 'bp_siding', builtin: true, runs: [[0, 0, 12, 0, 0], [3, 0, 4, 1, 0], [4, 1, 9, 1, 0], [9, 1, 10, 0, 0]], stations: [], depots: [], signals: [] },
   { id: 'd_halt', name: 'bp_halt', builtin: true, runs: [[0, 0, 12, 0, 0]], stations: [[4, 0, 7, 0, 1]], depots: [], signals: [] },
+  { id: 'd_throat', name: 'bp_terminus', builtin: true, runs: [[0, 1, 12, 1, 0], [2, 1, 3, 0, 0], [3, 0, 12, 0, 0], [5, 1, 6, 2, 0], [6, 2, 12, 2, 0]], stations: [], depots: [], signals: [] },
   { id: 'd_four', name: 'bp_four_track', builtin: true, runs: [[0, 0, 16, 0, 0], [0, 1, 16, 1, 0], [2, 0, 3, 1, 0], [13, 1, 14, 0, 0]], stations: [], depots: [], signals: [] },
 ];
 

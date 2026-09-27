@@ -152,7 +152,8 @@ export const COSTS = {
   subDeep: 290,         // per tile of deep bored tunnel
   viaduct: 80,          // per tile of elevated viaduct
   portal: 900, shaft: 1400, rampElev: 600,
-  ugStation: 4.5, elevStation: 2.2,   // station cost factors underground / on a viaduct
+  ugStation: 4.5, elevStation: 2.2,
+  bikePark: 180, parkRide: 900,          // station access amenities (Phase 11)   // station cost factors underground / on a viaduct
   // monthly upkeep of the structures (Phase 11): per tile of shallow tunnel,
   // deep tunnel and viaduct, and per platform tile of a station below or
   // above the ground (pumps, ventilation, lifts, lighting). Surface track costs nothing.

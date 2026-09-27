@@ -57,7 +57,7 @@ export async function run({ browser, base }) {
       out.sig = JSON.stringify([g.towns.list.map((t) => [t.x, t.z]), g.industries.list.map((i) => [i.x, i.z])]);
       return out;
     }, size);
-    check(r.N === size && r.conn === size * size && r.inside, `${size}×${size}: grid and every site inside (${r.conn} tiles)`);
+    check(r.N === size && r.conn === size * size * 4 && r.inside, `${size}×${size}: grid and every site inside (${r.conn} tiles on four layers)`);
     check(r.regions === 8 && r.towns > classic.towns && r.inds > classic.inds, `${size}: all 8 regions, ${r.towns} towns (classic ${classic.towns}), ${r.inds} industries (classic ${classic.inds})`);
     check(r.chunks === (size / 32) ** 2 && r.maxZoom > 80, `${size}: terrain in ${r.chunks} chunks, zoom out to ${r.maxZoom}`);
     check(r.valid && r.saved === size, `${size}: save validates and records its size; ${r.frameMs} ms per frame zoomed out, GPU work included (SwiftShader)`);
@@ -69,7 +69,7 @@ export async function run({ browser, base }) {
   // a classic save afterwards
   await loadSave(page, productionSave());
   const c2 = await page.evaluate(async () => { const g = window.__tracklands.game, U = await import('./src/util.js'); for (let i = 0; i < 300; i++) g.tick(1 / 30); return { N: U.N, towns: g.towns.list.length, conn: g.net.conn.length, trains: g.trains.trains.length }; });
-  check(c2.N === 64 && c2.conn === 4096 && c2.towns === classic.towns && c2.trains > 0, `the production save loads at 64 afterwards (${JSON.stringify(c2)})`);
+  check(c2.N === 64 && c2.conn === 4096 * 4 && c2.towns === classic.towns && c2.trains > 0, `the production save loads at 64 afterwards (${JSON.stringify(c2)})`);
   // new game dialog: pick Huge with the mouse
   await page.evaluate(() => { const app = window.__tracklands; app.ui.detach && 0; app.newGameDialog(); });
   await page.waitForTimeout(300);

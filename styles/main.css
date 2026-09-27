@@ -1034,3 +1034,8 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 .card.plan.on{box-shadow:0 0 0 2px #6ad0ff inset}
 .bp-json{width:100%;font-family:ui-monospace,monospace;font-size:12px}
 .tool.planmode.on{background:#2f7fa8;color:#fff}
+/* station complexes and line diagrams (Phase 11) */
+.pill-row.complex .pill small{opacity:.7;margin-left:3px}
+.ldiag .xm{font-style:normal;font-size:11px;margin-left:3px;opacity:.85}
+.ldiag .xm.metro svg{width:12px;height:12px;vertical-align:-2px}
+.nm-filter{margin:6px 0}

@@ -2,12 +2,20 @@
 // lines are drawn metro-map style (straight and 45° segments), with parallel
 // offsets where several lines share a section. Pure SVG string, rendered in
 // the map panel; station markers jump to the station on click/tap.
-import { tx, tz } from '../util.js';
+import { tx, tz, layerOf } from '../util.js';
 import { escapeHtml as esc } from '../util.js';
 
-export function networkMapSVG(game, lines, { width = 320, tr = (k) => k } = {}) {
+// a metro line (Phase 11): run by metro sets, or every stop below or above the ground
+export function isMetroLine(game, l) {
   const S = game.stations;
-  const stns = S.list.filter((s) => s.tracks && s.tracks.length);
+  return (l.trains || []).some((t) => game.trains.isMetro(t)) || (l.stops.length > 0 && l.stops.every((id) => { const s = S.byId(id); return s && layerOf(s.tile) > 0; }));
+}
+// filter: 'all', 'main' (not metro) or 'metro'
+export function networkMapSVG(game, lines, { width = 320, tr = (k) => k, filter = 'all' } = {}) {
+  const S = game.stations;
+  if (filter !== 'all') lines = lines.filter((l) => (filter === 'metro') === isMetroLine(game, l));
+  const onLines = new Set(lines.flatMap((l) => l.stops));
+  const stns = S.list.filter((s) => s.tracks && s.tracks.length && (filter === 'all' || onLines.has(s.id)));
   if (!stns.length) return '';
   const pos = new Map(stns.map((s) => [s.id, { x: tx(s.tile), z: tz(s.tile) }]));
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -50,9 +58,13 @@ export function networkMapSVG(game, lines, { width = 320, tr = (k) => k } = {}) 
     const [x, z] = P(s.id);
     const n = served.get(s.id) || 0;
     const r = n >= 2 ? 5.5 : n ? 4 : 3;
-    marks += `<g class="nm-stn" data-act="jump" data-arg="station:${s.id}" role="button" tabindex="0" aria-label="${esc(s.name)}"><circle cx="${x.toFixed(1)}" cy="${z.toFixed(1)}" r="${r + 7}" fill="transparent"/><circle cx="${x.toFixed(1)}" cy="${z.toFixed(1)}" r="${r}" fill="${n ? '#fff' : '#f4efe6'}" stroke="${n ? '#1f2a3a' : '#9aa3ad'}" stroke-width="${n >= 2 ? 2.2 : 1.6}"/></g>`;
+    // metro stations as rounded squares
+    const m = layerOf(s.tile) > 0;
+    const shape = m ? `<rect x="${(x - r).toFixed(1)}" y="${(z - r).toFixed(1)}" width="${2 * r}" height="${2 * r}" rx="1.6" fill="${n ? '#fff' : '#f4efe6'}" stroke="${n ? '#1f2a3a' : '#9aa3ad'}" stroke-width="${n >= 2 ? 2.2 : 1.6}"/>` : `<circle cx="${x.toFixed(1)}" cy="${z.toFixed(1)}" r="${r}" fill="${n ? '#fff' : '#f4efe6'}" stroke="${n ? '#1f2a3a' : '#9aa3ad'}" stroke-width="${n >= 2 ? 2.2 : 1.6}"/>`;
+    marks += `<g class="nm-stn${m ? ' metro' : ''}" data-act="jump" data-arg="station:${s.id}" role="button" tabindex="0" aria-label="${esc(s.name)}"><circle cx="${x.toFixed(1)}" cy="${z.toFixed(1)}" r="${r + 7}" fill="transparent"/>${shape}</g>`;
     labels += `<text x="${(x + r + 3).toFixed(1)}" y="${(z - r - 1).toFixed(1)}" class="${n ? '' : 'dim'}">${esc(s.name)}</text>`;
   }
+  if (!stns.length) return '';
   const legend = lines.map((l) => `<span class="nm-line"><i style="background:${l.color}"></i>${esc(l.name)}<small>${l.trains.length}×</small></span>`).join('');
   return `<figure class="netmap"><svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="${esc(tr('netmap'))}">
     <g>${paths}</g><g class="nm-labels">${labels}</g><g>${marks}</g></svg>

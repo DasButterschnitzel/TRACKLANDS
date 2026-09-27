@@ -12,6 +12,7 @@ import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILI
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
 // ground a station can stand on: open land, a metro box underground, a viaduct
+export const AMENITIES = ['bike', 'pr'];
 const STATION_KINDS_OK = new Set([K_NORMAL, K_UNDER, K_DEEP, K_ELEV]);
 import { t as tr } from '../i18n.js';
 import { stationComplexModel, depotModel, stationModel, metroEntrance } from './StationModels.js';
@@ -55,7 +56,29 @@ export class StationSystem {
   allTiles(stn) { const out = []; for (const tk of stn.tracks) for (const t of tk.tiles) out.push(t); return out; }
 
   // (the player's research widens the player's stations only)
-  radius(stn) { return STATION.radius[stn.level] + (stn.owner ? 0 : this.game.progression.fx.stationRadius); }
+  radius(stn) { return STATION.radius[stn.level] + (stn.owner ? 0 : this.game.progression.fx.stationRadius) + (this.hasAmenity(stn, 'bike') ? 1 : 0); }
+  // access amenities (Phase 11): bike parking brings the streets around a
+  // little closer, park & ride the towns a few tiles further out
+  hasAmenity(stn, a) { return !!(stn.amen && stn.amen.includes(a)); }
+  amenityCost(a) { return Math.round((a === 'pr' ? COSTS.parkRide : COSTS.bikePark) * this.game.economy.costs.mul()); }
+  amenityError(stn, a) {
+    if (!AMENITIES.includes(a)) return 'err_unknown';
+    if (this.hasAmenity(stn, a)) return 'err_done';
+    if (stn.service === 'freight') return 'err_amen_freight';
+    if (a === 'pr' && this.isUnderground(stn) && stn.entrance < 0) return 'err_amen_no_street';
+    if (!this.game.economy.canAfford(this.amenityCost(a))) return 'err_no_money';
+    return null;
+  }
+  buildAmenity(stn, a) {
+    const e = this.amenityError(stn, a);
+    if (e) return e;
+    this.game.economy.spend(this.amenityCost(a), 'construction', { type: 'station', id: stn.id }, '~amen_' + a + '_n:1');
+    (stn.amen || (stn.amen = [])).push(a);
+    this.relink(stn);
+    this.game.events.emit('stationEdited', stn);
+    this.game.network && (this.game.network.dirty = true);
+    return null;
+  }
   // the station level's storage (the base room of every storage class)
   storage(stn) { return Math.round(STATION.storage[stn.level | 0] * (1 + this.game.progression.fx.storage) * (stn.road && this.game.roads ? this.game.roads.stopProps(stn).storageMul : 1)); }
   // storage class of a cargo here: container cargo goes to the container
@@ -210,12 +233,13 @@ export class StationSystem {
     return null;
   }
 
-  previewLinks(tiles, level = 0) {
+  previewLinks(tiles, level = 0, stn = null) {
     const g = this.game;
     if (!Array.isArray(tiles)) tiles = [tiles];
-    const r = STATION.radius[level] + (g.actor ? 0 : g.progression.fx.stationRadius);
+    const r = STATION.radius[level] + (g.actor || (stn && stn.owner) ? 0 : g.progression.fx.stationRadius) + (stn && this.hasAmenity(stn, 'bike') ? 1 : 0);
+    const pr = stn && this.hasAmenity(stn, 'pr') ? 3 : 0;
     const dist = (t) => { let m = 1e9; for (const s of tiles) m = Math.min(m, cheb(s, t)); return m; };
-    const towns = g.towns.list.filter((t) => dist(idx(t.x, t.z)) <= r + g.towns.radius(t));
+    const towns = g.towns.list.filter((t) => dist(idx(t.x, t.z)) <= r + pr + g.towns.radius(t));
     const inds = g.industries.list.filter((ind) => {
       for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (dist(idx(ind.x + dx, ind.z + dz)) <= r) return true;
       return false;
@@ -224,7 +248,7 @@ export class StationSystem {
   }
 
   relink(stn) {
-    const { towns, inds } = this.previewLinks(this.allTiles(stn), stn.level);
+    const { towns, inds } = this.previewLinks(this.allTiles(stn), stn.level, stn);
     stn.links = { towns: towns.map((t) => t.id), industries: inds.map((i) => i.id) };
     const acc = new Set(), sup = new Set();
     if (towns.length) { for (const c of TOWN_ACCEPTS) acc.add(c); sup.add('PASSENGERS'); sup.add('MAIL'); }
@@ -1240,7 +1264,7 @@ export class StationSystem {
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities, service: s.service || undefined,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
-        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, owner: s.owner || undefined, built: s.built || undefined, yb: s.yb, reno: s.reno || undefined, heritage: s.heritage ? 1 : undefined,
+        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, owner: s.owner || undefined, built: s.built || undefined, yb: s.yb, reno: s.reno || undefined, heritage: s.heritage ? 1 : undefined, amen: s.amen && s.amen.length ? s.amen : undefined,
       })),
       depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name, owner: d.owner || undefined })),
     };
@@ -1263,6 +1287,7 @@ export class StationSystem {
       stn.style = s.style || 'classic';
       stn.name = String(s.name || 'Station');
       stn.delivered = s.delivered || 0; stn.picked = s.picked || 0;
+      if (Array.isArray(s.amen)) stn.amen = [...new Set(s.amen.filter((a) => AMENITIES.includes(a)))];
       if (s.fin) stn.fin = cleanFin(s.fin);
       if (s.ratings && this.game.ratings) this.game.ratings.deserialize(stn, s.ratings);
       for (const c in s.stock || {}) if (CARGO[c] && s.stock[c] > 0) stn.stock[c] = s.stock[c];

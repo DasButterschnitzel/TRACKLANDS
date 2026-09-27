@@ -1037,7 +1037,9 @@ export class UI {
     const trains = g.trains.mine().map((t) => `<button class="mitem" data-act="jump" data-arg="train:${t.id}">${icon('train')}<span>${esc(t.name)}</span><small>${this.tr('tstate_' + t.state)}</small></button>`).join('');
     const mode = this.mapMode || 'geo';
     const seg = `<div class="seg tabs" role="tablist"><button role="tab" aria-selected="${mode === 'geo'}" class="${mode === 'geo' ? 'on' : ''}" data-act="mapMode" data-arg="geo">${this.tr('map_geo')}</button><button role="tab" aria-selected="${mode === 'lines'}" class="${mode === 'lines' ? 'on' : ''}" data-act="mapMode" data-arg="lines">${this.tr('map_schematic')}</button></div>`;
-    if (mode === 'lines') return seg + (networkMapSVG(g, g.lines.list().map((l) => ({ ...l, name: g.lines.name(l) })), { tr: (k) => this.tr(k) }) || `<p class="muted">${this.tr('netmap_empty')}</p>`) + `<h3>${this.tr('trains')}</h3><div class="mlist">${trains}</div>`;
+    const nf = this.mapFilter || 'all';
+    const chips = `<div class="seg nm-filter" role="group" aria-label="${this.tr('netmap')}">${['all', 'main', 'metro'].map((f) => `<button class="${nf === f ? 'on' : ''}" data-act="mapFilter" data-arg="${f}" aria-pressed="${nf === f}">${this.tr('nm_' + f)}</button>`).join('')}</div>`;
+    if (mode === 'lines') return seg + chips + (networkMapSVG(g, g.lines.list().map((l) => ({ ...l, name: g.lines.name(l) })), { tr: (k) => this.tr(k), filter: nf }) || `<p class="muted">${this.tr('netmap_empty')}</p>`) + `<h3>${this.tr('trains')}</h3><div class="mlist">${trains}</div>`;
     return `${seg}<canvas id="minimap" width="256" height="256" aria-label="${this.tr('menu_map')}"></canvas>
       <div class="legend"><span><i class="lg town"></i>${this.tr('towns')}</span><span><i class="lg rail"></i>${this.tr('track')}</span><span><i class="lg train"></i>${this.tr('trains')}</span><span><i class="lg ind"></i>${this.tr('industries')}</span></div>
       <h3>${this.tr('regions')}</h3><div class="mlist">${regions}</div>
@@ -1447,6 +1449,7 @@ export class UI {
     const g = () => this.game;
     return {
       panel: (a) => this.openPanel(a),
+      mapFilter: (a) => { this.mapFilter = ['all', 'main', 'metro'].includes(a) ? a : 'all'; this.refreshPanel(); },
       closePanel: () => this.closePanel(),
       closeInspector: () => g().select(null),
       toggleMenu: () => $('#menu-rail').classList.toggle('open'),
