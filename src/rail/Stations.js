@@ -733,6 +733,9 @@ export class StationSystem {
     if (!stn || !this.byId(stn.id)) return { error: 'err_unknown' };
     const plan = this.planAddTrack(stn, side);
     if (plan.error) return plan;
+    // a platform no ladder reaches would be cut off from every train (a
+    // one-tile station whose neighbours are both dead ends)
+    if (plan.tiles.length < 2 && !plan.ladders.some((L) => L.dir != null)) return { error: 'err_track_isolated' };
     // merge tiles gain a switch: never under a train
     const all = [...plan.tiles, ...plan.ladders.flatMap((L) => L.path)];
     let occ = null;

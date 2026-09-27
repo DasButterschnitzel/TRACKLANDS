@@ -167,6 +167,8 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Touch and desktop | PASS (headless); real hardware UNTESTED |
 
 ## Fixed during the release cycle
+- 5.0.0: rail fuzzer seed 18 (release gate) found that adding a platform to a one-tile station whose neighbours were both dead ends laid a platform no train could reach (`station_off_track`). It is refused now (`err_track_isolated`); seed 18 is a permanent regression seed.
+- 5.0.0 release gate (local, the CI dispatch was not available to this session): 1000 save-fuzz cases in 4 shards + the corpus (988 load, 12 rejected cleanly, 0 bad), rail fuzzer seeds 1–40, `prodsave` (1,265 coins/min), full `qa`, `bench`, `perf` (100 trains: tick avg ≤ 0.22 ms), `gallery`, `ai`, `aidecades` (50 years: networks never touch).
 - 5.0.0: in WebKit the new-game dialog scrolled sideways on a phone (the height-map file input kept its fixed intrinsic width); it now shrinks with the dialog (`terrain` in all three engines).
 - 5.0.0: four new trains shared a silhouette with older models; each has its own length now (`rollingstock`).
 - 5.0.0: the rail AI's alpine and archipelago runs, the terrain dialog and the era suite run in Chromium, Firefox and WebKit (browsers job).
