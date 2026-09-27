@@ -20,7 +20,7 @@ import { log } from './core/Log.js';
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true,
+  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true, perfHud: false,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
   instantBuild: false, keepTool: true,
 };
@@ -108,7 +108,8 @@ class App {
       screen: { w: innerWidth, h: innerHeight, dpr: window.devicePixelRatio }, gpu: this.gpu, webgl2: !!(r && r.capabilities.isWebGL2),
       gfx: { setting: this.settings.graphics, effective: this.gfx() }, fps: Math.round(this.fps), settings: this.settings,
       backups: this.settings.backups, autosave: this.settings.autosave,
-      health: g ? healthOfGame(g) : null,
+      health: g ? healthOfGame(g) : null, startMs: this.startMs || null,
+      perf: g && g.perf ? (({ fps, frame95, sim, vis, render, calls, tris, geos, texs, over }) => ({ fps: Math.round(fps), frame95: +frame95.toFixed(1), sim: +sim.toFixed(2), vis: +vis.toFixed(2), render: +render.toFixed(2), calls, tris, geos, texs, over }))(g.perf.report(g)) : null,
       game: g ? { seed: g.world.seed, time: Math.round(g.time), trains: g.trains.trains.length, stations: g.stations.list.length, level: g.progression.level, errors: g.trains.errors || 0, collisions: g.trains.collisions, incidents: g.trains.incidents.length } : null,
       log: log.entries(120),
     };
@@ -348,6 +349,9 @@ class App {
     this.ui.closePanel();
     $('#title').hidden = true;
     const shell = $('#busy'); shell.hidden = false;
+    // what is happening while the page is busy (the world is built in one go)
+    const ms = opts.mapSize || (opts.save && opts.save.mapSize) || 0;
+    $('#busy-text').textContent = opts.save ? t('busy_loading') : t('busy_world', { n: ms ? `${ms}×${ms}` : '' }).trim();
     setTimeout(() => {
       let data = opts.save;
       if (data) {
@@ -360,7 +364,10 @@ class App {
       }
       try {
         if (this.title) { this.title.dispose(); this.title = null; }
+        const t0 = performance.now();
         this.game = new Game({ renderer: this.renderer, audio: this.audio, settings: this.settings, store: this.store, ui: this.ui, app: this }, opts);
+        this.startMs = Math.round(performance.now() - t0);
+        log.info('start', opts.save ? 'save loaded' : 'world built', { ms: this.startMs, map: this.game.mapSize });
       } catch (e) {
         console.error('Game start failed', e);
         shell.hidden = true;

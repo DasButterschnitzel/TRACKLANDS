@@ -77,6 +77,7 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Help and controls:** FIND doubles as a command palette (`Ctrl+K`), km/h or mph, a haptics switch, and handbook pages for roads, ports and airports, reputation, fleet care, saves and shortcuts.
 - **Branding:** a company logo (shape, symbol or initials, second colour, "surprise me") in the company panel and on a sign at the headquarters; three more station styles (harbour, art deco, steel and glass).
 - **Manufacturers:** every vehicle belongs to one of twelve invented makers (Hollin & Ruck, Northvale Motive, Voltaris, Citymotor, Skyhaven Aero …); within a maker its models form generations by era. The catalogue shows maker and generation, filters by maker and finds models by maker name.
+- **Performance:** a performance overlay (Settings → Graphics or `F3`) with frame rate and where the frame time goes (simulation, visuals, rendering), draw calls, scene memory and vehicle counts, each against a budget; long lists (world lists, line and stop vehicles) show 60 rows and add more on demand; a label on the busy screen while the world is built or a save loads; the world build time and the frame breakdown in the diagnostics. The sun's shadow map is now freed when a game ends (it was kept over restarts). The world is built in one step on the main thread; a worker was not added because the generator shares its tables with the renderer.
 - **New games:** quick start from the title, game mode presets (relaxed builder, classic, tycoon challenge) and a map preview of the chosen seed and size. Terrain presets and an advanced generator are not offered: the generator has no terrain parameters besides an imported height map, and the game shows no options it cannot honour.
 
 ## Tests
@@ -112,6 +113,7 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | `helpui` | Command palette, units, haptics switch, handbook topics, shortcuts |
 | `packs` | Content-pack schema: good entries load, bad ones are listed and left out |
 | `branding` | Company logo editor, headquarters sign, logo in the save, station styles |
+| `bench` | Benchmark worlds (64², 128², 192² with trains) against the frame budgets and the draw-call/scene baseline in `tests/perf-baseline.json` (`BENCH_UPDATE=1` rewrites it); memory over four game starts; the performance overlay; windowed lists |
 | `makers` | Every vehicle has a maker and a generation; catalogue maker filter and search |
 
 Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).

@@ -397,6 +397,7 @@ export class Input {
       }
     }
     switch (k) {
+      case 'f3': e.preventDefault(); g.ctx.app.setSetting('perfHud', !g.settings.perfHud); break;
       case 'escape': if (g.ui.driveId != null) g.ui.stopDrive(); else if (g.construction.drag) g.construction.touchCancel(); else if (!g.ui.closeTop()) g.construction.setTool('select'); break;
       case 'enter': if (g.construction.drag && g.construction.drag.touch && g.construction.touchReady()) { e.preventDefault(); g.construction.touchCommit(); } break;
       case ' ': if (e.target === document.body || e.target === this.el) { e.preventDefault(); g.togglePause(); } break;

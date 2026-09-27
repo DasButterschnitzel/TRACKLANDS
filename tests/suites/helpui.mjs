@@ -62,7 +62,7 @@ export async function run({ browser, base }) {
   });
   check(u.km && u.mph && u.noKm && u.conv === '62 mph', `speeds follow the unit setting (100 km/h = ${u.conv})`);
   check(u.settings.units && u.settings.haptics, 'settings: units and haptics');
-  check(['roads', 'terminals', 'standing', 'fleetcare', 'saves', 'shortcuts'].every((x) => u.topics.includes(x)) && u.shortcuts === 8, `the handbook covers the newer systems and lists shortcuts (${u.topics.length} topics)`);
+  check(['roads', 'terminals', 'standing', 'fleetcare', 'saves', 'shortcuts'].every((x) => u.topics.includes(x)) && u.shortcuts === 9, `the handbook covers the newer systems and lists shortcuts (${u.topics.length} topics)`);
   check(!u.missing.length, `every handbook line has a text (${u.missing.slice(0, 3).join(', ')})`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();

@@ -46,6 +46,15 @@ export const NewsUIMixin = {
       <input class="search" type="search" placeholder="${this.tr('list_search')}" aria-label="${this.tr('list_search')}" value="${esc(this.listQuery || '')}" data-input="listQuery"/>
       <div id="list-body">${this.listRows()}</div>`;
   },
+  // long lists (Phase 8): show the first rows and add more on demand, so a
+  // panel with hundreds of entries stays quick to build; the count is kept per
+  // list (key). Keys starting with "ins:" belong to the inspector.
+  windowRows(key, rows, step = 60) {
+    this._win = this._win || {};
+    const n = this._win[key] || step;
+    if (rows.length <= n) return rows.join('');
+    return rows.slice(0, n).join('') + `<button class="btn ghost wide win-more" data-act="winMore" data-arg="${key}">${this.tr('tm_show_more', { n: rows.length - n })}</button>`;
+  },
   listRows() {
     const g = this.game, P = g.progression, q = (this.listQuery || '').trim().toLowerCase();
     const tab = this.listTab || 'towns';
@@ -69,12 +78,13 @@ export const NewsUIMixin = {
         return `<button class="fin-row" data-act="jump" data-arg="${kind}:${s.id}"><span>${icon(ic, 'mini')} ${esc(s.name)}</span><small>${fmt(Math.round(n))} ${this.tr('list_handled')} · ${this.tr('fin_last_month')} ${this.money(f.lastRev - f.lastCost, true)}</small></button>`;
       });
     }
-    return rows.length ? `<div class="fin-list">${rows.join('')}</div><p class="muted small">${this.tr('list_count', { n: rows.length })}</p>` : `<p class="muted">${this.tr(q ? 'list_no_match' : 'none_yet')}</p>`;
+    return rows.length ? `<div class="fin-list">${this.windowRows('list', rows)}</div><p class="muted small">${this.tr('list_count', { n: rows.length })}</p>` : `<p class="muted">${this.tr(q ? 'list_no_match' : 'none_yet')}</p>`;
   },
 
   newsActions() {
     const g = () => this.game;
     return {
+      winMore: (a) => { this._win = this._win || {}; this._win[a] = (this._win[a] || 60) + 60; if (a.startsWith('ins:')) this.renderInspector(); else if (a === 'list') { const b = document.getElementById('list-body'); if (b) b.innerHTML = this.listRows(); } else this.refreshPanel(); },
       newsFilter: (a) => { this.newsFilter = a; this.refreshPanel(); },
       newsFocus: (a) => {
         const [type, id] = a.split(':'); const G = g();
@@ -82,12 +92,12 @@ export const NewsUIMixin = {
         if (!ok) { this.toast(this.tr('news_gone'), 'info'); return; }
         this.closePanel(); G.select({ type, id: +id });
       },
-      listTab: (a) => { this.listTab = a; this.refreshPanel(); },
+      listTab: (a) => { this.listTab = a; if (this._win) this._win.list = 0; this.refreshPanel(); },
     };
   },
   newsInputs() {
     return {
-      listQuery: (el) => { this.listQuery = el.value.slice(0, 40); const b = document.getElementById('list-body'); if (b) b.innerHTML = this.listRows(); },
+      listQuery: (el) => { this.listQuery = el.value.slice(0, 40); if (this._win) this._win.list = 0; const b = document.getElementById('list-body'); if (b) b.innerHTML = this.listRows(); },
     };
   },
 };

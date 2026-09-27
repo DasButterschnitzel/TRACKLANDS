@@ -1,0 +1,20 @@
+{
+  "note": "draw calls and scene objects of the benchmark worlds (tests/suites/bench.mjs)",
+  "worlds": {
+    "w64": {
+      "calls": 172,
+      "scene": 383,
+      "geos": 206
+    },
+    "w128": {
+      "calls": 170,
+      "scene": 728,
+      "geos": 300
+    },
+    "w192": {
+      "calls": 128,
+      "scene": 1335,
+      "geos": 321
+    }
+  }
+}

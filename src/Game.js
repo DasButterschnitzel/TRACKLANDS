@@ -50,6 +50,7 @@ import { RailTests } from './debug/RailTests.js';
 import { RailFuzz } from './debug/RailFuzz.js';
 import { EconomySim } from './debug/EconomySim.js';
 import { log } from './core/Log.js';
+import { PerfStats, PerfHud } from './debug/PerfHud.js';
 
 const STEP = 1 / 30;
 const SIM_BUDGET_MS = 24;     // simulation time per rendered frame at most
@@ -69,6 +70,8 @@ export class Game {
     this.selection = null;
     this.cleared = new Set();
     this.autosaveT = 30;
+    this.perf = new PerfStats();
+    this.perfHud = new PerfHud();
     this.testMode = !!opts.test;
     if (opts.test && opts.paused) this.speed = 0;   // deterministic test runs drive tick() themselves
     const save = opts.save || null;
@@ -510,6 +513,7 @@ export class Game {
   }
 
   frame(dt) {
+    const f0 = performance.now();
     dt = Math.min(dt, 0.1);
     this.clock += dt;
     this.input.update(dt);
@@ -528,6 +532,7 @@ export class Game {
       const eff = dt > 0 ? gameDt / dt : this.speed;
       this.effSpeed = this.effSpeed == null ? eff : this.effSpeed * 0.9 + eff * 0.1;
     } else this.effSpeed = this.speed;
+    const f1 = performance.now();
     this.camera.update(dt);
     this.env.update(dt, gameDt, this.clock);
     this.world.view.update(dt, this.clock);
@@ -555,7 +560,13 @@ export class Game {
         if (this.backupT >= 300 && this.ctx.app && this.ctx.app.backupNow) { this.backupT = 0; this.ctx.app.backupNow('auto'); }
       }
     }
+    const f2 = performance.now();
     this.renderer.render(this.scene, this.camera.camera);
+    const f3 = performance.now();
+    const P = this.perf;
+    P.add('sim', f1 - f0); P.add('vis', f2 - f1); P.add('render', f3 - f2); P.add('frame', dt * 1000);
+    this.perfHud.show(!!this.settings.perfHud);
+    this.perfHud.update(dt, this);
   }
 
   resize() {
@@ -567,12 +578,15 @@ export class Game {
 
   dispose() {
     this.running = false;
+    this.perfHud.show(false);
     this.input.dispose();
     this.scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => { if (m.map) m.map.dispose(); if (!m.userData.shared) m.dispose(); });
     });
     if (this.env.skyTex) this.env.skyTex.dispose();
+    // the sun's shadow map is a render target outside the scene graph
+    if (this.env.sun && this.env.sun.shadow && this.env.sun.shadow.map) { this.env.sun.shadow.map.dispose(); this.env.sun.shadow.map = null; }
     this.renderer.renderLists.dispose();
   }
 }

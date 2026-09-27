@@ -94,7 +94,7 @@ export const RoadUIMixin = {
       <span id="rs-type"></span>${s.kind === 'airport' || s.kind === 'dock' ? this.airportBlock(s) : this.stopTypeBlock(s)}
       <span id="rs-lines"></span>${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
       <h4 id="rs-veh">${this.tr('stop_vehicles', { n: vehs.length })}</h4>
-      ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
+      ${this.windowRows('ins:stop' + s.id, vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`))}
       <h4 id="rs-buy">${this.tr('stop_buy')} ${this.helpBtn('transport')}</h4><div class="col">${buy}</div>
       <p class="muted small">${this.tr('stop_help_' + s.kind)}</p>
       <h4 id="rs-fin">${this.tr('fin_heading')}</h4>${this.finBlock(s)}
