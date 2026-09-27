@@ -84,7 +84,7 @@ export async function run({ browser, base }) {
     // land value: the same building costs more to buy out in a historic town
     const b = t.buildings.find((x) => x.arch === 'house' || x.arch === 'cottage' || x.arch === 'apartment' || x.arch === 'townhouse');
     let land = null;
-    if (b) { t.kind = 'historic'; const h = A.demolishInfo(b.tile).cost; t.kind = 'market'; const m = A.demolishInfo(b.tile).cost; t.kind = k0; land = { h, m }; }
+    if (b) { const lv0 = b.lv; delete b.lv; t.kind = 'historic'; const h = A.demolishInfo(b.tile).cost; t.kind = 'market'; const m = A.demolishInfo(b.tile).cost; t.kind = k0; if (lv0 != null) b.lv = lv0; land = { h, m }; }   // (the monthly cached value already holds the real archetype)
     // council policy follows the archetype for most towns
     const P = { historic: 'heritage', industrial: 'industrial', commuter: 'commuter', tourism: 'tourism', port: 'industrial', university: 'green', tech: 'growth', market: 'green', mountain: 'green', railway: 'commuter' };
     const match = T.list.filter((x) => A.policy(x) === P[x.kind] || (x.tourist && A.policy(x) === 'tourism')).length / T.list.length;

@@ -20,7 +20,7 @@ export function bandOf(y) {
 // the tallest building a band puts up (HEIGHT_ORDER in CityStyle)
 export const ERA_CAP = ['apartment', 'block', 'office', 'skyscraper', 'skyscraper', 'skyscraper'];
 // types that appear only from a band on, and what stands there before
-export const ERA_FROM = { glasstower: [3, 'office'], tower: [2, 'block'], skyscraper: [3, 'tower'], bungalow: [2, 'cottage'], mixeduse: [3, 'apartment'], tv_tower: [2, 'clocktower'], convention: [3, 'market_hall'], stadium: [1, 'park'] };
+export const ERA_FROM = { glasstower: [2, 'office'], tower: [2, 'block'], skyscraper: [3, 'tower'], bungalow: [2, 'cottage'], mixeduse: [3, 'apartment'], tv_tower: [2, 'clocktower'], convention: [3, 'market_hall'], stadium: [1, 'park'] };
 
 // wall and roof tints per band (blended into the town's architecture family)
 export const ERA_PALETTE = [

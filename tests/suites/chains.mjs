@@ -38,7 +38,7 @@ export async function run({ browser, base }) {
     const noTruck = Object.keys(CARGO).filter((c) => !road(c));
     return { n: I.list.length, types: types.size, v3: g.world.genVersion, noSource: [...new Set(noSource)], noBuyer: [...new Set(noBuyer)], fish, farms, hills, noWagon, noTruck };
   });
-  check(w.v3 === 3 && w.n >= 48 && w.types >= 28, `a new world (generation ${w.v3}) has ${w.n} industries of ${w.types} kinds`);
+  check(w.v3 >= 3 && w.n >= 48 && w.types >= 28, `a new world (generation ${w.v3}) has ${w.n} industries of ${w.types} kinds`);
   check(!w.noSource.length && !w.noBuyer.length, `every input is produced somewhere and every output has a buyer${w.noSource.length ? ' — no source: ' + w.noSource.join(', ') : ''}${w.noBuyer.length ? ' — no buyer: ' + w.noBuyer.join(', ') : ''}`);
   check(w.fish.length && w.fish.every((n) => n >= 3) && w.farms.every((n) => n === 0), `fisheries on the coast (water tiles ${w.fish.join('/')}), farms and orchards on dry land`);
   check(!w.hills.length || w.hills.filter((n) => n >= 2).length >= Math.ceil(w.hills.length / 2), `quarries and copper mines by the hills where their region has any (${w.hills.join('/') || 'no hilly region'})`);

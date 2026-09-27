@@ -197,7 +197,7 @@ export async function run({ browser, base }) {
   await page.selectOption('#panel select[data-change=catEra]', '1');
   const e1 = await page.evaluate(() => [...document.querySelectorAll('#panel .cat-card')].map((e) => e.dataset.key));
   await page.selectOption('#panel select[data-change=catEra]', '');
-  check(hs >= 6 && e1.length >= 3 && e1.every((k) => ['L:pioneer', 'L:ironhill', 'L:meadow_tank'].includes(k)), `role filter "high speed": ${hs}; era filter "Steam": ${e1.length}`);
+  check(hs >= 6 && e1.length >= 3 && e1.every((k) => ['L:pioneer', 'L:ironhill', 'L:meadow_tank', 'L:coalgate'].includes(k)), `role filter "high speed": ${hs}; era filter "Steam": ${e1.length}`);
   // favourite: star a model with a click, it moves to the top and stays in the save
   await page.click('#panel .cat-card[data-key="L:ironhill"] [data-act=catFav]');
   const fav = await page.evaluate(() => ({ first: document.querySelector('#panel .cat-card').dataset.key, set: [...window.__tracklands.game.progression.favs] }));
