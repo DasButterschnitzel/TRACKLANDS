@@ -77,7 +77,7 @@ export const ToolsUIMixin = {
       bmGo: (a) => { const b = (g().bookmarks || [])[+a]; if (b) { g().camera.focus(b.x, b.z, b.zoom); if (window.innerWidth < 760) this.closePanel(); } },
       bmDel: (a) => { const B = g().bookmarks || []; B.splice(+a, 1); re(); },
       sbMoney: (a) => { if (g().difficultyId !== 'builder') return; g().economy.earn(+a, 'grant', false, null, '~sandbox'); re(); },
-      sbRegions: () => { const G = g(); if (G.difficultyId !== 'builder') return; for (let i = 0; i < 64; i++) if (G.world.centers[i]) G.progression.regions.add(i); G.events.emit('regionUnlocked', -1); re(); },
+      sbRegions: () => { const G = g(); if (G.difficultyId !== 'builder') return; const C = G.world.centers || []; let last = -1; for (let i = 0; i < C.length; i++) if (C[i] && !G.progression.regions.has(i)) { G.progression.regions.add(i); G.world.view.revealRegion(i); last = i; } if (last >= 0) G.events.emit('regionUnlocked', last); re(); },
       sbLevel: (a) => { const P = g().progression; if (g().difficultyId !== 'builder') return; P.level = Math.min(50, P.level + (+a)); g().events.emit('levelUp', P.level); re(); },
       sbEvent: () => { const G = g(); if (G.difficultyId !== 'builder') return; const t = G.towns.list.filter((x) => G.progression.regionUnlocked(x.region)).sort((a, b) => b.pop - a.pop)[0]; if (t) { G.urban.events.push({ id: 900000 + G.urban.events.length, kind: 'festival', town: t.id, start: G.time + 1, end: G.time + 61 }); this.toast(this.tr('sb_event_on', { town: t.name }), 'good', 'town'); } re(); },
     };

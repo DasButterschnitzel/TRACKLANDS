@@ -133,7 +133,7 @@ export const LineUIMixin = {
       ${sugg}
       <label class="set tog"><span>${this.tr('line_auto')}</span><input type="checkbox" ${l.auto ? 'checked' : ''} data-change="lineAuto" data-id="${l.id}"/><i></i></label>
       <p class="muted small">${this.tr('line_auto_help')}</p>
-      <label class="set" data-tip="${this.tr('line_spacing_tip')}"><span>${this.tr('line_spacing')}</span><select data-change="lineSpacing" data-id="${l.id}">${LINE_SPACING.map((x) => `<option value="${x}" ${(l.spacing ?? -1) === x ? 'selected' : ''}>${x === -1 ? this.tr('tt_even') : x === 0 ? this.tr('tt_off') : this.tr('line_every', { n: secs(x) })}</option>`).join('')}</select></label>
+      <label class="set" data-tip="${this.tr('line_spacing_tip')}"><span>${this.tr('line_spacing')}</span><select data-change="roadLineSpacing" data-id="${l.id}">${LINE_SPACING.map((x) => `<option value="${x}" ${(l.spacing ?? -1) === x ? 'selected' : ''}>${x === -1 ? this.tr('tt_even') : x === 0 ? this.tr('tt_off') : this.tr('line_every', { n: secs(x) })}</option>`).join('')}</select></label>
       ${k.forIv > k.n ? `<p class="muted small">${this.tr('line_iv_need', { n: k.forIv })}</p>` : ''}
       ${this.serviceBlock(k, { line: l })}
       <h4>${this.tr('line_stops')} · ${this.tr('pat_' + l.pattern)}</h4>
@@ -207,7 +207,7 @@ export const LineUIMixin = {
     return {
       lineLivery: (el) => { const l = L().byId(+el.dataset.id); if (l) l.livery = el.checked; this.renderInspector(); },
       lineAuto: (el) => { const l = L().byId(+el.dataset.id); if (l) l.auto = el.checked; this.renderInspector(); },
-      lineSpacing: (el) => { const l = L().byId(+el.dataset.id); const v = +el.value; if (l && LINE_SPACING.includes(v)) { l.spacing = v; l.gaps = []; } this.renderInspector(); },
+      roadLineSpacing: (el) => { const l = L().byId(+el.dataset.id); const v = +el.value; if (l && LINE_SPACING.includes(v)) { l.spacing = v; l.gaps = []; } this.renderInspector(); },
       lineName: (el) => { const l = L().byId(+el.dataset.id); const v = el.value.trim().slice(0, 24); if (l && v) { l.name = v; L().changed(); } this.renderInspector(); },
       lineModelSel: (el) => { const l = L().byId(+el.dataset.id); if (l) l.model = el.value; this.renderInspector(); },
       heritage: (el) => {
