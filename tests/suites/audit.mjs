@@ -39,6 +39,9 @@ export async function run({ browser, base }) {
     out.up = R.upgradeAirport(A);
     out.paid = Math.round(c0 - g.economy.coins);
     out.booked = g.ledger.log.some((e) => e.ref && e.ref.type === 'roadstop' && e.ref.id === A.id && e.amt < 0);
+    // (Phase 7: a third size, the hub, follows the international airport)
+    out.size1 = A.size;
+    out.hub = R.upgradeAirport(A).ok && A.size === 3;
     out.again = R.upgradeAirport(A).error;
     const L = R.lines.create({ kind: 'airport', stops: [A.id, B.id] }).line;
     out.jumboLine = R.buy('jumbo', A, null, L).error;
@@ -65,13 +68,14 @@ export async function run({ browser, base }) {
   check(!air.none, 'two airports near towns 14+ tiles apart');
   if (!air.none) {
     check(air.sizes0.join() === '1,1' && air.jumboSmall === 'err_airport_small', `new airports are regional; the Skyliner 300 is refused there (${air.jumboSmall})`);
-    check(air.up.ok && air.paid > 0 && air.booked && air.again === 'err_max_level', `expanding to international costs ${air.paid} ● (booked with the airport), once`);
+    check(air.up.ok && air.size1 === 2 && air.paid > 0 && air.booked, `expanding to international costs ${air.paid} ● (booked with the airport)`);
+    check(air.hub && air.again === 'err_max_level', `then to a hub, and no further (${air.again})`);
     check(air.jumboLine === 'err_airport_small' && air.jumbo, `a big aircraft needs international airports at every stop of its line (${air.jumboLine}, then bought)`);
     check(air.freighter && air.acceptsGoods && air.goodsRev > 0 && air.fEarned > 0, `the freighter flies goods into the other town (${air.goodsRev} ● for goods, ${air.deliveries} deliveries)`);
     check(air.jEarned > 0, `the Skyliner carries passengers (${air.jEarned} ●)`);
     await loadSave(page, await page.evaluate(() => window.__asave));
     const back = await page.evaluate((ids) => { const R = window.__tracklands.game.roads; return ids.map((id) => (R.stopById(id) || {}).size); }, air.ids);
-    check(back.join() === '2,2', `airport sizes survive save/load (${back.join(',')})`);
+    check(back.join() === '3,2', `airport sizes survive save/load (${back.join(',')})`);
   }
   // ---------- rail → road freight ----------
   await startTestGame(page, 4242);
