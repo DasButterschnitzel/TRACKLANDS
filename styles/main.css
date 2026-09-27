@@ -616,6 +616,8 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
   #menu-rail.open .rail-btn[data-arg=settings] { display: flex; }
   #topbar { gap: 4px; }
   .speeds .spd { min-width: 28px; }
+  /* phones: pause, 1×, 4×, 8× (2× stays on wider screens and the , . keys) */
+  .speeds .spd[data-arg="2"] { display: none; }
 }
 @media (max-width: 360px) { #topbar .res.rp { display: none; } }
 
@@ -952,3 +954,26 @@ table.cmp th[scope=row] { color: var(--ink2); font-weight: 600; white-space: now
 .pitem.fav b::before { content: '★ '; color: var(--gold); }
 .bld-find { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .bld-find input { flex: 1; min-width: 120px; min-height: var(--touch-min); }
+
+/* ---------- Phase 7: service quality, storage classes, journeys ---------- */
+.lstat.bunched { background: #8a5ab0; }
+.qbars .kvrow, .store-rows .kvrow { align-items: center; }
+.qbars .kvrow > span:first-child, .store-rows .kvrow > span:first-child { flex: 0 0 38%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbars .kvrow .bar, .store-rows .kvrow .bar { flex: 1 1 auto; }
+.qbars .kvrow b, .store-rows .kvrow b { flex: 0 0 auto; min-width: 3.2em; text-align: right; }
+.card .fixes { margin: 4px 0 6px 18px; padding: 0; }
+.card .fixes li { margin: 2px 0; }
+.pill.good { background: #3ac070; color: #fff; }
+.pill.warn { background: #f0b040; color: #3a2a00; }
+.kvrow.small { font-size: .84em; }
+.accbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: #e6e2da; margin: 4px 0; }
+.accbar i, .acc-key i { display: inline-block; }
+.acc-good { background: #2f9a5a; } .acc-medium { background: #6ab0d8; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 3px, transparent 3px 6px); }
+.acc-poor { background: #e0a33a; background-image: repeating-linear-gradient(-45deg, rgba(0,0,0,.18) 0 2px, transparent 2px 5px); } .acc-none { background: #b8b2a8; }
+.acc-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .8em; }
+.acc-key i { width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+/* rivals: market share bar (company colours) */
+.sharebar { display: flex; flex: 1; height: 10px; border-radius: 5px; overflow: hidden; margin: 0 8px; background: var(--line); min-width: 80px; }
+.sharebar i { display: block; height: 100%; }
+.sharebar i + i { border-left: 2px solid var(--panel, #fff); }
+.spd.throttled { box-shadow: inset 0 -2px 0 var(--warn, #e0a030); }

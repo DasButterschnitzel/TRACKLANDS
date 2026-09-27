@@ -4,6 +4,7 @@ import { cheb, RNG, hashStr, dateKey, tx, tz } from '../util.js';
 import {
   CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit, CARGO_CLASS } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
+import { heritageFare } from './Fleet.js';
 
 export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
 
@@ -113,7 +114,7 @@ export class Economy {
   // the vehicles that carried it (CargoFlows.settle).
   deliver(train, stn, lot) {
     const g = this.game;
-    const r = g.flows.settle(lot, stn, { train, ref: { type: 'train', id: train.id }, fromObj: g.stations.byId(lot.from), mode: 'rail', fare: 1 });
+    const r = g.flows.settle(lot, stn, { train, ref: { type: 'train', id: train.id }, fromObj: g.stations.byId(lot.from), mode: 'rail', fare: heritageFare(train, lot) });
     g.events.emit('delivery', { train, station: stn, cargo: lot.c, amount: lot.n, revenue: r.rev, town: r.res.town, industry: r.res.industry, dist: r.dist, legs: r.legs });
     return r.rev;
   }
@@ -128,9 +129,10 @@ export class Economy {
       else if (k.type === 'town_link' && c === 'PASSENGERS' && res.town && res.town.id === k.town && from && from.links && from.links.towns.includes(k.from)) k.progress += n;
       else if (k.type === 'freight_income' && c !== 'PASSENGERS') k.progress += rev;
       else if (k.type === 'deliveries') k.progress += 1;
+      // (a stop that reaches the industry counts, even where a town takes the cargo first)
+      else if (k.type === 'supply_industry' && c === k.cargo && ((res.industry && res.industry.id === k.ind) || (here && here.links && (here.links.industries || []).includes(k.ind)))) k.progress += n;
       if (k.progress >= k.amount) this.completeContract(k);
     }
-    void here;
   }
 
   // revenue category of a cargo in the ledger
@@ -179,11 +181,16 @@ export class Economy {
     if (lines.length >= 2) types.push('pax_transfers');
     if (lines.some((l) => l.trains.length >= 2)) types.push('timetable');
     if (served.length >= 2) types.push('town_link');
+    // contracts 2.0 (Standing): supplying an industry, service levels, concessions
+    const extra = g.standing ? g.standing.extraContracts(rng, lvl) : [];
+    for (const x of extra) types.push(x.type);
     const used = new Set(this.contracts.map((k) => k.type));
     let type = rng.pick(types);
     for (let i = 0; i < 4 && used.has(type); i++) type = rng.pick(types);
     const scale = 1 + lvl * 0.35;
     const k = { id: this.contractSeq++, type, progress: 0, done: false, claimed: false };
+    const x = extra.find((e) => e.type === type);
+    if (x) Object.assign(k, x);
     switch (type) {
       case 'deliver_town': {
         const town = rng.pick(served), c = rng.pick(townCargo);
@@ -231,7 +238,7 @@ export class Economy {
         break;
       }
     }
-    k.coins = Math.round(k.coins * (1 + g.progression.fx.contractReward));
+    k.coins = Math.round(k.coins * (1 + g.progression.fx.contractReward) * (g.standing ? g.standing.rewardMul() : 1));
     k.xp = Math.round(k.coins * 0.6);
     k.rp = rng.chance(type === 'timed_deliver' ? 0.5 : 0.2) ? 1 : 0;
     return k;
@@ -255,6 +262,7 @@ export class Economy {
     if (k.done) return;
     k.done = true;
     k.progress = k.amount;
+    if (this.game.standing) this.game.standing.onDone(k);
     this.game.events.emit('contractDone', k);
   }
 
@@ -265,6 +273,7 @@ export class Economy {
     this.game.progression.addXP(k.xp);
     if (k.rp) this.game.progression.addRP(k.rp);
     this.game.stats.inc('contractsDone');
+    if (this.game.standing) this.game.standing.onClaimed(k);
     this.game.events.emit('contractClaimed', k);
     this.fillContracts();
   }
@@ -349,9 +358,10 @@ export class Economy {
     let changed = false;
     for (const k of this.contracts) {
       if (k.done) continue;
-      if (k.type === 'timed_deliver') {
+      // contracts with a deadline lapse (the reputation suffers)
+      if (k.left != null && k.time) {
         k.left -= dt;
-        if (k.left <= 0) { k.claimed = true; changed = true; g.events.emit('contractExpired', k); }
+        if (k.left <= 0) { k.claimed = true; changed = true; if (g.standing) g.standing.onFailed(k); g.events.emit('contractExpired', k); }
       }
       if (k.type === 'trains_running') {
         const running = g.trains.trains.filter((t) => t.state === 'run' || t.state === 'load').length;

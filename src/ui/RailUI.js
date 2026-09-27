@@ -341,7 +341,9 @@ export const RailUIMixin = {
     const iv = g.lines.interval(t);
     return `${l ? `<div class="ln-head small"><i class="lc-dot" style="background:${l.color}"></i><b>${esc(g.lines.name(l))}</b><small>${this.tr(l.trains.length === 1 ? 'line_trains_1' : 'line_trains', { n: l.trains.length })}</small></div>${this.lineDiagram(l, t)}` : ''}
       <label class="set"><span>${this.tr('tt_spacing')}</span><select data-change="trainSpacing" data-id="${t.id}">${this.spacingOptions(t.spacing || 0)}</select></label>
-      ${t.spacing ? `<p class="muted small">${iv ? this.tr('tt_active', { n: (iv / 60).toFixed(1) }) : this.tr('tt_learning')}</p>` : ''}`;
+      ${t.spacing ? `<p class="muted small">${iv ? this.tr('tt_active', { n: (iv / 60).toFixed(1) }) : this.tr('tt_learning')}</p>` : ''}
+      <label class="set tog" data-tip="${this.tr('train_express_tip')}"><span>${this.tr('train_express')}</span><input type="checkbox" ${t.express ? 'checked' : ''} data-change="trainExpress" data-id="${t.id}"/><i></i></label>
+      ${l ? this.serviceBlock(g.lines.metrics(l), { rail: true, key: l.key }) : ''}`;
   },
   groupSelect(t) {
     const names = [...new Set(this.game.trains.trains.map((x) => x.group).filter(Boolean))].sort();
@@ -367,6 +369,7 @@ export const RailUIMixin = {
       <div class="tstatus ${s.warn ? 'warn' : ''}">${icon(s.warn ? 'warn' : 'route')}<span>${esc(s.text)}</span><small>${this.kmh(t.v)} km/h</small></div>
       ${this.trainActions(t)}
       ${t.state === 'stored' ? `<div class="card small">${icon('depot', 'mini')} ${this.tr('depot_parked_hint')}</div>` : ''}
+      ${this.fleetBlock(t, true)}
       <button class="consist-mini" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}"><span class="mvs">${mini}</span><span>${icon('builder', 'mini')} ${this.tr('train_builder')}</span></button>
       <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(t)}<p class="muted small">${this.tr('fin_train_value', { v: fmt(Math.round(g.ledger.vehicleValue(t))), age: this.ageText(g.time - (t.bought || 0)) })}</p>${this.handoverNote({ type: 'train', id: t.id })}
@@ -483,6 +486,9 @@ export const RailUIMixin = {
           <label class="set"><span>${this.tr('stop_dwell')}</span><select data-change="stopDwell" data-id="${t.id}" data-i="${i}">${[0, 5, 15, 30, 60].map((d) => `<option value="${d}" ${r.dwell === d ? 'selected' : ''}>${d ? d + ' s' : this.tr('none')}</option>`).join('')}</select></label>
           <label class="set"><span>${this.tr('stop_platform')}</span><select data-change="stopPlat" data-id="${t.id}" data-i="${i}"><option value="">${this.tr('auto')}</option>${s.tracks.map((tk, k) => `<option value="${k}" ${r.plat === k ? 'selected' : ''}>P${k + 1} (${tk.tiles.length} ${this.tr('tiles')})</option>`).join('')}</select></label>
           <label class="set tog"><span>${this.tr('stop_skip')}</span><input type="checkbox" ${r.skip ? 'checked' : ''} data-change="stopSkip" data-id="${t.id}" data-i="${i}"/><i></i></label>
+          <label class="set"><span>${this.tr('stop_min_load')}</span><select data-change="stopMinLoad" data-id="${t.id}" data-i="${i}">${[0, 0.25, 0.5, 0.75].map((x) => `<option value="${x}" ${(r.minLoad || 0) === x ? 'selected' : ''}>${x ? Math.round(x * 100) + ' %' : this.tr('none')}</option>`).join('')}</select></label>
+          <label class="set tog" data-tip="${this.tr('stop_skip_empty_tip')}"><span>${this.tr('stop_skip_empty')}</span><input type="checkbox" ${r.skipEmpty ? 'checked' : ''} data-change="stopSkipEmpty" data-id="${t.id}" data-i="${i}"/><i></i></label>
+          <label class="set tog" data-tip="${this.tr('stop_local_tip')}"><span>${this.tr('stop_local')}</span><input type="checkbox" ${r.local ? 'checked' : ''} data-change="stopLocal" data-id="${t.id}" data-i="${i}"/><i></i></label>
           <div class="chips wrap"><small class="muted">${this.tr('stop_cargo')}</small>${carry.map((c) => `<button class="chip mini ${!r.cargo || r.cargo.includes(c) ? 'on' : ''}" data-act="stopCargo" data-arg="${t.id}:${i}:${c}" data-tip="${this.cargoName(c)}">${cargoIcon(c)}</button>`).join('')}</div>
         </div>`;
       }
@@ -761,6 +767,10 @@ export const RailUIMixin = {
       stopDwell: (el) => { const r = stop(el); if (r) r.dwell = +el.value; this.renderInspector(); },
       stopPlat: (el) => { const r = stop(el); if (r) r.plat = el.value === '' ? null : +el.value; this.renderInspector(); },
       stopSkip: (el) => { const r = stop(el); if (r) r.skip = el.checked; this.renderInspector(); },
+      stopMinLoad: (el) => { const r = stop(el); if (r) { const v = +el.value; if ([0.25, 0.5, 0.75].includes(v)) r.minLoad = v; else delete r.minLoad; } this.renderInspector(); },
+      stopSkipEmpty: (el) => { const r = stop(el); if (r) { if (el.checked) r.skipEmpty = true; else delete r.skipEmpty; } this.renderInspector(); },
+      stopLocal: (el) => { const r = stop(el); if (r) { if (el.checked) r.local = true; else delete r.local; } this.renderInspector(); },
+      trainExpress: (el) => { const t = g().trains.byId(+el.dataset.id); if (t) t.express = !!el.checked; this.renderInspector(); },
       trainSpacing: (el) => { const t = g().trains.byId(+el.dataset.id); if (t) { t.spacing = +el.value || 0; g().lines.version++; } this.renderInspector(); },
       lineSpacing: (el) => { if (el.value === '') return; const l = g().lines.list().find((x) => x.key === el.dataset.key); if (l) for (const t of l.trains) t.spacing = +el.value || 0; g().lines.version++; this.refreshPanel(); },
       fleetPick: (el) => { this.fleetPick = this.fleetPick || {}; this.fleetPick[el.dataset.id] = el.value || null; this.refreshPanel(); },

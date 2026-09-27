@@ -27,6 +27,7 @@ import { cheb } from '../util.js';
 import { CARGO } from '../config.js';
 import { nodeKey, RS } from '../economy/Network.js';
 import { PURPOSES, PURPOSE_IDS } from '../economy/Flows.js';
+import { qualityDemand } from '../economy/Quality.js';
 
 const PAX = 'PASSENGERS';
 const WINDOW = 600;          // seconds of arrivals that count toward service frequency
@@ -40,13 +41,13 @@ const MAX_DEST = 24;         // destinations considered per node
 // building attraction by purpose (per building; landmarks count extra)
 const B_ATTR = {
   shop: { shops: 6, jobs: 6 }, office: { jobs: 120, biz: 60 }, glasstower: { jobs: 260, biz: 140 }, skyscraper: { jobs: 200, biz: 90 },
-  factory: { jobs: 60 }, warehouse: { jobs: 20 }, boathouse: { jobs: 25, leisure: 4 }, farmhouse: { jobs: 3 },
+  factory: { jobs: 60 }, warehouse: { jobs: 20 }, mixeduse: { shops: 20, jobs: 30, biz: 10 }, boathouse: { jobs: 25, leisure: 4 }, farmhouse: { jobs: 3 },
   civic: { jobs: 10, edu: 6, biz: 6 }, plaza: { shops: 4, leisure: 6 }, hotel: { jobs: 40, tour: 30, biz: 10 },
   market_hall: { shops: 30, jobs: 30, tour: 6 }, university: { edu: 120, jobs: 80 }, museum: { leisure: 30, tour: 30, jobs: 20 },
   cathedral: { leisure: 20, tour: 40 }, monument: { leisure: 10, tour: 25 }, stadium: { leisure: 60, jobs: 30 }, clocktower: { leisure: 8, tour: 10 },
   tv_tower: { leisure: 10, tour: 15 }, park: { leisure: 25 }, convention: { biz: 80, jobs: 60, tour: 10 }, lighthouse: { tour: 20, leisure: 6 },
 };
-const POP = { cottage: 3, house: 5, house2: 8, townhouse: 14, apartment: 40, block: 80, tower: 160, skyscraper: 300, terrace: 20, chalet: 6, farmhouse: 5, hotel: 30, glasstower: 60, bungalow: 4, university: 40 };
+const POP = { mixeduse: 50, cottage: 3, house: 5, house2: 8, townhouse: 14, apartment: 40, block: 80, tower: 160, skyscraper: 300, terrace: 20, chalet: 6, farmhouse: 5, hotel: 30, glasstower: 60, bungalow: 4, university: 40 };
 // how the town's make-up shifts what trips its people make
 const ARCH_MIX = {
   university: { education: 2.2 }, tourism: { leisure: 1.4, tourism: 2 }, tech: { business: 1.5, commute: 1.1 }, commuter: { commute: 1.3 },
@@ -117,8 +118,13 @@ export class PaxFlow {
       const a = this.townAttr(t);
       const sts = t._sts ? t._sts.filter((s) => !s.owner && (!s.road || s.kind === 'bus' || s.kind === 'tram' || s.kind === 'dock' || s.kind === 'airport')).length : 1;
       const share = 1 / Math.max(1, sts);
-      for (const x in out) out[x] += a[x] * share;
+      // an event in town (a match, a festival …) draws people there
+      const ev = g.urban ? g.urban.eventAttr(t) : 1;
+      for (const x in out) out[x] += a[x] * share * (x === 'pop' ? 1 : ev);
     }
+    // airports and big stations draw business and tourist trips themselves
+    if (o.road && o.kind === 'airport') { out.biz += 40 * (o.size || 1); out.tour += 30 * (o.size || 1); }
+    if (!o.road && (o.level | 0) >= 3) out.biz += 8 * (o.level - 2);
     return out;
   }
   // the purposes of the trips people at this node make (shares, sum 1)
@@ -200,6 +206,8 @@ export class PaxFlow {
     const o = NW.obj(k);
     const myTowns = o && o.links ? o.links.towns || [] : [];
     const mix = this.mix(k);
+    const t0 = myTowns.length ? g.towns.byId(myTowns[0]) : null;
+    const beltTown = t0 && t0._belt != null ? t0._belt : null;
     const cands = [];
     let gate = null, gc = Infinity;
     for (const [d, r] of R) {
@@ -226,6 +234,8 @@ export class PaxFlow {
         const a = this.nodeAttr(c.k)[P.attr] || 0;
         if (a <= 0) continue;
         let w = a * Math.exp(-c.r.cost / P.tau);
+        // commuter belt: its people commute to the city next door
+        if (p === 'commute' && beltTown != null && (NW.obj(c.k) || {}).links && NW.obj(c.k).links.towns.includes(beltTown)) w *= 1.8;
         if (P.near && c.r.cost < P.near) w *= 0.2;      // intercity: not the town next door
         if (w <= 0) continue;
         row.push({ k: c.k, p, w });
@@ -402,11 +412,25 @@ export class PaxFlow {
     this._maintT -= dt;
     if (this._maintT > 0) return;
     this._maintT = 3;
+    // service quality of the lines at each node: good service makes more people travel
+    const q = this.nodeQuality();
     for (const s of S.list) {
       s._conn = this.net ? this.connections(s).length : 0;
-      s._paxMul = this.demandMul(s);
+      s._q = q.get(s.id) ?? null;
+      s._paxMul = this.demandMul(s) * qualityDemand(s._q);
       this.clamp(s);
     }
+    if (g.roads) for (const s of g.roads.stops) { if (s.owner) continue; s._q = q.get(RS + s.id) ?? null; s._paxMul = qualityDemand(s._q); }
+  }
+  // the best line quality at every node (train lines and road lines)
+  nodeQuality() {
+    const g = this.game, out = new Map();
+    const put = (k, v) => { if (v == null) return; if (!out.has(k) || out.get(k) < v) out.set(k, v); };
+    try {
+      for (const L of g.lines.list()) { const q = g.lines.metrics(L).quality; for (const id of L.stops) put(id, q); }
+      if (g.roads) for (const l of g.roads.lines.list) { if (!g.roads.lines.vehicles(l).length) continue; const q = g.roads.lines.metrics(l).quality; for (const id of l.stops) put(RS + id, q); }
+    } catch (e) { console.warn('pax quality', e); }
+    return out;
   }
 
   // packets can never exceed the waiting total

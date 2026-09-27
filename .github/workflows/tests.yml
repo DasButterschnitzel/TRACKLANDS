@@ -14,13 +14,13 @@ jobs:
       matrix:
         group:
           - name: core
-            suites: unit worldgen rail seeds network
+            suites: unit worldgen rail seeds network urban roadtypes tools
             quick: savefuzz monkey ui
           - name: economy
-            suites: prodsave economy persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes
+            suites: prodsave economy standing analysis timectl persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes
             quick: ''
           - name: transport
-            suites: transport mapsize company scenarios rivals touch buses overview traffic cities chains rollingstock stress audit
+            suites: transport terminals fleet competition mapsize company scenarios rivals touch buses overview traffic cities chains rollingstock stress audit
             quick: ''
     name: regression (${{ matrix.group.name }})
     steps:

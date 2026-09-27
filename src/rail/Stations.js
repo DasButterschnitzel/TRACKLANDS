@@ -1138,10 +1138,16 @@ export class StationSystem {
   deserialize(d) {
     if (!d) return;
     const net = this.game.net;
-    this.nextId = d.nextId || 1;
+    // ids stay below the road stops' node keys (Network RS) and unique
+    const okId = (x) => Number.isInteger(x) && x > 0 && x < 900000;
+    this.nextId = okId(d.nextId) ? d.nextId : 1;
+    const seen = new Set();
     for (const s of d.stations || []) {
       if (typeof s.tile !== 'number' || s.tile < 0 || s.tile >= N * N || net.special.has(s.tile)) continue;
-      const stn = this.newStation(s.tile, { id: s.id });
+      const id = okId(s.id) && !seen.has(s.id) ? s.id : undefined;
+      if (id == null) for (const o of d.stations) if (o && okId(o.id)) this.nextId = Math.max(this.nextId, o.id + 1);
+      const stn = id != null ? this.newStation(s.tile, { id }) : this.newStation(s.tile);
+      seen.add(stn.id);
       this.nextId = Math.max(this.nextId, stn.id + 1);
       stn.level = Math.max(0, Math.min(STATION.maxLevel, s.level | 0));
       stn.style = s.style || 'classic';
@@ -1182,7 +1188,7 @@ export class StationSystem {
       const dep = { id: dd.id, tile: dd.tile, name: String(dd.name || 'Depot') };
       net.special.set(dep.tile, { type: 'depot', id: dep.id });
       this.depots.push(dep);
-      this.nextId = Math.max(this.nextId, dep.id + 1);
+      if (okId(dep.id)) this.nextId = Math.max(this.nextId, dep.id + 1);
     }
   }
   buildAllVisuals() {

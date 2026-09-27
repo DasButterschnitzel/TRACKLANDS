@@ -17,7 +17,7 @@ import { log } from './core/Log.js';
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'auto', shadows: 'medium', particles: 'high', dayNight: true, weather: true, labels: true,
+  graphics: 'auto', shadows: 'medium', particles: 'high', dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
   instantBuild: false, keepTool: true,
 };
@@ -255,7 +255,7 @@ class App {
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
       <p class="muted small">${t('ng_heightmap_help')}</p>
-      <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${[0, 1, 2].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${[0, 1, 2, 3].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
     w.querySelector('#ng-rand').onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); };

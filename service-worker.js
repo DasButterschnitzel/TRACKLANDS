@@ -5,7 +5,7 @@
 // service worker installs the complete new set in the background and waits;
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
-const CACHE = 'tracklands-3.0.0-df8f9ab7b7';
+const CACHE = 'tracklands-3.0.0-e1d2e65cd2';
 const ASSETS = [
   './',
   './assets/music/README.md',
@@ -27,11 +27,15 @@ const ASSETS = [
   './src/debug/EconomySim.js',
   './src/debug/RailFuzz.js',
   './src/debug/RailTests.js',
+  './src/economy/Analytics.js',
   './src/economy/Economy.js',
+  './src/economy/Fleet.js',
   './src/economy/Flows.js',
   './src/economy/Ledger.js',
   './src/economy/Network.js',
+  './src/economy/Quality.js',
   './src/economy/Ratings.js',
+  './src/economy/Standing.js',
   './src/economy/Transport.js',
   './src/i18n.js',
   './src/i18n_rail.js',
@@ -76,6 +80,7 @@ const ASSETS = [
   './src/ui/RailUI.js',
   './src/ui/RoadUI.js',
   './src/ui/ScenarioMenu.js',
+  './src/ui/ToolsUI.js',
   './src/ui/TransportUI.js',
   './src/ui/Tutorial.js',
   './src/ui/UI.js',
@@ -93,6 +98,7 @@ const ASSETS = [
   './src/world/Rivals.js',
   './src/world/Scenarios.js',
   './src/world/Towns.js',
+  './src/world/Urban.js',
   './src/world/WorldGen.js',
   './src/world/WorldView.js',
   './styles/main.css',

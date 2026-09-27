@@ -51,8 +51,17 @@ import * as rollingstock from './suites/rollingstock.mjs';
 import * as stress from './suites/stress.mjs';
 import * as audit from './suites/audit.mjs';
 import * as network from './suites/network.mjs';
+import * as urban from './suites/urban.mjs';
+import * as roadtypes from './suites/roadtypes.mjs';
+import * as terminals from './suites/terminals.mjs';
+import * as fleet from './suites/fleet.mjs';
+import * as standing from './suites/standing.mjs';
+import * as analysis from './suites/analysis.mjs';
+import * as competition from './suites/competition.mjs';
+import * as timectl from './suites/timectl.mjs';
+import * as tools from './suites/tools.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

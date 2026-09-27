@@ -8,7 +8,7 @@ import { fmt, escapeHtml as esc } from '../util.js';
 import { icon } from './icons.js';
 import { ROAD_VEHICLES } from '../config.js';
 import { roadModel } from '../road/Roads.js';
-import { LINE_COLORS, PATTERNS, lineHex } from '../road/Lines.js';
+import { LINE_COLORS, PATTERNS, LINE_SPACING, lineHex } from '../road/Lines.js';
 
 const secs = (s) => (s < 90 ? `${Math.round(s)} s` : `${(s / 60).toFixed(1)} min`);
 
@@ -133,6 +133,9 @@ export const LineUIMixin = {
       ${sugg}
       <label class="set tog"><span>${this.tr('line_auto')}</span><input type="checkbox" ${l.auto ? 'checked' : ''} data-change="lineAuto" data-id="${l.id}"/><i></i></label>
       <p class="muted small">${this.tr('line_auto_help')}</p>
+      <label class="set" data-tip="${this.tr('line_spacing_tip')}"><span>${this.tr('line_spacing')}</span><select data-change="lineSpacing" data-id="${l.id}">${LINE_SPACING.map((x) => `<option value="${x}" ${(l.spacing ?? -1) === x ? 'selected' : ''}>${x === -1 ? this.tr('tt_even') : x === 0 ? this.tr('tt_off') : this.tr('line_every', { n: secs(x) })}</option>`).join('')}</select></label>
+      ${k.forIv > k.n ? `<p class="muted small">${this.tr('line_iv_need', { n: k.forIv })}</p>` : ''}
+      ${this.serviceBlock(k, { line: l })}
       <h4>${this.tr('line_stops')} · ${this.tr('pat_' + l.pattern)}</h4>
       <div class="chips wrap">${PATTERNS.map((p) => `<button class="chip mini ${l.pattern === p ? 'on' : ''}" data-act="linePat" data-arg="${l.id}:${p}" ${p === 'shuttle' || l.stops.length > 2 || p === 'loop' ? '' : 'disabled'}><b>${this.tr('pat_' + p)}</b></button>`).join('')}</div>
       <div class="rv-route">${stops.map((s, i) => `<div class="rv-stop l"><b style="background:${lineHex(l.color)}">${i + 1}</b><button class="link" data-act="jump" data-arg="roadstop:${s.id}">${esc(s.name)}</button><small>${fmt(Math.floor(s.stock.PASSENGERS || 0))} ${icon('bus', 'mini')}</small><button class="icon-btn small" data-act="lineMove" data-arg="${l.id}:${i}:-1" ${i === 0 ? 'disabled' : ''} aria-label="${this.tr('move_up')}">${icon('up')}</button><button class="icon-btn small" data-act="lineMove" data-arg="${l.id}:${i}:1" ${i === stops.length - 1 ? 'disabled' : ''} aria-label="${this.tr('move_down')}"><span class="flipv">${icon('up')}</span></button><button class="icon-btn small" data-act="lineDrop" data-arg="${l.id}:${i}" ${stops.length <= 2 ? 'disabled' : ''} aria-label="${this.tr('remove')}">${icon('minus')}</button></div>`).join('')}</div>
@@ -204,8 +207,17 @@ export const LineUIMixin = {
     return {
       lineLivery: (el) => { const l = L().byId(+el.dataset.id); if (l) l.livery = el.checked; this.renderInspector(); },
       lineAuto: (el) => { const l = L().byId(+el.dataset.id); if (l) l.auto = el.checked; this.renderInspector(); },
+      lineSpacing: (el) => { const l = L().byId(+el.dataset.id); const v = +el.value; if (l && LINE_SPACING.includes(v)) { l.spacing = v; l.gaps = []; } this.renderInspector(); },
       lineName: (el) => { const l = L().byId(+el.dataset.id); const v = el.value.trim().slice(0, 24); if (l && v) { l.name = v; L().changed(); } this.renderInspector(); },
       lineModelSel: (el) => { const l = L().byId(+el.dataset.id); if (l) l.model = el.value; this.renderInspector(); },
+      heritage: (el) => {
+        const g = this.game, [k, id] = String(el.dataset.id).split(':');
+        const o = k === 'T' ? g.trains.byId(+id) : g.roads.byId(+id);
+        if (!o) return;
+        const r = g.fleet.setHeritage(o, el.checked);
+        if (r.error) { this.error(r.error); el.checked = false; } else this.toast(this.tr(el.checked ? 'heritage_started' : 'heritage_ended', { name: o.name }), 'good', 'star');
+        this.renderInspector();
+      },
       rvRule: (el) => { const R = this.game.roads, v = R.byId(+el.dataset.id); if (!v) return; if (el.value) R.addRule(v.model, el.value, 12); else R.removeRule(v.model); this.renderInspector(); },
       rvLine: (el) => { const v = this.game.roads.byId(+el.dataset.id); if (!v) return; const l = el.value ? L().byId(+el.value) : null; if (l) L().assign(v, l); else { v.line = null; L().changed(); } this.renderInspector(); },
     };

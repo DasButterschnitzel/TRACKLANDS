@@ -20,6 +20,7 @@ import { SCALE } from '../style.js';
 import { SPACING_CHOICES } from './Lines.js';
 import { log } from '../core/Log.js';
 import { CargoFlows } from '../economy/Flows.js';
+import { heritageFare, HERITAGE_OP } from '../economy/Fleet.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
@@ -148,7 +149,7 @@ export class TrainSystem {
       cond: typeof d.cond === 'number' && d.cond >= 0.2 && d.cond <= 1 ? d.cond : null, serviceAt: typeof d.serviceAt === 'number' && d.serviceAt >= 0 && d.serviceAt <= 0.95 ? d.serviceAt : null, autoService: d.autoService !== false, broken: typeof d.broken === 'number' && d.broken > 0 && d.broken < 60 ? d.broken : 0, breakdowns: Math.max(0, d.breakdowns | 0), blockedBy: 0, blockKind: null, plat: null, curStop: null, rev: null, via: false,
       waitTotal: 0, pendingVeh: null, deadT: 0,
       // timetable: departure spacing at the first stop (0 off, -1 even, else seconds); train group
-      spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '',
+      spacing: SPACING_CHOICES.includes(d.spacing) ? d.spacing : 0, group: typeof d.group === 'string' ? d.group.trim().slice(0, 24) : '', express: !!d.express, heritage: !!d.heritage, refurb: Math.max(0, Math.min(99, d.refurb | 0)) || undefined,
       servedIdx: null, ttHold: false, incomeEma: 0,
       // player order: run to a depot and stay there (stay) or re-emerge
       depotOrder: d.depotOrder && typeof d.depotOrder.id === 'number' ? { id: d.depotOrder.id, stay: d.depotOrder.stay !== false } : null, depotIn: null,
@@ -855,15 +856,30 @@ export class TrainSystem {
   nextStop(t) {
     const S = this.game.stations, net = this.net;
     const n = t.route.length;
+    let fallback = -1;
     for (let tries = 0; tries < n; tries++) {
       const r = t.route[t.routeIdx % n];
       if (!r.skip) {
         if (r.wp != null && net.waypoints.has(r.wp)) return r;
-        if (r.st != null && S.byId(r.st)) return r;
+        const stn = r.st != null ? S.byId(r.st) : null;
+        if (stn) {
+          if (fallback < 0) fallback = t.routeIdx % n;
+          // an express train passes local stops; a stop with nothing to do can be passed
+          if (!(r.local && t.express) && !(r.skipEmpty && !this.stopHasWork(t, stn))) return r;
+        }
       }
       t.routeIdx = (t.routeIdx + 1) % n;
     }
+    // every stop would be passed: call at the first one after all
+    if (fallback >= 0) { t.routeIdx = fallback; return t.route[fallback]; }
     return null;
+  }
+  // does train t have anything to drop at stn or anything waiting there it
+  // could take? (timetable option: pass the stop when there is nothing)
+  stopHasWork(t, stn) {
+    for (const lot of t.cargo) if (lot.to === stn.id || (lot.to == null && this.stationAccepts(stn, lot))) return true;
+    for (const c in stn.stock) if (stn.stock[c] >= 1 && canCarry(t._st, c) && (!t.filter || t.filter.includes(c))) return true;
+    return false;
   }
 
   chooseTarget(t, here) {
@@ -1235,7 +1251,7 @@ export class TrainSystem {
         if (!unload || lot.to !== stn.id) { keep.push(lot); continue; }
         // its destination, or a change to another service here (paid when it arrives)
         if (F.endsHere(lot, stn)) { g.economy.deliver(t, stn, lot); moved += lot.n; continue; }
-        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', 1);
+        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', heritageFare(t, lot));
         moved += took;
         if (took < lot.n) {
           // the station is full: travellers end their journey here, freight rides on
@@ -1246,7 +1262,7 @@ export class TrainSystem {
       }
       if (unload && opt.act === 'transfer' && lot.from !== stn.id) {
         // feeder order: the load waits here for the next service (paid when it arrives)
-        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', 1);
+        const took = F.change(stn, lot, ref, S.byId(lot.from), 'rail', heritageFare(t, lot));
         if (took > 0) { moved += took; if (took < lot.n) keep.push({ ...lot, n: lot.n - took }); continue; }
       }
       const accept = unload && this.stationAccepts(stn, lot);
@@ -1271,6 +1287,7 @@ export class TrainSystem {
     const rate = S.loadRate(stn, [...Object.keys(stn.stock), ...t.cargo.map((l) => l.c)]) * t._st.load * eff;
     t.loadTime = 1.2 + (moved + planned) / Math.max(1, rate) + (opt.dwell || 0);
     t.waitFull = !!opt.full && opt.act !== 'unload' && opt.act !== 'none';
+    t.minLoad = !t.waitFull && opt.minLoad && opt.act !== 'unload' && opt.act !== 'none' ? opt.minLoad : 0;
     t.trips++;
     // seconds held at signals and behind other trains since the last stop
     const wt = t.waitTotal || 0;
@@ -1323,9 +1340,10 @@ export class TrainSystem {
       if (!dry && got < n) total -= n - got;
       for (const a of add) {
         if (a.t0 == null) a.t0 = g.time;
+        if (!dry) a.b0 = g.time;
         const sig = CargoFlows.sig(a);
         const lot = lots.find((l) => l.from === a.from && CargoFlows.sig(l) === sig);
-        if (lot) { lot.t0 = ((lot.t0 ?? a.t0) * lot.n + a.t0 * a.n) / (lot.n + a.n); lot.n += a.n; } else lots.push(a);
+        if (lot) { lot.t0 = ((lot.t0 ?? a.t0) * lot.n + a.t0 * a.n) / (lot.n + a.n); if (a.b0 != null) lot.b0 = ((lot.b0 ?? a.b0) * lot.n + a.b0 * a.n) / (lot.n + a.n); lot.n += a.n; } else lots.push(a);
       }
       // (taking the loads already reduced what waits here)
       if (!dry) {
@@ -1369,7 +1387,7 @@ export class TrainSystem {
     if (this._deadT <= 0) { this._deadT = 1; this.detectDeadlocks(); this.checkInvariants(); }
     // running costs, booked per train
     for (const t of this.trains) {
-      const op = t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1) * (g.maint ? g.maint.opMul(t) : 1);
+      const op = t._st.op * (t.state === 'stored' || t.state === 'spawnwait' ? 0 : t.state === 'idle' ? 0.3 : 1) * (g.maint ? g.maint.opMul(t) : 1) * (t.heritage ? HERITAGE_OP : 1);
       if (op > 0) g.economy.operatingCost((op / 60) * dt, { type: 'train', id: t.id });
     }
   }
@@ -1420,6 +1438,8 @@ export class TrainSystem {
           if (t.fullUntil == null) t.fullUntil = t.stateT + 150;
           const blocking = this.trains.some((o) => o !== t && o.blockedBy === t.id && o.wait > 20);
           if (t.waitFull && stn && !this.isFull(t) && t.stateT < t.fullUntil && !blocking) { t.loadTime = t.stateT + 1.5; return; }
+          // a minimum load: wait until the train is that full (same limits)
+          if (t.minLoad && stn && this.fillRatio(t) < t.minLoad && t.stateT < t.fullUntil && !blocking) { t.loadTime = t.stateT + 1.5; return; }
           t.fullUntil = null;
           // timetable: keep an even interval between departures of the line
           const hold = g.lines.holdFor(t);
@@ -2271,7 +2291,7 @@ export class TrainSystem {
         id: t.id, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, liveryScope: t.liveryScope === 'loco' ? 'loco' : undefined, upg: t.upg, mode: t.mode,
         route: t.route, routeIdx: t.routeIdx, filter: t.filter, cargo: t.cargo, earned: t.earned, trips: t.trips, target: t.target, depotId: t.homeDepot,
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
-        spacing: t.spacing || undefined, group: t.group || undefined,
+        spacing: t.spacing || undefined, group: t.group || undefined, express: t.express || undefined, heritage: t.heritage || undefined, refurb: t.refurb || undefined,
         depotOrder: t.depotOrder || undefined,
         bought: t.bought ? Math.round(t.bought) : undefined, fin: cleanFin(t.fin), dly: t.dly ? Math.round(t.dly * 10) / 10 : undefined,
         cond: t.cond == null ? undefined : Math.round(t.cond * 1000) / 1000, serviceAt: t.serviceAt == null ? undefined : t.serviceAt, autoService: t.autoService === false ? false : undefined, broken: t.broken > 0 ? Math.round(t.broken) : undefined, breakdowns: t.breakdowns || undefined,
@@ -2354,6 +2374,11 @@ function normStop(r) {
   if (['auto', 'load', 'unload', 'transfer', 'none'].includes(r.act)) o.act = r.act;
   o.dwell = clamp(+r.dwell || 0, 0, 120);
   o.full = !!r.full; o.skip = !!r.skip;
+  // timetable options (Phase 7): wait for a share of a full load, pass the
+  // stop when nobody gets on or off, local stop (express trains pass it)
+  if ([0.25, 0.5, 0.75].includes(+r.minLoad)) o.minLoad = +r.minLoad;
+  if (r.skipEmpty) o.skipEmpty = true;
+  if (r.local) o.local = true;
   o.plat = typeof r.plat === 'number' && r.plat >= 0 ? r.plat : null;
   o.cargo = Array.isArray(r.cargo) ? r.cargo.filter((c) => CARGO[c]) : null;
   return o;

@@ -40,6 +40,7 @@ export class IndustrySystem {
 
   capacity(ind) { return INDUSTRIES[ind.type].storage * (1 + ind.level); }
   accepts(ind, c) {
+    if (ind.closed) return false;
     const cfg = INDUSTRIES[ind.type];
     if (cfg.accepts && cfg.accepts.includes(c)) return true;
     return cfg.recipes.some((r) => c in r.in);
@@ -99,6 +100,7 @@ export class IndustrySystem {
 
   rate(ind) {
     const g = this.game, cfg = INDUSTRIES[ind.type], fx = g.progression.fx, ev = g.economy.eventFx;
+    if (ind.closed) return 0;
     let r = cfg.rate * (1 + 0.5 * ind.level) * (1 + fx.industryProd);
     if (!cfg.primary) r *= 1 + fx.processing;
     if (ind.type === 'FARM') r *= 1 + (ev.farmProd || 0);
@@ -422,6 +424,9 @@ export class IndustrySystem {
       if (i.pv || i.lastPv) { o.pv = Math.round(i.pv || 0); o.lastPv = i.lastPv || 0; }
       if (i.fin) o.fin = i.fin;
       if (i.site) o.site = i.site;
+      if (i.closed) { o.closed = 1; o.closedM = i.closedM || 0; }
+      if (i.closing != null) o.closing = i.closing;
+      if (i.idleM) o.idleM = i.idleM;
       return o;
     });
   }
@@ -445,6 +450,9 @@ export class IndustrySystem {
       ind.pv = Math.max(0, +d.pv || 0); ind.lastPv = Math.max(0, +d.lastPv || 0);
       const f = cleanFin(d.fin);
       if (f) ind.fin = f;
+      ind.closed = !!d.closed; ind.closedM = Math.max(0, Math.min(99, d.closedM | 0));
+      ind.closing = Number.isInteger(d.closing) && d.closing >= 0 && d.closing <= 12 ? d.closing : null;
+      ind.idleM = Math.max(0, Math.min(999, d.idleM | 0));
     }
   }
 }

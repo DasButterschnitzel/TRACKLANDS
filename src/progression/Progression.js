@@ -11,7 +11,7 @@ export function vehicleKeyValid(k) {
   return t === 'L' ? LOCOS.some((m) => m.id === id) : t === 'W' ? !!WAGONS[id] : t === 'R' ? ROAD_VEHICLES.some((m) => m.id === id) : false;
 }
 
-const FX_KEYS = ['busPriority', 'trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
+const FX_KEYS = ['busPriority', 'tramPriority', 'trackCost', 'bridgeCost', 'tunnelCost', 'curvePenalty', 'trainSpeed', 'trainAccel', 'opCost', 'capacity', 'loadSpeed', 'storage',
   'stationRadius', 'cargoIncome', 'mailIncome', 'paxIncome', 'paxProd', 'mailProd', 'townReq', 'industryProd', 'processing', 'industryGrowth',
   'income', 'buildingCost', 'contractReward', 'legacyDiscount', 'switchTime', 'junctionSpeed', 'brake'];
 

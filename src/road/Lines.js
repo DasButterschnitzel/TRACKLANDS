@@ -12,10 +12,14 @@
 // retires vehicles monthly to match its demand. Vehicles without a line keep
 // working as before (older saves are given lines when they load).
 import { cheb, tx, tz } from '../util.js';
-import { KMH_PER_TILE_S, ROAD_VEHICLES } from '../config.js';
+import { KMH_PER_TILE_S, ROAD_VEHICLES, STOP_ORDER } from '../config.js';
+import { serviceQuality } from '../economy/Quality.js';
 
 export const LINE_COLORS = [0xd8483a, 0x2f7ad0, 0x3fae5a, 0xe0a33a, 0x8a4fc0, 0x17a2b8, 0xe36fa0, 0x6b8e23, 0xb06a2b, 0x4a5568, 0xc0392b, 0x16a085, 0xd4ac0d, 0x7d3c98];
 export const PATTERNS = ['loop', 'outback', 'oneway', 'shuttle'];
+// departure spacing: -1 even (the measured round trip / vehicles), 0 off,
+// else a target interval in seconds (clockface: every 30 s, 1 min, …)
+export const LINE_SPACING = [-1, 0, 20, 30, 45, 60, 90, 120, 180, 300];
 const MONTH = 60;             // game seconds per month
 const DWELL = 3;              // seconds a stop takes on average
 const HIST = 12;              // months of history kept per line
@@ -174,7 +178,9 @@ export class RoadLines {
     const tiles = this.cycleTiles(line);
     const speed = m ? (m.speed / KMH_PER_TILE_S) * (m.kind === 'airport' ? 0.6 : 1) * 0.85 : 1;
     const seq = this.seq(line);
-    const cycle = tiles / Math.max(0.1, speed) + seq.length * DWELL * (m && m.board ? 1 / m.board : 1);
+    const est = tiles / Math.max(0.1, speed) + seq.length * DWELL * (m && m.board ? 1 / m.board : 1);
+    // (the measured round trip once vehicles have gone round, else the estimate)
+    const cycle = line.cycEma > 0 ? line.cycEma : est;
     const n = vs.length;
     const cap = vs.length ? vs.reduce((a, v) => a + (R.capOf ? R.capOf(v) : 0), 0) / n : (m ? m.cap : 0);
     const perVeh = cap * (MONTH / Math.max(1, cycle));
@@ -195,16 +201,29 @@ export class RoadLines {
     const h = line.hist.length ? line.hist[line.hist.length - 1] : null;
     const carried = h ? h.pax : line.cur.pax;
     const load = capacity > 0 ? Math.min(1, carried / capacity) : 0;
+    const reg = this.regularity(line);
     let status = 'ok';
     if (!n) status = 'no_vehicles';
     else if (line.stops.length < 2) status = 'no_route';
     else if (vs.some((v) => v.problem)) status = 'blocked';
     else if (demand > capacity * 1.1 || waiting > Math.max(40, cap * n * 1.2)) status = 'overcrowded';
     else if (n > 1 && h && load < 0.2) status = 'underused';
-    const need = perVeh > 0 ? Math.max(1, Math.min(MAX_NEED, Math.ceil(demand / (perVeh * 0.8)))) : n;
+    let need = perVeh > 0 ? Math.max(1, Math.min(MAX_NEED, Math.ceil(demand / (perVeh * 0.8)))) : n;
+    // a target interval (clockface) needs enough vehicles to keep it
+    const sp = line.spacing || 0;
+    const forIv = sp > 0 && cycle > 0 ? Math.min(MAX_NEED, Math.ceil(cycle / sp)) : 0;
+    if (forIv > need) need = forIv;
     const profit = h ? h.rev - h.cost : Math.round(line.cur.rev - line.cur.cost);
+    if (status === 'ok' && reg != null && reg < 0.45 && n >= 2) status = 'bunched';
+    // service quality (Quality.js): ride time, delays and the stops' standard
+    const rv = vs.filter((v) => v.rideEma > 0);
+    const rideT = rv.length ? rv.reduce((a, v) => a + v.rideEma, 0) / rv.length : null;
+    const dist = rv.length ? rv.reduce((a, v) => a + (v.distEma || 0), 0) / rv.length : null;
+    const delay = n ? vs.reduce((a, v) => a + (v.dly || 0), 0) / n : 0;
+    const stq = stops.length ? stops.reduce((a, s) => a + (s.kind === 'bus' ? (STOP_ORDER.indexOf(s.type || 'basic') + 1) / STOP_ORDER.length : s.kind === 'airport' ? (s.size || 1) / 2 : 0.6), 0) / stops.length : 0.5;
+    const q = serviceQuality({ headway: n ? headway : 0, ride: rideT, dist, load, waiting, capVeh: cap, delay, cycle, reg, stations: stq, freight: line.kind === 'truck' });
     void g;
-    return { n, tiles: Math.round(tiles), cycle, headway, wait, capacity, demand, waiting: Math.round(waiting), load, status, need, suggest: need - n, profit, model: m, cap, perVeh };
+    return { n, tiles: Math.round(tiles), cycle, headway, wait, capacity, demand, waiting: Math.round(waiting), load, status, need, suggest: need - n, profit, model: m, cap, perVeh, reg, forIv, interval: (line.spacing ?? -1) > 0 ? line.spacing : (line.spacing ?? -1) === 0 || n < 2 ? 0 : cycle / n, rideT, dist, delay, quality: q.score, factors: q.factors };
   }
   // before anything is measured: a share of the towns' travellers at a stop
   guessGen(s) {
@@ -232,6 +251,77 @@ export class RoadLines {
     const rev = E && E.revenue ? Math.round(E.revenue(kind === 'truck' ? 'GOODS' : 'PASSENGERS', carried, hop, null, false, hop / Math.max(0.1, speed)) * 0.9) : 0;
     const cost = m ? Math.round(m.op * need) : 0;
     return { tiles: Math.round(tiles), cycle, demand: Math.round(demand), need, model: m, revenue: rev, cost, pattern: tmp.pattern, minutes: cycle / 60 };
+  }
+
+  // ---------- departure spacing and bunching ----------
+  // seconds between departures the line aims for (0: none)
+  interval(line) {
+    const sp = line.spacing == null ? -1 : line.spacing;
+    if (sp === 0) return 0;
+    if (sp > 0) return sp;
+    const n = this.vehicles(line).filter((v) => v.state !== 'stored').length;
+    if (n < 2) return 0;
+    const cyc = line.cycEma > 0 ? line.cycEma : this.estCycle(line);
+    return cyc > 0 ? cyc / n : 0;
+  }
+  // estimated round trip (before any is measured)
+  estCycle(line) {
+    const m = this.model(line);
+    const speed = m ? (m.speed / KMH_PER_TILE_S) * (m.kind === 'airport' ? 0.6 : 1) * 0.85 : 1;
+    return this.cycleTiles(line) / Math.max(0.1, speed) + this.seq(line).length * DWELL * (m && m.board ? 1 / m.board : 1);
+  }
+  // how long vehicle v should still wait at its stop before leaving: the
+  // first stop of the line holds up to the full interval (spacing), the
+  // others only when badly bunched and never long (bunching recovery)
+  holdFor(v) {
+    const line = this.lineOf(v);
+    if (!line || v.stops.length < 2) return 0;
+    const iv = this.interval(line);
+    if (!(iv > 0)) return 0;
+    const g = this.game;
+    const i = v.idx % v.stops.length, stop = v.stops[i];
+    const last = line.dep ? line.dep[stop] : null;
+    if (last == null || last > g.time) return 0;
+    const gap = g.time - last;
+    const timing = i === 0;
+    const want = timing ? iv : iv * 0.5;
+    if (gap >= want) return 0;
+    const cap = timing ? iv * 0.6 : Math.min(12, iv * 0.25);
+    const key = stop + ':' + v.trips;
+    const used = v._holdKey === key ? v._holdUsed || 0 : 0;
+    const h = Math.min(want - gap, cap - used);
+    if (h <= 0.05) return 0;
+    v._holdKey = key; v._holdUsed = used + h;
+    v._heldCycle = (v._heldCycle || 0) + h;
+    line.holds = (line.holds || 0) + 1;
+    return h;
+  }
+  // a vehicle leaves a stop of its line: remember it (spacing) and measure
+  // the round trip at the first stop (without the time held for spacing)
+  noteDeparture(v) {
+    const line = this.lineOf(v);
+    if (!line) return;
+    const g = this.game, i = v.idx % v.stops.length, stop = v.stops[i];
+    if (!line.dep) line.dep = {};
+    const prev = line.dep[stop];
+    line.dep[stop] = g.time;
+    if (i !== 0) return;
+    // departure gaps at the first stop: how regular the service is
+    if (prev != null && g.time > prev) { const gp = g.time - prev; line.gaps = (line.gaps || []).concat([Math.round(gp * 10) / 10]).slice(-8); }
+    if (v._c0 != null && g.time > v._c0) {
+      const c = Math.max(1, g.time - v._c0 - (v._heldCycle || 0));
+      line.cycEma = line.cycEma > 0 ? line.cycEma * 0.7 + c * 0.3 : c;
+    }
+    v._c0 = g.time; v._heldCycle = 0;
+  }
+  // regularity of the departures at the first stop: 1 even … 0 bunched
+  regularity(line) {
+    const gs = line.gaps || [];
+    if (gs.length < 3) return null;
+    const m = gs.reduce((a, b) => a + b, 0) / gs.length;
+    if (!(m > 0)) return null;
+    const sd = Math.sqrt(gs.reduce((a, b) => a + (b - m) * (b - m), 0) / gs.length);
+    return Math.max(0, Math.min(1, 1 - sd / m));
   }
 
   // ---------- running ----------
@@ -282,7 +372,7 @@ export class RoadLines {
 
   // ---------- save ----------
   serialize() {
-    return { next: this.nextId, list: this.list.map((l) => ({ id: l.id, name: l.name, color: l.color, kind: l.kind, stops: l.stops, pattern: l.pattern, model: l.model || undefined, auto: l.auto || undefined, livery: l.livery || undefined, created: Math.round(l.created || 0), hist: l.hist, cur: l.cur })) };
+    return { next: this.nextId, list: this.list.map((l) => ({ id: l.id, name: l.name, color: l.color, kind: l.kind, stops: l.stops, pattern: l.pattern, model: l.model || undefined, auto: l.auto || undefined, livery: l.livery || undefined, created: Math.round(l.created || 0), hist: l.hist, cur: l.cur, spacing: l.spacing != null && l.spacing !== -1 ? l.spacing : undefined, cycEma: l.cycEma > 0 ? Math.round(l.cycEma * 10) / 10 : undefined })) };
   }
   deserialize(d) {
     this.list = [];
@@ -294,7 +384,7 @@ export class RoadLines {
       const kind = typeof x.kind === 'string' ? x.kind : stops.length ? R.stopById(stops[0]).kind : 'bus';
       const hist = (Array.isArray(x.hist) ? x.hist : []).filter((h) => h && typeof h === 'object').slice(-HIST).map((h) => ({ pax: +h.pax || 0, rev: +h.rev || 0, cost: +h.cost || 0, trips: h.trips | 0, n: h.n | 0 }));
       const cur = x.cur && typeof x.cur === 'object' ? { pax: +x.cur.pax || 0, rev: +x.cur.rev || 0, cost: +x.cur.cost || 0, trips: x.cur.trips | 0 } : { pax: 0, rev: 0, cost: 0, trips: 0 };
-      this.list.push({ id: x.id, name: String(x.name || x.id).slice(0, 24), color: Number.isFinite(+x.color) ? (+x.color >>> 0) & 0xffffff : LINE_COLORS[x.id % LINE_COLORS.length], kind, stops: stops.filter((s) => R.stopById(s).kind === kind), pattern: PATTERNS.includes(x.pattern) ? x.pattern : 'loop', model: typeof x.model === 'string' ? x.model : null, auto: !!x.auto, livery: !!x.livery, created: +x.created || 0, hist, cur, gen: {} });
+      this.list.push({ id: x.id, name: String(x.name || x.id).slice(0, 24), color: Number.isFinite(+x.color) ? (+x.color >>> 0) & 0xffffff : LINE_COLORS[x.id % LINE_COLORS.length], kind, stops: stops.filter((s) => R.stopById(s).kind === kind), pattern: PATTERNS.includes(x.pattern) ? x.pattern : 'loop', model: typeof x.model === 'string' ? x.model : null, auto: !!x.auto, livery: !!x.livery, created: +x.created || 0, hist, cur, gen: {}, spacing: LINE_SPACING.includes(x.spacing) ? x.spacing : -1, cycEma: Number.isFinite(+x.cycEma) && x.cycEma > 0 ? Math.min(3600, +x.cycEma) : 0 });
     }
     this.nextId = Math.max(d.next | 0, 1, ...this.list.map((l) => l.id + 1));
   }

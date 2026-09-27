@@ -31,9 +31,10 @@ export const FinanceUIMixin = {
   },
   pFinance() {
     const tab = this.finTab || 'overview';
-    const tabs = ['overview', 'ledger', 'history', 'log', 'value', 'invest', 'stats'].map((k) => `<button class="${tab === k ? 'on' : ''}" data-act="finTab" data-arg="${k}" aria-pressed="${tab === k}">${this.tr('fin_tab_' + k)}</button>`).join('');
+    const tabs = ['overview', 'analysis', 'ledger', 'history', 'log', 'value', 'invest', 'stats'].map((k) => `<button class="${tab === k ? 'on' : ''}" data-act="finTab" data-arg="${k}" aria-pressed="${tab === k}">${this.tr('fin_tab_' + k)}</button>`).join('');
     let body = '';
     if (tab === 'overview') body = this.finOverview();
+    else if (tab === 'analysis') body = this.finAnalysis();
     else if (tab === 'ledger') body = this.finLedger();
     else if (tab === 'history') body = this.finHistory();
     else if (tab === 'log') body = this.finLog();
@@ -70,6 +71,32 @@ export const FinanceUIMixin = {
       ${this.finLoanBox()}
       <h4>${this.tr('fin_profit_chart')}</h4>${this.finChart('profit', 12)}
       ${this.finTopTrains()}`;
+  },
+  // ANALYSIS: divisions, services, towns, cargo, cash flow, returns
+  finAnalysis() {
+    const g = this.game, A = g.analytics, L = g.ledger;
+    const pl = (p) => `<span class="${p < 0 ? 'neg' : 'pos'}">${this.money(Math.round(p), true)}</span>`;
+    const MI = { rail: 'train', bus: 'bus', truck: 'truck', tram: 'tram', dock: 'dock', airport: 'airport', rail_auto: 'train', road_loose: 'bus' };
+    const div = A.divisions();
+    const divRows = div.map((d) => `<tr><th scope="row">${icon(MI[d.id], 'mini')} ${this.tr('div_' + d.id)} <small class="muted">×${d.n}</small></th><td>${this.money(Math.round(d.lastRev))}</td><td>${this.money(Math.round(d.lastCost))}</td><td>${pl(d.last)}</td><td>${pl(d.now)}</td><td>${Math.round((d.active / Math.max(1, d.n)) * 100)} %</td></tr>`).join('');
+    const sv = A.services();
+    const svRow = (x) => `<div class="kvrow small">${icon(MI[x.kind] || 'route', 'mini')}<span>${esc(x.name || this.tr('svc_' + x.kind))} <small class="muted">×${x.n}</small></span><b>${pl(x.last || x.now)}</b></div>`;
+    const best = sv.slice(0, 5).map(svRow).join(''), worst = sv.length > 5 ? sv.slice(-Math.min(5, sv.length - 5)).reverse().map(svRow).join('') : '';
+    const tw = A.towns().slice(0, 8).map((x) => `<div class="kvrow small"><button class="tag link" data-act="jump" data-arg="town:${x.town.id}">${icon('town', 'mini')}${esc(x.town.name)}</button><span class="muted">${this.tr('an_stops', { n: x.stops })}</span><b>${this.money(Math.round(x.lastRev || x.rev))}</b></div>`).join('');
+    const cg = A.cargo(), top = Math.max(1, ...cg.map((x) => x.last || x.now));
+    const cgRows = cg.slice(0, 10).map((x) => `<div class="kvrow small">${cargoIcon(x.c, 'mini')}<span>${this.cargoName(x.c)}</span>${this.bar((x.last || x.now) / top)}<b>${this.money(Math.round(x.last || x.now))}</b></div>`).join('');
+    const last = L.months[L.months.length - 1];
+    const cf = (p, lab) => { const f = A.cashFlow(p); return `<tr><th scope="row">${lab}</th><td>${pl(f.operating)}</td><td>${pl(f.investing)}</td><td>${pl(f.financing)}</td><td>${pl(f.net)}</td></tr>`; };
+    const R = A.returns(5);
+    const retRow = (r) => `<div class="kvrow small"><button class="tag link" data-act="jump" data-arg="${r.type === 'train' ? 'train' : 'road'}:${r.o.id}">${icon(r.type === 'train' ? 'train' : 'bus', 'mini')}${esc(r.o.name)}</button><span class="muted">${this.tr('an_roi', { n: Math.round(r.roi * 100) })}</span><b>${r.payback == null ? '—' : r.payback < 0.5 ? this.tr('an_paid') : this.tr('an_payback', { n: r.payback.toFixed(1) })}</b></div>`;
+    return `<p class="muted small">${this.tr('an_intro')}</p>
+      <h4>${this.tr('an_divisions')}</h4>${div.length ? `<div class="fin-table-wrap"><table class="fin-table"><thead><tr><th></th><th>${this.tr('an_rev_last')}</th><th>${this.tr('an_cost_last')}</th><th>${this.tr('an_profit_last')}</th><th>${this.tr('an_profit_now')}</th><th>${this.tr('an_in_service')}</th></tr></thead><tbody>${divRows}</tbody></table></div>` : `<p class="muted">${this.tr('none_yet')}</p>`}
+      <h4>${this.tr('an_services_best')}</h4>${best || `<p class="muted">${this.tr('none_yet')}</p>`}${worst ? `<h4>${this.tr('an_services_worst')}</h4>${worst}` : ''}
+      <h4>${this.tr('an_towns')}</h4>${tw || `<p class="muted">${this.tr('none_yet')}</p>`}
+      <h4>${this.tr('an_cargo')}</h4>${cgRows || `<p class="muted">${this.tr('none_yet')}</p>`}
+      <h4>${this.tr('an_cashflow')}</h4><div class="fin-table-wrap"><table class="fin-table"><thead><tr><th></th><th>${this.tr('an_operating')}</th><th>${this.tr('an_investing')}</th><th>${this.tr('an_financing')}</th><th>${this.tr('an_net')}</th></tr></thead><tbody>${cf(L.cur, this.tr('fin_this_month'))}${last ? cf(last, this.tr('fin_last_month')) : ''}</tbody></table></div>
+      <h4>${this.tr('an_returns')}</h4>${R.best.map(retRow).join('') || `<p class="muted">${this.tr('none_yet')}</p>`}${R.worst.length ? `<h5>${this.tr('an_returns_worst')}</h5>${R.worst.map(retRow).join('')}` : ''}
+      <div class="row wrap"><button class="btn small" data-act="overlay" data-arg="profit">${icon('stats', 'mini')} ${this.tr('overlay_profit')}</button></div>`;
   },
   finLoanBox() {
     const L = this.game.ledger;

@@ -20,7 +20,7 @@ export const LOAN_STEP = 1000;
 
 // income / expense categories (i18n: fin_<id>)
 export const INCOME_CATS = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'sale', 'refund', 'other', 'loan_in', 'deposit_back', 'dividend', 'share_sale'];
-export const EXPENSE_CATS = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit', 'industry_fund', 'shares'];
+export const EXPENSE_CATS = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'interest', 'construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'other', 'loan_out', 'deposit', 'industry_fund', 'shares', 'acquisition'];
 // categories that are not profit or loss (cash moves between company and bank,
 // or money coming back for something that was spent)
 export const NON_PL = new Set(['loan_in', 'loan_out', 'deposit', 'deposit_back', 'shares', 'share_sale']);
@@ -35,7 +35,7 @@ export function cleanFin(f) {
   const n = (v) => (typeof v === 'number' && isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : 0);
   return { m: Number.isInteger(f.m) && f.m >= 0 ? f.m : 0, rev: n(f.rev), cost: n(f.cost), lastRev: n(f.lastRev), lastCost: n(f.lastCost), lifeRev: n(f.lifeRev), lifeCost: n(f.lifeCost), pu: n(f.pu), cu: n(f.cu), lastPu: n(f.lastPu), lastCu: n(f.lastCu) };
 }
-const blankMonth = (m) => ({ m, inc: {}, exp: {}, cash: 0, debt: 0, value: 0 });
+const blankMonth = (m) => ({ m, inc: {}, exp: {}, cargo: {}, cash: 0, debt: 0, value: 0 });
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
 
 export class Ledger {
@@ -55,6 +55,8 @@ export class Ledger {
   monthIndex(time = this.game.time) { return Math.floor(Math.max(0, time) / MONTH_S); }
   year(m = this.monthIndex()) { return this.startYear + Math.floor(m / 12); }
   monthOfYear(m = this.monthIndex()) { return m % 12; }
+  // the era of the calendar year (news when a new one begins; HUD, finance)
+  era(y = this.year()) { return y < 1960 ? 'steam' : y < 1980 ? 'diesel' : y < 2000 ? 'electric' : y < 2030 ? 'modern' : 'future'; }
   monthFrac() { return (Math.max(0, this.game.time) % MONTH_S) / MONTH_S; }
 
   // ---------- booking ----------
@@ -74,6 +76,13 @@ export class Ledger {
       if (this.log.length > LOG_MAX) this.log.splice(0, this.log.length - LOG_MAX);
     }
     return c;
+  }
+  // transport revenue by cargo (analysis; the categories stay pax/mail/freight)
+  noteCargo(c, rev) {
+    if (!(rev > 0) || !c) return;
+    this.roll();
+    const b = this.cur.cargo || (this.cur.cargo = {});
+    b[c] = (b[c] || 0) + rev;
   }
   // continuous costs (running costs, maintenance): into the month, logged monthly
   bookRunning(amt, cat, ref = null) {
@@ -152,6 +161,7 @@ export class Ledger {
     c.cash = Math.round(g.economy.coins); c.debt = this.loan; c.value = Math.round(this.companyValue().total);
     for (const k of Object.keys(c.inc)) c.inc[k] = Math.round(c.inc[k]);
     for (const k of Object.keys(c.exp)) c.exp[k] = Math.round(c.exp[k]);
+    if (c.cargo) for (const k of Object.keys(c.cargo)) c.cargo[k] = Math.round(c.cargo[k]);
     this.months.push(c);
     if (this.months.length > MONTHS_KEPT) this.months.splice(0, this.months.length - MONTHS_KEPT);
     // a full year closed: fold its months
@@ -163,6 +173,7 @@ export class Ledger {
       if (this.years.length > YEARS_KEPT) this.years.shift();
     }
     this.cur = blankMonth(c.m + 1);
+    if (this.era(this.year(c.m)) !== this.era(this.year(c.m + 1))) g.events.emit('eraChanged', this.era(this.year(c.m + 1)));
     g.events.emit('monthClosed', c);
   }
 
@@ -244,7 +255,7 @@ export class Ledger {
     if (!d || typeof d !== 'object') return;
     const num = (v, def = 0) => (typeof v === 'number' && isFinite(v) ? v : def);
     const bag = (o) => { const r = {}; if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) if (typeof v === 'number' && isFinite(v) && v >= 0) r[k] = v; return r; };
-    const period = (p, key = 'm') => (p && typeof p === 'object' ? { [key]: num(p[key]) | 0, inc: bag(p.inc), exp: bag(p.exp), cash: num(p.cash), debt: num(p.debt), value: num(p.value) } : null);
+    const period = (p, key = 'm') => (p && typeof p === 'object' ? { [key]: num(p[key]) | 0, inc: bag(p.inc), exp: bag(p.exp), cargo: bag(p.cargo), cash: num(p.cash), debt: num(p.debt), value: num(p.value) } : null);
     this.startYear = Math.min(2100, Math.max(1800, num(d.startYear, 1950) | 0));
     this.cur = period(d.cur) || blankMonth(this.monthIndex());
     this.months = (Array.isArray(d.months) ? d.months : []).map((p) => period(p)).filter(Boolean).slice(-MONTHS_KEPT);

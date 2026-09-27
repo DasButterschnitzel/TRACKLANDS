@@ -313,6 +313,12 @@ export const ROAD_VEHICLES = [
   { id: 'ferry', name: 'Harbour Ferry', kind: 'dock', pax: true, cap: 70, mail: 10, speed: 30, price: 3200, op: 12, level: 6, color: 0xf0f0f0 },
   { id: 'cargo_ship', name: 'Coaster', kind: 'dock', groups: ['crate', 'bulk', 'flat', 'log'], cap: 90, speed: 25, price: 4200, op: 15, level: 8, color: 0x3a5a8a },
   { id: 'tanker_ship', name: 'Coastal Tanker', kind: 'dock', groups: ['liquid'], cap: 100, speed: 25, price: 4600, op: 16, level: 10, color: 0xb04a3a },
+  { id: 'river_barge', name: 'River Barge', kind: 'dock', groups: ['bulk', 'log'], cap: 60, speed: 16, price: 2200, op: 8, level: 4, color: 0x5a4a3a },
+  { id: 'hydrofoil', name: 'Hydrofoil 60', kind: 'dock', pax: true, cap: 60, mail: 6, speed: 65, price: 9800, op: 34, level: 14, color: 0xe8f0f8, comfort: 1.1 },
+  { id: 'car_carrier', name: 'Ro-Ro Carrier', kind: 'dock', groups: ['vehicle', 'flat'], cap: 120, speed: 28, price: 11000, op: 32, level: 15, color: 0x4a6a3a, minPort: 2 },
+  { id: 'bulk_carrier', name: 'Bulk Carrier', kind: 'dock', groups: ['bulk', 'log'], cap: 240, speed: 22, price: 14000, op: 38, level: 16, color: 0x8a3a2a, minPort: 2 },
+  { id: 'container_ship', name: 'Feeder Container Ship', kind: 'dock', groups: ['crate', 'vehicle', 'flat'], cap: 260, speed: 30, price: 22000, op: 52, level: 20, color: 0x2a4a7a, minPort: 3 },
+  { id: 'cruise_ship', name: 'Coastal Cruiser', kind: 'dock', pax: true, cap: 320, mail: 0, speed: 32, price: 26000, op: 60, level: 22, color: 0xf8f8f8, minPort: 2, comfort: 1.35 },
   // aircraft fly straight between airports: fast, costly to run
   { id: 'propliner', name: 'Propliner 40', kind: 'airport', pax: true, cap: 40, mail: 12, speed: 320, price: 18000, op: 450, level: 12, color: 0xe8e8ee },
   { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
@@ -320,6 +326,8 @@ export const ROAD_VEHICLES = [
   // need an international airport (airport size 2)
   { id: 'freighter', name: 'Skyvan Freighter', kind: 'airport', groups: ['crate', 'mail'], cap: 36, speed: 300, price: 21000, op: 430, level: 14, color: 0xd8dde2 },
   { id: 'cargo_jet', name: 'Cargojet 90', kind: 'airport', groups: ['crate', 'mail', 'vehicle'], cap: 110, speed: 620, price: 72000, op: 1250, level: 30, color: 0xe8c547, minAirport: 2 },
+  { id: 'commuter_prop', name: 'Commuter Prop 19', kind: 'airport', pax: true, cap: 19, mail: 4, speed: 280, price: 9000, op: 220, level: 10, color: 0xe8e8ee },
+  { id: 'widebody', name: 'Widebody 250F', kind: 'airport', groups: ['crate', 'mail', 'vehicle', 'flat'], cap: 240, speed: 680, price: 160000, op: 2900, level: 38, color: 0xe8c547, minAirport: 3 },
   { id: 'jumbo', name: 'Skyliner 300', kind: 'airport', pax: true, cap: 300, mail: 60, speed: 700, price: 150000, op: 2700, level: 36, color: 0xf4f4f8, minAirport: 2 },
 ];
 // stop kind → how its vehicles move
@@ -352,8 +360,38 @@ export const STOP_FACILITIES = {
 };
 // airport sizes: regional (built) and international (an upgrade): the
 // international airport reaches further and takes the biggest aircraft
-export const AIRPORT_SIZES = { 1: { id: 'regional', radius: 3, turn: 1 }, 2: { id: 'international', radius: 4, turn: 0.7, cost: 2.2 } };
-export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200, garage: 900, lane: 30 };
+// slot: seconds of runway time per take-off or landing (the runway's
+// capacity); aircraft wait on the apron or circle when every slot is taken
+export const AIRPORT_SIZES = {
+  1: { id: 'regional', radius: 3, turn: 1, slot: 6 },
+  2: { id: 'international', radius: 4, turn: 0.7, cost: 2.2, slot: 3.5 },
+  3: { id: 'hub', radius: 5, turn: 0.55, cost: 5, slot: 2, level: 30 },
+};
+// harbour sizes: berths (ships served at once), handling speed (turn) and
+// reach; the biggest ships need a deep-water port
+export const PORT_SIZES = {
+  1: { id: 'harbour', radius: 3, turn: 1, berths: 2 },
+  2: { id: 'port', radius: 4, turn: 0.7, berths: 3, cost: 2.5, level: 10 },
+  3: { id: 'deepwater', radius: 5, turn: 0.5, berths: 5, cost: 5, level: 18 },
+};
+export const ROAD_COSTS = { tile: 14, crossing: 60, stop: 180, tram: 22, dock: 700, airport: 5200, garage: 900, lane: 30, bridge: 70, overpass: 160, tunnel: 120 };
+// Company road types (Phase 7): cost × the tile price, speed limit (km/h),
+// capacity (× how many vehicles share it before it slows), who may use it,
+// the company level and research they need. Bigger roads cross railways on
+// a bridge (overpass) instead of a level crossing; a highway keeps out of
+// towns. Town streets count as 'street'.
+export const ROAD_TYPES = {
+  local: { cost: 1, limit: 80, cap: 1, level: 1 },
+  dirt: { cost: 0.5, limit: 40, cap: 0.7, level: 1 },
+  avenue: { cost: 2.2, limit: 70, cap: 1.7, level: 6, wide: true },
+  oneway: { cost: 1.1, limit: 70, cap: 1.4, level: 5, oneway: true },
+  four_lane: { cost: 3.2, limit: 90, cap: 2.4, level: 12, wide: true, overpass: true },
+  busway: { cost: 2.4, limit: 90, cap: 2, level: 8, only: 'bus', research: 'bus_lanes' },
+  express: { cost: 4.2, limit: 110, cap: 2.2, level: 16, overpass: true },
+  highway: { cost: 7, limit: 130, cap: 3.2, level: 20, overpass: true, noTown: true, research: 'highways', wide: true },
+};
+export const ROAD_TYPE_IDS = Object.keys(ROAD_TYPES);   // (saves store the index: new types only at the end)
+export const STREET_LIMIT = 60;
 export const TRAIT_IDS = ['cargo_master', 'city_hopper', 'long_hauler', 'mountain_goat', 'fast_loading', 'high_accel', 'heavy_freight', 'cheap_op', 'express', 'intermodal', 'tilting'];
 // what a locomotive is best at (filters, compare, advisor); effects come from traits and stats
 export const DUTIES = ['shunter', 'local', 'regional', 'intercity', 'express', 'freight', 'heavy', 'mixed', 'mountain', 'highspeed'];
@@ -458,6 +496,8 @@ export const RESEARCH = [
   { id: 'metro_planning', cat: 'cities', cost: 10, req: ['city_services'], fx: { townReq: -0.15 } },
   { id: 'bus_lanes', cat: 'cities', cost: 3, req: ['urban_planning'], fx: {} },
   { id: 'bus_priority', cat: 'cities', cost: 7, req: ['bus_lanes', 'city_services'], fx: { busPriority: 1 } },
+  { id: 'tram_priority', cat: 'cities', cost: 5, req: ['bus_lanes'], fx: { tramPriority: 1 } },
+  { id: 'highways', cat: 'cities', cost: 8, req: ['urban_planning'], fx: {} },
   // INDUSTRY
   { id: 'industry_boost', cat: 'industry', cost: 3, req: [], fx: { industryProd: 0.15 } },
   { id: 'heavy_industry', cat: 'industry', cost: 5, req: ['industry_boost'], fx: { processing: 0.2 } },

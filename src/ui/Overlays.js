@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
@@ -126,6 +126,23 @@ export class Overlays {
           const tiles = s.tracks ? s.tracks.flatMap((tk) => tk.tiles) : [s.tile];
           for (const t of tiles) if (k < N * N) this.quad(k++, t, grade(v));
         }
+        break;
+      }
+      case 'profit': {
+        // stations and stops by revenue last month (columns: the busiest)
+        let n = 0;
+        const list = g.analytics ? g.analytics.stopGrades() : [];
+        for (const { s, v, rev } of list) {
+          const tiles = s.tracks ? s.tracks.flatMap((tk) => tk.tiles) : g.roads && s.road ? g.roads.stopTiles(s) : [s.tile];
+          for (const t of tiles) if (k < N * N) this.quad(k++, t, rev > 0 ? grade(v) : 0x8a8f96);
+          if (rev > 0 && n < this.cols.instanceMatrix.count) {
+            this._m.makeScale(1.2, 0.2 + v * 4, 1.2).setPosition(tileCX(s.tile), Math.max(0, g.world.view.heightAt(tileCX(s.tile), tileCZ(s.tile))) + 1.2, tileCZ(s.tile));
+            this.cols.setMatrixAt(n, this._m); this.cols.setColorAt(n, this._c.set(grade(v))); n++;
+          }
+        }
+        this.cols.count = n;
+        this.cols.instanceMatrix.needsUpdate = true;
+        if (this.cols.instanceColor) this.cols.instanceColor.needsUpdate = true;
         break;
       }
       case 'industry': {

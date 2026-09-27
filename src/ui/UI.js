@@ -2,7 +2,7 @@
 // modals, tooltips and the debug overlay. All strings come from i18n.
 import * as THREE from 'three';
 import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
-import { ROAD_COSTS, ROAD_VEHICLES,
+import { ROAD_COSTS, ROAD_VEHICLES, ROAD_TYPES, ROAD_TYPE_IDS,
   CARGO, CARGO_IDS, bestModes, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, locoResearch, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
@@ -23,6 +23,7 @@ import { IndustryUIMixin } from './IndustryUI.js';
 import { NewsUIMixin } from './NewsUI.js';
 import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
+import { ToolsUIMixin } from './ToolsUI.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { LineUIMixin } from './LineUI.js';
@@ -153,7 +154,7 @@ export class UI {
   renderTop() {
     const g = this.game; if (!g) return;
     const P = g.progression;
-    const sp = [0, 1, 2, 4].map((s) => `<button class="spd ${g.speed === s ? 'on' : ''}" data-act="speed" data-arg="${s}" aria-label="${this.tr(s ? 'speed_x' : 'pause', { n: s })}" data-tip="${this.tr(s ? 'speed_x' : 'pause', { n: s })}">${s ? s + '×' : icon('pause')}</button>`).join('');
+    const sp = [0, 1, 2, 4, 8].map((s) => `<button class="spd ${g.speed === s ? 'on' : ''}" data-act="speed" data-arg="${s}" aria-label="${this.tr(s ? 'speed_x' : 'pause', { n: s })}" data-tip="${this.tr(s ? 'speed_x' : 'pause', { n: s })}">${s ? s + '×' : icon('pause')}</button>`).join('');
     $('#topbar').innerHTML = `
       <button class="menu-btn" data-act="toggleMenu" aria-label="${this.tr('menu')}">${icon('menu')}</button>
       <button class="lvl" data-act="panel" data-arg="company" data-tip="${this.tr('company_level')}">
@@ -177,7 +178,10 @@ export class UI {
     this._coinsShown += (c - this._coinsShown) * (force ? 1 : 0.2);
     if (Math.abs(c - this._coinsShown) < 1) this._coinsShown = c;
     const cv = $('#coins-v'); if (cv) cv.textContent = fmt(this._coinsShown);
-    const dv = $('#date-v'); if (dv) { const m = g.ledger.monthIndex(); if (dv._m !== m) { dv._m = m; dv.textContent = this.monthName(m); } }
+    const dv = $('#date-v'); if (dv) { const m = g.ledger.monthIndex(); if (dv._m !== m) { dv._m = m; dv.textContent = this.monthName(m); dv.title = this.tr('era_label', { era: this.tr('era_' + g.ledger.era()) }); } }
+    // at high speed on a busy device: the speed actually reached
+    const sb = document.querySelector('.spd.on');
+    if (sb && g.speed >= 4 && g.effSpeed != null) { const eff = Math.round(g.effSpeed * 2) / 2, slow = eff < g.speed * 0.8; if (sb._slow !== slow) { sb._slow = slow; sb.classList.toggle('throttled', slow); } if (slow) sb.dataset.tip = this.tr('speed_eff', { n: eff }); }
     const rv = $('#rp-v'); if (rv) rv.textContent = P.rp;
     const wx = $('#wx');
     if (wx) {
@@ -190,7 +194,7 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'finance', 'trains', 'news', 'lists', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
+    const items = ['company', 'finance', 'trains', 'news', 'search', 'lists', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'finance' ? 'coin' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
@@ -251,6 +255,7 @@ export class UI {
       sub = `<button class="chip ${rm === 'road' ? 'on' : ''}" data-act="roadMode" data-arg="road"><b>${icon('road', 'mini')} ${this.tr('road_mode_road')}</b><small>${fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul()))}●</small></button>`
         + `<button class="chip ${rm === 'tram' ? 'on' : ''} ${tramOk ? '' : 'locked'}" data-act="roadMode" data-arg="tram" ${tramOk ? '' : `data-tip="${this.tr('unlock_level', { n: 4 })}"`}>${tramOk ? '' : icon('lock')}<b>${icon('tram', 'mini')} ${this.tr('road_mode_tram')}</b><small>${fmt(Math.round(ROAD_COSTS.tram * g.economy.costs.mul()))}●</small></button>`
         + `<button class="chip ${rm === 'lane' ? 'on' : ''} ${laneOk ? '' : 'locked'}" data-act="roadMode" data-arg="lane" ${laneOk ? '' : `data-tip="${this.tr('lane_locked')}"`}>${laneOk ? '' : icon('lock')}<b>${icon('bus', 'mini')} ${this.tr('road_mode_lane')}</b><small>${fmt(Math.round(ROAD_COSTS.lane * g.economy.costs.mul()))}●</small></button>`
+        + (rm === 'road' ? ROAD_TYPE_IDS.filter((k) => k !== 'local').concat(['local']).sort((a, b) => ROAD_TYPES[a].cost - ROAD_TYPES[b].cost).map((k) => { const T = ROAD_TYPES[k], why = g.roads.typeLocked(k); return `<button class="chip small ${(C.roadType || 'local') === k ? 'on' : ''} ${why ? 'locked' : ''}" data-act="roadType" data-arg="${k}" data-tip="${why ? this.tr(why.key, why) : this.tr('road_type_' + k + '_tip', { limit: T.limit, cap: T.cap })}">${why ? icon('lock') : ''}<b>${this.tr('road_type_' + k)}</b><small>${T.limit} km/h · ${fmt(Math.round(ROAD_COSTS.tile * T.cost * g.economy.costs.mul()))}●</small></button>`; }).join('') : '')
         + `<span class="sub-hint">${this.tr(rm === 'tram' ? 'hint_tram' : rm === 'lane' ? 'hint_lane' : 'hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
     } else if (C.tool === 'roadstop') {
       const LV = { bus: 1, truck: 1, tram: 4, dock: 6, airport: 12, garage: 1 };
@@ -464,11 +469,13 @@ export class UI {
     const fx = [];
     if (W.speed < 1) fx.push(this.tr('wx_speed', { n: Math.round((1 - W.speed) * 100) }));
     if (W.accel < 1) fx.push(this.tr('wx_accel', { n: Math.round((1 - W.accel) * 100) }));
+    const dm = E.demandMul ? E.demandMul() : 1;
+    if (dm < 1) fx.push(this.tr('wx_demand', { n: Math.round((1 - dm) * 100) }));
     const farm = g.industries.seasonMul ? g.industries.seasonMul('FARM') : 1;
     return `${this.tr('wx_' + E.weather)} · ${this.tr('season_' + E.season())}. ${fx.length ? fx.join(', ') : this.tr('wx_no_effect')}. ${farm !== 1 ? this.tr('wx_farms', { n: (farm > 1 ? '+' : '−') + Math.round(Math.abs(farm - 1) * 100) }) + ' ' : ''}${this.tr('wx_next', { w: this.tr('wx_' + E.forecast) })}`;
   }
   weatherChanged(w) {
-    if (w === 'storm' || w === 'snow' || w === 'fog') this.toast(this.weatherText(), 'info', 'w_' + w);
+    if (w === 'storm' || w === 'snow' || w === 'fog' || w === 'heatwave' || w === 'blizzard') this.toast(this.weatherText(), 'info', 'w_' + w);
   }
 
   // ---------- world labels ----------
@@ -628,6 +635,7 @@ export class UI {
       trains: { title: 'menu_trains', render: () => this.pTransport(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
       handbook: { title: 'handbook', render: () => this.pHandbook() },
+      search: { title: 'menu_search', render: () => this.pSearch(), after: () => { const q = document.getElementById('find-q'); if (q && window.innerWidth >= 760) q.focus(); } },
     };
   }
 
@@ -717,7 +725,20 @@ export class UI {
     if (!Rv || !Rv.list.length) return '';
     const mine = g.ledger.companyValue().total;
     const rows = [{ name: g.company.name, color: g.company.color, value: mine, you: true }, ...Rv.list.map((r) => ({ name: r.name, color: r.color, value: r.value(), r }))].sort((a, b) => b.value - a.value);
-    return `<h3>${this.tr('rivals')}</h3><div class="fin-list">${rows.map((x, i) => `<div class="fin-row ${x.you ? 'you' : ''}"><span><b>${i + 1}.</b> <i class="rdot" style="background:#${x.color.toString(16).padStart(6, '0')}"></i> ${escapeHtml(x.name)}${x.you ? ` <small>(${this.tr('rival_you')})</small>` : ''}</span><small>${x.r ? this.tr('rival_stats', { b: x.r.vehicles().length, s: x.r.stops().length, p: fmt(x.r.lastProfit) }) : ''}</small><b>${fmt(x.value)} ●</b></div>`).join('')}</div><p class="muted small">${this.tr('rivals_help')}</p>`;
+    const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+    const list = `<div class="fin-list">${rows.map((x, i) => `<div class="fin-row ${x.you ? 'you' : ''}"><span><b>${i + 1}.</b> <i class="rdot" style="background:${hex(x.color)}"></i> ${escapeHtml(x.name)}${x.you ? ` <small>(${this.tr('rival_you')})</small>` : ` <small class="muted">${this.tr('rival_strategy_' + (x.r.strategy || 'intercity'))}</small>`}${x.r && x.r.forSale ? ` <span class="pill warn">${this.tr('rival_for_sale')}</span>` : ''}</span><small>${x.r ? this.tr('rival_stats', { b: x.r.vehicles().length, s: x.r.stops().length, p: fmt(x.r.lastProfit) }) : ''}</small><b>${fmt(x.value)} ●</b></div>`).join('')}</div>`;
+    // buying a rival
+    const buy = Rv.list.map((r) => { const err = Rv.acquireError(r), price = Rv.acquirePrice(r); return `<button class="btn small ${err ? 'ghost' : ''}" data-act="rivalBuy" data-arg="${r.id}" ${err ? `disabled data-tip="${this.tr(err === 'err_locked' ? 'unlock_level' : err, { n: 8 })}"` : ''}>${icon('company', 'mini')} ${this.tr('rival_buy', { name: escapeHtml(r.short) })} · ${fmt(price)} ●</button>`; }).join('');
+    // market share in the towns where rivals run
+    const towns = new Set();
+    for (const s of g.roads.stops) if (s.owner && s.links) for (const id of s.links.towns || []) towns.add(id);
+    const share = [...towns].map((id) => g.towns.byId(id)).filter(Boolean).slice(0, 6).map((t) => {
+      const M = Rv.marketShare(t);
+      if (!M.tot) return '';
+      const segs = Object.entries(M.by).filter(([, v]) => v > 0).map(([k, v]) => { const r = k === 'you' ? null : Rv.byId(k); return `<i style="flex:${v};background:${hex(r ? r.color : g.company.color)}" title="${escapeHtml(r ? r.short : this.tr('rival_you'))} ${Math.round((v / M.tot) * 100)} %"></i>`; }).join('');
+      return `<div class="kvrow small"><span>${escapeHtml(t.name)}</span><span class="sharebar" role="img" aria-label="${this.tr('rival_share_aria', { you: Math.round(((M.by.you || 0) / M.tot) * 100) })}">${segs}</span><b>${Math.round(((M.by.you || 0) / M.tot) * 100)} %</b></div>`;
+    }).join('');
+    return `<h3>${this.tr('rivals')}</h3>${list}${share ? `<h4>${this.tr('rival_share')}</h4>${share}` : ''}<div class="row wrap">${buy}</div><p class="muted small">${this.tr('rivals_help')} ${this.tr('rival_buy_help')}</p>`;
   }
 
   // company name, colour and headquarters
@@ -851,8 +872,21 @@ export class UI {
     return h;
   }
 
+  // the company's reputation: score, what it is made of, what it does
+  reputationBlock() {
+    const S = this.game.standing;
+    if (!S) return '';
+    const r = S.reputation(), bar = (v) => this.bar(v, v < 0.4 ? 'warn' : v > 0.75 ? 'good' : '');
+    const con = Object.keys(S.concessions).map((id) => this.game.towns.byId(+id)).filter(Boolean);
+    return `<div class="card rep"><div class="con-top">${icon('company')}<b>${this.tr('rep_heading')}</b><span class="pill ${r.score >= 55 ? 'good' : r.score < 35 ? 'warn' : ''}">${r.score} · ${this.tr('rep_' + r.band)}</span></div>
+      <div class="kvrow small" data-tip="${this.tr('rep_towns_tip')}"><span>${this.tr('rep_towns', { n: r.nTowns })}</span>${bar(r.towns)}<b>${Math.round(r.towns * 100)}</b></div>
+      <div class="kvrow small" data-tip="${this.tr('rep_lines_tip')}"><span>${this.tr('rep_lines')}</span>${bar(r.lines)}<b>${Math.round(r.lines * 100)}</b></div>
+      <div class="kvrow small" data-tip="${this.tr('rep_record_tip')}"><span>${this.tr('rep_record')}</span>${bar(r.record)}<b>${Math.round(r.record * 100)}</b></div>
+      <p class="muted small">${this.tr('rep_effect', { n: Math.round((S.rewardMul() - 1) * 100) })}</p>${con.length ? `<p class="small">${icon('town', 'mini')} ${this.tr('rep_concessions', { list: con.map((t) => esc(t.name)).join(', ') })}</p>` : ''}</div>`;
+  }
+
   contractText(k) {
-    const p = { n: fmt(k.amount), cargo: k.cargo ? this.cargoName(k.cargo) : '', town: k.townName || '', from: k.fromName || '', count: k.count };
+    const p = { n: fmt(k.amount), cargo: k.cargo ? this.cargoName(k.cargo) : '', town: k.townName || '', from: k.fromName || '', count: k.count, ind: k.indName || '', line: k.lineName || '', q: k.q ? Math.round(k.q * 100) : '', need: k.need };
     return this.tr('con_' + k.type, p);
   }
 
@@ -861,10 +895,11 @@ export class UI {
     E.ensureDaily();
     const cons = E.contracts.filter((k) => !k.claimed).map((k) => {
       const pct = k.progress / k.amount;
-      const timer = k.type === 'timed_deliver' && !k.done ? `<span class="timer">${fmtTime(k.left)}</span>` : '';
+      const timer = k.left != null && k.time && !k.done ? `<span class="timer">${fmtTime(k.left)}</span>` : '';
+      const months = k.type === 'service_level' || k.type === 'concession';
       return `<div class="card contract ${k.done ? 'done' : ''}">
         <div class="con-top">${k.cargo ? cargoIcon(k.cargo) : icon(k.type === 'passengers' || k.type === 'town_link' || k.type === 'pax_transfers' ? 'town' : k.type === 'timetable' ? 'route' : 'contracts')}<b>${this.contractText(k)}</b>${timer}</div>
-        ${this.bar(pct)}<div class="con-bottom"><small>${k.type === 'freight_income' ? fmt(k.progress) : k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.progress) : fmt(Math.floor(k.progress))} / ${k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.amount) : fmt(k.amount)}</small>
+        ${this.bar(pct)}${months && k.last != null ? `<p class="muted small">${this.tr('con_last_' + k.type, k.type === 'concession' ? { n: k.last.n, q: k.last.q } : { q: k.last })}</p>` : ''}<div class="con-bottom"><small>${k.type === 'freight_income' ? fmt(k.progress) : k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.progress) : fmt(Math.floor(k.progress))} / ${k.type === 'trains_running' || k.type === 'timetable' ? fmtTime(k.amount) : fmt(k.amount)}${months ? ' ' + this.tr('months_short') : ''}</small>
         <span class="reward">${icon('coin')}${fmt(k.coins)} · ${fmt(k.xp)} XP${k.rp ? ` · ${icon('rp')}${k.rp}` : ''}</span></div>
         <div class="row">${k.done ? `<button class="btn gold" data-act="claimContract" data-arg="${k.id}">${this.tr('claim')}</button>` : k.progress === 0 ? `<button class="btn ghost small" data-act="rerollContract" data-arg="${k.id}">${this.tr('reroll')}</button>` : ''}</div></div>`;
     }).join('');
@@ -876,7 +911,7 @@ export class UI {
         <div class="row">${d.claimed ? `<small class="good">${this.tr('claimed')}</small>` : ok ? `<button class="btn gold" data-act="claimDaily" data-arg="${i}">${this.tr('claim')}</button>` : ''}</div></div>`;
     }).join('');
     const tmr = new Date(); tmr.setHours(24, 0, 0, 0);
-    return `<h3>${this.tr('contracts')}</h3>${cons}<h3>${this.tr('daily_challenges')} <small>${this.tr('resets_in', { t: fmtTime((tmr - Date.now()) / 1000) })}</small></h3>${daily}`;
+    return `${this.reputationBlock()}<h3>${this.tr('contracts')}</h3>${cons}<h3>${this.tr('daily_challenges')} <small>${this.tr('resets_in', { t: fmtTime((tmr - Date.now()) / 1000) })}</small></h3>${daily}`;
   }
 
   // ---------- train previews ----------
@@ -1049,8 +1084,8 @@ export class UI {
     const inGame = !!this.game;
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}${this.musicBlock()}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
-      ${tog('dayNight', 'day_night')}${tog('weather', 'weather')}${tog('labels', 'world_labels')}
-      ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p>` : ''}
+      ${tog('dayNight', 'day_night')}${sel('dayLength', 'day_length', ['short', 'normal', 'long'])}${tog('weather', 'weather')}${tog('extremeWeather', 'extreme_weather')}${tog('labels', 'world_labels')}
+      ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p><label class="set"><span>${this.tr('ind_rule')}</span><select data-change="indRule">${['off', 'on'].map((o) => `<option value="${o}" ${this.game.standing.industryRule === o ? 'selected' : ''}>${this.tr('ind_rule_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('ind_rule_desc')}</p>` : ''}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
@@ -1159,6 +1194,7 @@ export class UI {
     const opp = g.industries.opportunities(ind).map((o) => o.dests.map((d) => `<div class="opp ${d.state}${d.locked ? ' locked' : ''}"><button class="tag link" data-act="jump" data-arg="${d.kind}:${d.id}">${cargoIcon(o.c, 'mini')}${d.kind === 'town' ? icon('town', 'mini') : icon('factory', 'mini')}${esc(d.name)}</button><b>≈${fmt(d.value)}●</b><small class="opp-meta">${d.dist} ${this.tr('tiles')} · <span class="opp-state">${d.locked ? icon('lock', 'mini') : ''}${this.tr('opp_' + d.state)}</span></small></div>`).join('')).join('');
     return `<div class="pill-row"><span class="pill">${this.tr('ilvl_' + ind.level)}</span><span class="pill">${fmt(g.industries.rate(ind))}/${this.tr('min')}</span><span class="pill" data-tip="${this.tr('transported_share_tip')}">${this.tr('transported_share', { n: Math.round(share * 100) })}</span></div>
       ${locked ? `<div class="card warn">${icon('lock')} ${this.tr('region_locked_info')}</div>` : ''}
+      ${ind.closed ? `<div class="card warn">${icon('warn')} ${this.tr('ind_closed_card', { n: Math.max(0, 12 - (ind.closedM || 0)) })}</div>` : ind.closing != null ? `<div class="card warn">${icon('warn')} ${this.tr('ind_closing_card', { n: ind.closing })}</div>` : ''}
       <h4>${this.tr('production_chain')}</h4>${recipe}
       ${ins.length ? `<h4>${this.tr('needs')}</h4>${ins.map((c) => this.cargoRow(c, ind.inp[c] || 0, cap * 2)).join('')}` : ''}
       <h4>${this.tr('produces')}</h4>${outs.map((c) => this.cargoRow(c, ind.out[c] || 0, cap)).join('')}
@@ -1313,6 +1349,7 @@ export class UI {
       musicToggle: () => { this.app.audio.musicMgr.toggle(); this.refreshPanel(); },
       musicShuffle: () => { const M = this.app.audio.musicMgr; M.shuffle = !M.shuffle; this.refreshPanel(); },
       roadMode: (a) => { if (a === 'tram' && !g().roads.kindUnlocked('tram')) { this.error('err_locked'); return; } if (a === 'lane' && !g().progression.research.has('bus_lanes')) { this.toast(this.tr('lane_locked'), 'info', 'research'); return; } g().construction.roadMode = a; this.renderToolbar(); },
+      roadType: (a) => { const why = g().roads.typeLocked(a); if (why) { this.toast(this.tr(why.key, why), 'info', 'road'); return; } g().construction.roadType = a; this.renderToolbar(); },
       stopKind: (a) => { if (!g().roads.kindUnlocked(a)) { this.error('err_locked'); return; } g().construction.stopKind = a; this.renderToolbar(); g().construction.hover(g().construction.hoverTile); },
       buildConfirm: () => { const C = g().construction; if (C.touchReady()) C.touchCommit(); },
       buildCancel: () => g().construction.touchCancel(),
@@ -1332,12 +1369,14 @@ export class UI {
       ...this.catalogActions(),
       ...this.industryActions(),
       ...this.newsActions(),
+      ...this.toolsActions(),
       ...this.driverActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
       research: (a) => { const e = g().progression.doResearch(a); if (e) this.error(e); else this.refreshPanel(); },
       unlockRegion: (a) => { const e = g().progression.unlockRegion(+a); if (e) this.error(e); else { this.closePanel(); g().select(null); g().save(); } },
       focusRegion: (a) => { const c = g().world.centers[+a]; g().camera.focus(c[0] * TILE, c[1] * TILE, 40); if (window.innerWidth < 760) this.closePanel(); },
+      rivalBuy: (a) => { const Rv = g().rivals, r = Rv.byId(a); if (!r) return; const x = Rv.acquire(r); if (x.error) this.error(x.error); else { this.toast(this.tr('rival_bought', { name: r.name, s: x.stops, v: x.vehicles }), 'good', 'company'); this.app.audio.play('coin'); } this.refreshPanel(); },
       claimContract: (a) => { const k = g().economy.contracts.find((x) => x.id === +a); if (k) { g().economy.claimContract(k); this.app.audio.play('coin'); } this.refreshPanel(); },
       rerollContract: (a) => { const k = g().economy.contracts.find((x) => x.id === +a); if (k) g().economy.rerollContract(k); this.refreshPanel(); },
       claimDaily: (a) => { const d = g().economy.daily.list[+a]; if (d) { g().economy.claimDaily(d); this.app.audio.play('coin'); } this.refreshPanel(); },
@@ -1391,6 +1430,7 @@ export class UI {
     const g = () => this.game;
     return {
       ...this.newsInputs(),
+      ...this.toolsInputs(),
       ...this.driverInputs(),
       ...this.lineInputs(),
       ...this.transportInputs(),
@@ -1399,6 +1439,7 @@ export class UI {
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
+      indRule: (el) => { if (this.game && ['off', 'on'].includes(el.value)) { this.game.standing.industryRule = el.value; this.refreshPanel(); } },
       relMode: (el) => { if (this.game && ['off', 'relaxed', 'tycoon'].includes(el.value)) { this.game.maint.mode = el.value; this.refreshPanel(); } },
       svcAt: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.serviceAt = +el.value; this.renderInspector(); } },
       svcAuto: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.autoService = el.checked; this.renderInspector(); } },
@@ -1429,4 +1470,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin);
+Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin);

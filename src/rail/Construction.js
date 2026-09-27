@@ -275,7 +275,7 @@ export class Construction {
       const R = this.game.roads, tram = this.roadMode === 'tram', lane = this.roadMode === 'lane';
       if (d.a === d.b) this.game.ui.toast(this.game.ui.tr(tram ? 'hint_drag_tram' : lane ? 'hint_drag_lane' : 'hint_drag_road'), 'info');
       else {
-        const r = tram ? R.buildTram(R.planTram(d.a, d.b)) : lane ? R.buildLane(R.planLane(d.a, d.b)) : R.build(R.plan(d.a, d.b));
+        const r = tram ? R.buildTram(R.planTram(d.a, d.b)) : lane ? R.buildLane(R.planLane(d.a, d.b)) : R.build(R.plan(d.a, d.b, this.roadType || 'local'));
         if (r.error === 'err_lane_permit') this.game.ui.toast(this.game.ui.tr('err_lane_permit_town', { town: r.town, n: r.need }), 'bad', 'company');
         else if (r.error) this.game.ui.error(r.error);
         else if (lane) this.game.ui.toast(this.game.ui.tr('lane_built', { n: r.n }), 'good', 'bus');
@@ -605,12 +605,14 @@ export class Construction {
       else ui.cursorInfo(ui.tr(plan.reason || 'err_road_no_path'), false);
       return;
     }
-    const plan = R.plan(this.drag.a, this.drag.b);
+    const plan = R.plan(this.drag.a, this.drag.b, this.roadType || 'local');
     let k = 0;
-    for (const t of plan.tiles.length ? plan.tiles : [this.drag.a]) if (k < 400) this.putQuad(this.ghost, k++, t, !plan.ok ? 0xd0503f : g.net.conn[t] ? 0xf0c040 : R.hasRoad(t) ? 0x9aa2a8 : 0xc8ccd0);
+    const wet = (t) => g.world.type[t] === 1;
+    for (const t of plan.tiles.length ? plan.tiles : [this.drag.a]) if (k < 400) this.putQuad(this.ghost, k++, t, !plan.ok ? 0xd0503f : plan.tunnel && t !== plan.tiles[0] && t !== plan.tiles[plan.tiles.length - 1] ? 0x7a6a8a : wet(t) ? 0x6fa8d8 : g.net.conn[t] ? (plan.overpasses ? 0xe0a050 : 0xf0c040) : R.hasRoad(t) ? 0x9aa2a8 : 0xc8ccd0);
     this.ghost.count = k; this.flush(this.ghost);
     const ui = g.ui;
-    if (plan.ok) ui.cursorInfo(`${ui.tr('road_len', { n: plan.tiles.length })}${plan.crossings ? ' · ' + ui.tr('road_crossings', { n: plan.crossings }) : ''} · ${fmt(plan.cost)} ●`, g.economy.canAfford(plan.cost));
+    const extra = (plan.crossings ? ' · ' + ui.tr('road_crossings', { n: plan.crossings }) : '') + (plan.bridges ? ' · ' + ui.tr('road_bridges', { n: plan.bridges }) : '') + (plan.overpasses ? ' · ' + ui.tr('road_overpasses', { n: plan.overpasses }) : '') + (plan.tunnel ? ' · ' + ui.tr('road_tunnel', { n: plan.tunnel }) : '');
+    if (plan.ok) ui.cursorInfo(`${ui.tr('road_type_' + plan.type)} · ${ui.tr('road_len', { n: plan.tiles.length })}${extra} · ${fmt(plan.cost)} ●`, g.economy.canAfford(plan.cost));
     else ui.cursorInfo(ui.tr(plan.reason || 'err_road_no_path'), false);
   }
 

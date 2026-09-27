@@ -26,6 +26,8 @@ It is installable as a PWA and works offline after the first load. Requires a We
 | Trains list | `T` | Menu rail |
 | Overlays | `O` | Layers button |
 | Pause | `Space` | Speed buttons |
+| Faster / slower (up to 8×) | `.` / `,` | Speed buttons |
+| Find (towns, stations, vehicles, lines, bookmarks) | `F` | Menu → Find |
 | Undo (10 s) | `Ctrl+Z` | Undo button |
 | Traffic overlay | `H` | Layers button |
 | Debug overlay | `F3` or `` ` `` | — |
@@ -50,6 +52,21 @@ It is installable as a PWA and works offline after the first load. Requires a We
 - **Overlays:** traffic, signals, blocks, routes, congestion, cargo, electrification and stations.
 
 Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the untouched original is kept in local storage as `pre_v3`).
+
+## Networks, cities and roads (Phase 7)
+
+- **Journeys:** passengers and freight travel as packets with an origin, a final destination and a trip purpose (commute, shopping, education, leisure, tourism, business, intercity). They change vehicles and modes along the service network (`src/economy/Network.js`). Payment is made once, on arrival, and split over the legs. Transfers earn nothing on their own.
+- **Service quality:** lines show their interval, ride time, waiting time, capacity, demand, regularity and a quality score (`src/economy/Quality.js`). Bus and tram lines can keep an even spacing. Trains can skip empty or local stops and wait for a minimum load.
+- **Cities:** accessibility by transit and land value per building, 15 district kinds, metropolitan regions, commuter belts, tourism and town events announced a month ahead (`src/world/Urban.js`).
+- **Road types:** dirt track, road, avenue, one-way, four-lane, busway (buses only), expressway and highway (research), each with its own speed limit and capacity. Roads bridge rivers (up to 8 tiles), tunnel straight through hills (up to 12 tiles), and bigger roads cross railways on overpasses instead of level crossings. Tram priority (research) turns lights green for trams.
+- **Harbours and airports:** three sizes each. Ports have berths (ships queue off the quay) and airports have runway slots (aircraft wait at the gate or circle). The biggest ships and aircraft need the bigger sizes. Trams, ships and aircraft are serviced where they call.
+- **Fleet care:** refurbishment in a depot or garage, and heritage services with old vehicles (higher leisure fares, tourists).
+- **Company standing:** reputation (towns, line quality, contract record), contracts with deadlines, service-level contracts, town concessions that keep rival buses out, and optional industry closures with redevelopment (world rule, off by default).
+- **Finance analysis:** divisions, services, towns, cargo, cash flow, vehicle returns and a profit overlay.
+- **Competitors:** intercity, town-bus and truck-freight rivals that pay their own way, go up for sale when in debt, and can be taken over. They never build railways, because a rival railway could not share the player's signalling safely.
+- **Time and weather:** speeds up to 8× run the same fixed-step simulation (on a busy device the game runs slower rather than skipping steps). Day length setting, optional extreme weather (heatwaves, blizzards: slower, never destructive), fewer trips in bad weather, and eras by calendar year.
+- **Tools:** FIND (`F`) for anything named, camera bookmarks, and sandbox tools in builder games. A planning mode and blueprints are deferred: ghost construction would need a second, non-simulated copy of the rail graph, signals and stations. Undo stays the short construction undo.
+- **Metro (deferred):** the railway is a single-level track grid. A production-quality underground metro needs a second track layer, underground stations, portals and a separate view mode. This would destabilise signalling, reservations and saves, so the metro is deferred (as the specification allows). Trams on their own track and busways cover dense urban transit meanwhile.
 
 ## Tests
 

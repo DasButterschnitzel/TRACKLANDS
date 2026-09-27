@@ -41,11 +41,23 @@ export class News {
     E.on('industryFounded', (ind) => this.add('industry', 'news_ind_founded', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
     E.on('eventStart', (ev) => this.add('economy', 'news_event', { ev: 'ev_' + ev.id }));
     E.on('econCycle', (st) => this.add('economy', 'news_cycle_' + st, {}));
+    E.on('townEvent', (ev, t) => this.add('towns', 'news_town_event', { town: tname(t), ev: 'tev_' + ev.kind }, { type: 'town', id: t.id }));
+    E.on('districtEvolved', (t, from, to) => this.add('towns', 'news_district', { town: tname(t), from: 'dist_' + from, to: 'dist_' + to }, { type: 'town', id: t.id }));
     E.on('regionUnlocked', (r) => this.add('company', 'news_region', { region: 'region_' + (REGIONS[r] ? REGIONS[r].id : r) }));
     E.on('stationBuilt', (s) => this.add('company', 'news_station', { name: s.name }, { type: 'station', id: s.id }));
     E.on('trainBrokeDown', (t) => this.add('company', 'news_breakdown', { name: t.name }, { type: 'train', id: t.id }));
+    E.on('industryClosing', (ind) => this.add('industry', 'news_ind_closing', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industryClosed', (ind) => this.add('industry', 'news_ind_closed', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industrySaved', (ind) => this.add('industry', 'news_ind_saved', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industryReopened', (ind) => this.add('industry', 'news_ind_reopened', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('concessionGranted', (t) => this.add('economy', 'news_concession', { town: t.name }, { type: 'town', id: t.id }));
+    E.on('contractExpired', (k) => this.add('economy', 'news_contract_failed', {}));
+    E.on('eraChanged', (era) => this.add('economy', 'news_era', { era: 'era_' + era }));
+    E.on('rivalFreight', (r, a, b, c) => this.add('economy', 'news_rival_freight', { rival: r.name, a: g.industries.displayName(a), b: g.industries.displayName(b), cargo: 'cargo_' + c }));
+    E.on('rivalForSale', (r) => this.add('economy', 'news_rival_for_sale', { rival: r.name }));
+    E.on('rivalAcquired', (r, x) => this.add('economy', 'news_rival_acquired', { rival: r.name, s: x.stops, v: x.vehicles }));
     E.on('rivalLine', (r, a, b) => this.add('economy', 'news_rival_line', { rival: r.name, a: a.name, b: b.name }));
-    E.on('weather', (w) => { if (w === 'storm' || w === 'snow') this.add('weather', 'news_weather_' + w, {}); });
+    E.on('weather', (w) => { if (w === 'storm' || w === 'snow' || w === 'heatwave' || w === 'blizzard') this.add('weather', 'news_weather_' + w, {}); });
     E.on('delivery', (d) => {
       if (d.town && !this.firsts.has('town:' + d.town.id)) {
         this.firsts.add('town:' + d.town.id);

@@ -34,13 +34,19 @@ export const WEATHER = {
   storm: { dur: [15, 35], speed: 0.9, accel: 0.9 },
   fog: { dur: [20, 45], speed: 0.93, accel: 1 },
   snow: { dur: [40, 90], speed: 0.92, accel: 0.85 },
+  // extreme weather (setting, on by default; it slows things, never destroys)
+  heatwave: { dur: [30, 60], speed: 0.9, accel: 0.95, extreme: true },
+  blizzard: { dur: [20, 40], speed: 0.8, accel: 0.75, extreme: true },
 };
+// travel demand in the weather: fewer trips in storms and blizzards
+export const WEATHER_DEMAND = { clear: 1, cloudy: 1, rain: 0.95, storm: 0.85, fog: 0.97, snow: 0.92, heatwave: 0.95, blizzard: 0.75 };
+const DAY_MUL = { short: 0.5, normal: 1, long: 2 };
 export const WEATHER_IDS = Object.keys(WEATHER);
 const SEASON_W = {
-  winter: { clear: 3, cloudy: 3, rain: 1, storm: 0, fog: 2, snow: 4 },
-  spring: { clear: 4, cloudy: 3, rain: 3, storm: 1, fog: 1, snow: 0 },
-  summer: { clear: 6, cloudy: 2, rain: 1.5, storm: 1.5, fog: 0, snow: 0 },
-  autumn: { clear: 3, cloudy: 3, rain: 3, storm: 1, fog: 2, snow: 0.3 },
+  winter: { clear: 3, cloudy: 3, rain: 1, storm: 0, fog: 2, snow: 4, heatwave: 0, blizzard: 0.6 },
+  spring: { clear: 4, cloudy: 3, rain: 3, storm: 1, fog: 1, snow: 0, heatwave: 0, blizzard: 0 },
+  summer: { clear: 6, cloudy: 2, rain: 1.5, storm: 1.5, fog: 0, snow: 0, heatwave: 0.8, blizzard: 0 },
+  autumn: { clear: 3, cloudy: 3, rain: 3, storm: 1, fog: 2, snow: 0.3, heatwave: 0, blizzard: 0 },
 };
 // how cold a biome is (snow settles in proportion)
 export const BIOME_COLD = { snow: 1, alpine: 1, pine: 0.85, green: 0.7, industrial: 0.6, plains: 0.6, coast: 0.45, desert: 0 };
@@ -148,7 +154,8 @@ export class Environment {
 
   update(dt, gameDt, time) {
     const g = this.game, S = g.settings;
-    if (S.dayNight) this.timeOfDay = (this.timeOfDay + gameDt / DAY_LENGTH) % 1;
+    // day length (setting): the day/night cycle only, never the calendar
+    if (S.dayNight) this.timeOfDay = (this.timeOfDay + gameDt / (DAY_LENGTH * (DAY_MUL[S.dayLength] || 1))) % 1;
     else this.timeOfDay = lerp(this.timeOfDay, 0.36, Math.min(1, dt * 0.5));
     // visuals follow the state (the state itself advances in tickWeather)
     const st = S.weather ? this.weather : 'clear';
@@ -157,11 +164,11 @@ export class Environment {
     const reg = g.world.region[Math.max(0, Math.min(N * N - 1, Math.floor(tr.z / TILE) * N + Math.floor(tr.x / TILE)))];
     const coldHere = REGIONS[reg] ? BIOME_COLD[REGIONS[reg].biome] ?? 0.6 : 0.6;
     const wet = st === 'rain' || st === 'storm';
-    const snowy = st === 'snow' || (wet && coldHere >= 0.95) || (wet && this.season() === 'winter' && coldHere >= 0.8);
+    const snowy = st === 'snow' || st === 'blizzard' || (wet && coldHere >= 0.95) || (wet && this.season() === 'winter' && coldHere >= 0.8);
     const wantSnow = snowy && coldHere > 0.3 ? 1 : 0;
     const wantRain = wantSnow ? 0 : wet ? (st === 'storm' ? 1 : 0.7) : st === 'snow' ? 0.3 : 0;
-    const wantCloud = st === 'clear' ? 0.2 : st === 'cloudy' ? 0.65 : st === 'fog' ? 0.6 : st === 'storm' ? 1 : 0.85;
-    const wantFog = st === 'fog' ? 1 : st === 'snow' ? 0.35 : st === 'storm' ? 0.25 : 0;
+    const wantCloud = st === 'clear' ? 0.2 : st === 'heatwave' ? 0.02 : st === 'cloudy' ? 0.65 : st === 'fog' ? 0.6 : st === 'storm' || st === 'blizzard' ? 1 : 0.85;
+    const wantFog = st === 'fog' ? 1 : st === 'blizzard' ? 0.8 : st === 'snow' ? 0.35 : st === 'storm' ? 0.25 : st === 'heatwave' ? 0.3 : 0;
     const k = Math.min(1, dt * 0.25);
     this.rain = lerp(this.rain, wantRain, k); this.snow = lerp(this.snow, wantSnow, k); this.cloudiness = lerp(this.cloudiness, wantCloud, k);
     this.fog = lerp(this.fog, wantFog, k);
@@ -305,13 +312,16 @@ export class Environment {
   rng() { if (!this._wrng) this._wrng = new RNG(String((this.game.world && this.game.world.seed) ?? 1) + ':weather'); return this._wrng; }
   // draw the next state by the season's weights (never the same as now)
   draw(after, season) {
-    const w = SEASON_W[season], r = this.rng();
+    const w = SEASON_W[season], r = this.rng(), ext = this.game.settings.extremeWeather !== false;
+    const ok = (id) => id !== after && (ext || !WEATHER[id].extreme);
     let sum = 0;
-    for (const id of WEATHER_IDS) if (id !== after) sum += w[id];
+    for (const id of WEATHER_IDS) if (ok(id)) sum += w[id] || 0;
     let x = r.next() * sum;
-    for (const id of WEATHER_IDS) { if (id === after) continue; x -= w[id]; if (x <= 0) return id; }
+    for (const id of WEATHER_IDS) { if (!ok(id)) continue; x -= w[id] || 0; if (x <= 0) return id; }
     return 'clear';
   }
+  // travel demand factor (Towns): storms and blizzards keep people at home
+  demandMul() { return this.game.settings.weather ? WEATHER_DEMAND[this.weather] || 1 : 1; }
   tickWeather(dt) {
     const g = this.game, S = g.settings;
     if (!S.weather) { this.effects.speed = 1; this.effects.accel = 1; return; }
@@ -320,7 +330,7 @@ export class Environment {
       const season = this.season();
       // a forecast that no longer fits the season (snow in summer) is redrawn
       let next = this.forecast;
-      if (!WEATHER[next] || !SEASON_W[season][next] || next === this.weather) next = this.draw(this.weather, season);
+      if (!WEATHER[next] || !SEASON_W[season][next] || next === this.weather || (WEATHER[next].extreme && S.extremeWeather === false)) next = this.draw(this.weather, season);
       const prev = this.weather;
       this.weather = this.weatherTarget = next;
       const d = WEATHER[next].dur;
@@ -335,7 +345,7 @@ export class Environment {
     this.effects.accel += (W.accel - this.effects.accel) * k;
     // snow settles while it snows in winter and melts otherwise
     const season = this.season();
-    if (this.weather === 'snow') this.snowCover = Math.min(1, this.snowCover + dt / 60);
+    if (this.weather === 'snow' || this.weather === 'blizzard') this.snowCover = Math.min(1, this.snowCover + dt / (this.weather === 'blizzard' ? 25 : 60));
     else if (season !== 'winter') this.snowCover = Math.max(0, this.snowCover - dt / (this.weather === 'rain' ? 30 : 60));
     else if (this.weather === 'rain' || this.weather === 'storm') this.snowCover = Math.max(0, this.snowCover - dt / 120);
   }

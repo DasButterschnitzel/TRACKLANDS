@@ -85,7 +85,7 @@ export class Crossings {
     this.map = new Map();
     // company roads over railway tiles
     if (g.roads) for (let i = 0; i < g.roads.bits.length; i++) {
-      if (!g.roads.bits[i] || !g.net.conn[i]) continue;
+      if (!g.roads.bits[i] || !g.net.conn[i] || g.roads.br[i] === 2) continue;
       const ax = this.roadAxisThrough(i);
       if (ax == null || ax < 0) continue;
       const prev = old.get(i);

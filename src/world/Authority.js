@@ -18,7 +18,7 @@ export const BUILDING = {
   tower: { pop: 160, comp: 6000 }, skyscraper: { pop: 300, jobs: 200, comp: 12000 }, warehouse: { jobs: 20, comp: 800 },
   civic: { jobs: 10, comp: 5000, heritage: true }, plaza: { comp: 3000, heritage: true },
   terrace: { pop: 20, comp: 900 }, chalet: { pop: 6, comp: 400 }, farmhouse: { pop: 5, jobs: 3, comp: 350 }, factory: { jobs: 60, comp: 1800 },
-  hotel: { pop: 30, jobs: 40, comp: 3000 }, glasstower: { pop: 60, jobs: 260, comp: 14000 }, bungalow: { pop: 4, comp: 300 }, boathouse: { jobs: 25, comp: 900 },
+  hotel: { pop: 30, jobs: 40, comp: 3000 }, mixeduse: { pop: 50, jobs: 30, comp: 3400 }, glasstower: { pop: 60, jobs: 260, comp: 14000 }, bungalow: { pop: 4, comp: 300 }, boathouse: { jobs: 25, comp: 900 },
   // landmarks: heritage permit; some are protected and never demolished
   cathedral: { comp: 20000, heritage: true }, museum: { jobs: 20, comp: 12000, heritage: true }, monument: { comp: 8000, heritage: true },
   stadium: { jobs: 30, comp: 15000, heritage: true }, clocktower: { jobs: 15, comp: 9000, heritage: true }, tv_tower: { jobs: 10, comp: 10000, heritage: true },
@@ -116,7 +116,7 @@ export class Authority {
     const B = BUILDING[b.arch] || { comp: 300 };
     // land value: the town's size and its character (a historic core or a
     // tech city costs more than a market town)
-    const land = (1 + town.stage * 0.3) * ((ARCHETYPES[town.kind] || {}).land || 1);
+    const land = (1 + town.stage * 0.3) * ((ARCHETYPES[town.kind] || {}).land || 1) * (this.game.urban ? Math.max(0.6, Math.min(1.8, this.game.urban.landValueAt(town, tile) / ((ARCHETYPES[town.kind] || {}).land || 1))) : 1);
     const cost = Math.round(B.comp * land * this.game.economy.costs.mul());
     const heritage = !!B.heritage, prot = PROTECTED.has(b.arch);
     const permit = heritage ? 'demolish_heritage' : B.pop ? 'demolish_home' : 'demolish_business';

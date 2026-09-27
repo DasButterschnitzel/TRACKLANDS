@@ -128,15 +128,28 @@ export class CargoFlows {
     return this.drop(at, lot, ref, fromObj, mode, fare, node);
   }
 
+  // a vehicle's ride ended (delivery or change): the time in the vehicle and
+  // the distance, smoothed per vehicle (service quality: journey time)
+  noteRide(ref, lot, fromObj, here) {
+    if (!ref || lot.b0 == null) return;
+    const o = this.game.ledger.objOf(ref);
+    if (!o) return;
+    const t = Math.max(0, this.game.time - lot.b0), d = fromObj && here ? cheb(fromObj.tile, here.tile) : 0;
+    const k = Math.min(0.5, 0.05 * Math.max(1, Math.sqrt(lot.n)));
+    o.rideEma = o.rideEma > 0 ? o.rideEma * (1 - k) + t * k : t;
+    o.distEma = o.distEma > 0 ? o.distEma * (1 - k) + d * k : d;
+  }
+
   // A lot leaves vehicle `ref` at `node` to continue on another vehicle
   // (legEnd: where the vehicle stopped, if the load walked on from there).
   // Returns how many units the node took (it may be full).
   drop(node, lot, ref, fromObj, mode, fare = 1, legEnd = node) {
     const g = this.game;
+    this.noteRide(ref, lot, fromObj, legEnd);
     const took = g.stations.receive(node, lot.c, lot.n);
     if (took <= 0) return 0;
     const p = { ...lot, n: took };
-    delete p.to; delete p.via; delete p.rail; delete p.from;
+    delete p.to; delete p.via; delete p.rail; delete p.from; delete p.b0;
     this.addLeg(p, ref, fromObj, legEnd, mode, fare);
     this.addPacket(node, p);
     g.stations.noteTransfer(node, lot.c, took);
@@ -191,6 +204,7 @@ export class CargoFlows {
   settle(lot, here, { train = null, ref = null, fromObj = null, mode = 'rail', fare = 1, rival = null } = {}) {
     const g = this.game, E = g.economy, S = g.stations;
     const c = lot.c, n = lot.n;
+    this.noteRide(ref, lot, fromObj, here);
     const legs = (lot.lg || []).map((l) => ({ ref: l[0] ? { type: l[0], id: l[1] } : null, d: l[2] || 1, m: l[3] || 'rail', f: l[4] || 1 }));
     legs.push({ ref, d: Math.max(1, fromObj ? cheb(fromObj.tile, here.tile) : 1), m: mode, f: fare, last: true });
     const ot = lot.ot != null ? lot.ot : fromObj ? fromObj.tile : here.tile;
@@ -205,6 +219,7 @@ export class CargoFlows {
     const res = S.distribute(here, c, n, { planned: lot.fd != null });
     const from = lot.o != null ? this.net.obj(lot.o) : fromObj;
     if (rival) { rival.earn(rev); return { rev, res, dist, shares }; }
+    if (g.ledger && g.ledger.noteCargo) g.ledger.noteCargo(c, rev);
     // bookings: every leg's share on its vehicle, the station figures once
     const note = `~dlv|${c}|${n}|${from ? from.name : ''}|${here.name || ''}`;
     legs.forEach((l, i) => {
@@ -283,6 +298,7 @@ export class CargoFlows {
     if (!(o.n > 0)) return null;
     if (Number.isInteger(l.from)) o.from = l.from;
     if (typeof l.t0 === 'number' && isFinite(l.t0)) o.t0 = l.t0;
+    if (typeof l.b0 === 'number' && isFinite(l.b0)) o.b0 = l.b0;
     if (Number.isInteger(l.to)) o.to = l.to;
     if (Number.isInteger(l.via) && l.via !== l.to) o.via = l.via;
     if (l.rail === true) o.rail = true;

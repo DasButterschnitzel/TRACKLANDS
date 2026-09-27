@@ -29,9 +29,10 @@ export const AuthorityUIMixin = {
 
   // town panel: class, districts, metropolitan area, growth pace
   townGrowthBlock(town) {
-    const T = this.game.towns;
-    const d = T.districts(town);
-    const chips = Object.entries(d).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="pill small">${this.tr('dist_' + k)} · ${n}</span>`).join(' ');
+    const T = this.game.towns, U = this.game.urban;
+    // districts: what each quarter has become (evolves as the town grows)
+    const qs = U ? U.districts(town) : [];
+    const chips = qs.map((d) => `<button class="pill small link" data-act="jumpTile" data-arg="${d.tile}" data-tip="${this.tr('dist_' + d.kind + '_desc')}">${this.tr('dist_' + d.kind)} · ${d.n}</button>`).join(' ');
     const metro = T.metroWith(town);
     return `<h4>${this.tr('town_structure')}</h4>
       <div class="kv-list"><div><span>${this.tr('town_class')}</span><b>${this.tr('cls_' + T.classOf(town))}</b></div>
@@ -40,7 +41,27 @@ export const AuthorityUIMixin = {
         ${town.mat || town.matLast ? `<div><span>${cargoIcon('MATERIALS', 'mini')} ${this.tr('cargo_MATERIALS')}</span><b>${this.tr('town_materials', { n: fmt(Math.round(town.mat || 0)) })}</b></div>` : ''}</div>
       <div class="chips wrap">${chips}</div>
       ${metro.length ? `<p class="small">${icon('town', 'mini')} ${this.tr('town_metro', { names: metro.map((o) => esc(o.name)).join(', ') })}</p>` : ''}
+      ${this.urbanBlock(town)}
       <p class="muted small">${this.tr('town_growth_pace')}</p>`;
+  },
+  // accessibility, land value, metropolitan region, commuter belt, tourism, events
+  urbanBlock(town) {
+    const g = this.game, U = g.urban;
+    if (!U) return '';
+    const a = U.town(town);
+    const lvls = ['good', 'medium', 'poor', 'none'];
+    const bar = `<div class="accbar" role="img" aria-label="${lvls.map((k) => this.tr('acc_' + k) + ' ' + Math.round(a.share[k] * 100) + '%').join(', ')}">${lvls.map((k) => a.share[k] > 0.005 ? `<i class="acc-${k}" style="width:${(a.share[k] * 100).toFixed(1)}%"></i>` : '').join('')}</div>`;
+    const legend = lvls.map((k) => `<span class="acc-key"><i class="acc-${k}"></i>${this.tr('acc_' + k)} ${Math.round(a.share[k] * 100)}%</span>`).join('');
+    const m = U.metroOf(town), belt = g.towns.byId(town._belt);
+    const ev = U.upcoming().filter((e) => e.town === town.id)[0];
+    const tour = U.tourism(town);
+    return `<h4 id="tw-access">${this.tr('acc_heading')} ${this.helpBtn('cities')}</h4>${bar}<div class="acc-legend">${legend}</div>
+      <div class="kv-list"><div data-tip="${this.tr('lv_tip')}"><span>${this.tr('lv_label')}</span><b>${Math.round(a.lv * 100)}</b></div>
+      <div><span>${this.tr('tour_label')}</span><b>${tour >= 0.6 ? this.tr('tour_high') : tour >= 0.25 ? this.tr('tour_mid') : this.tr('tour_low')}</b></div>
+      ${m ? `<div><span>${this.tr('metro_label')}</span><b>${this.tr('metro_name', { name: esc(m.name) })} · ${fmt(m.pop)}</b></div><div><span>${this.tr('metro_pax')}</span><b>${icon('train', 'mini')} ${fmt(m.rail)} · ${icon('bus', 'mini')} ${fmt(m.bus)}${m.tram ? ' · ' + icon('tram', 'mini') + ' ' + fmt(m.tram) : ''}</b></div>` : ''}
+      ${belt ? `<div><span>${this.tr('belt_label')}</span><b>${this.tr('belt_of', { name: esc(belt.name) })}</b></div>` : ''}</div>
+      ${ev ? `<div class="card small">${icon('news', 'mini')} ${this.tr(ev.start > g.time ? 'tev_soon' : 'tev_now', { ev: this.tr('tev_' + ev.kind) })}</div>` : ''}
+      <p class="muted small">${this.tr('acc_help')}</p>`;
   },
   // bulldozer on a town building
   offerDemolish(tile) {

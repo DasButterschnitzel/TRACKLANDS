@@ -14,7 +14,8 @@ export const NewsUIMixin = {
   newsText(it) {
     const p = {};
     for (const [k, v] of Object.entries(it.p || {})) {
-      if (typeof v === 'string' && /^(stage_|ilvl_|ev_|region_|bld_)/.test(v)) p[k] = this.tr(v);
+      if (typeof v === 'string' && /^(stage_|ilvl_|ev_|region_|bld_|tev_|dist_|era_)/.test(v)) p[k] = this.tr(v);
+      else if (typeof v === 'string' && v.startsWith('cargo_')) p[k] = this.cargoName(v.slice(6));
       else if (k === 'cargo') p[k] = this.cargoName(v);
       else if (typeof v === 'number') p[k] = fmt(v);
       else p[k] = esc(String(v));

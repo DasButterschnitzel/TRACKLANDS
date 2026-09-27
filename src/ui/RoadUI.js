@@ -3,7 +3,7 @@
 // or remove), its cargo and finances.
 import { fmt, escapeHtml as esc, cheb } from '../util.js';
 import { icon, cargoIcon } from './icons.js';
-import { ROAD_VEHICLES, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, AIRPORT_SIZES } from '../config.js';
+import { ROAD_VEHICLES, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, AIRPORT_SIZES, STOP_MODE } from '../config.js';
 import { lineHex } from '../road/Lines.js';
 import { roadModel, roadCaps } from '../road/Roads.js';
 
@@ -61,7 +61,9 @@ export const RoadUIMixin = {
     return `<h4>${this.tr('rv_condition')}</h4>
       <div class="bstats"><div><small>${this.tr('rv_reliability')}</small><b>${rel}%</b></div><div><small>${this.tr('rv_age')}</small><b>${age.toFixed(1)} ${this.tr('years_short')}</b></div><div><small>${this.tr('rv_breakdowns')}</small><b>${v.breakdowns || 0}</b></div></div>
       <div class="row wrap">${v.state === 'stored' ? `<button class="btn small primary" data-act="rvRelease" data-arg="${v.id}">${this.tr('garage_release')}</button>` : `<button class="btn small" data-act="rvGarage" data-arg="${v.id}" ${gr ? '' : 'disabled'} data-tip="${gr ? esc(gr.name) : this.tr('err_no_garage')}">${icon('depot', 'mini')} ${this.tr('rv_to_garage')}</button><button class="btn small ghost" data-act="rvService" data-arg="${v.id}" ${gr ? '' : 'disabled'}>${this.tr('rv_service_now')}</button>`}</div>
-      ${gr || v.state === 'stored' ? '' : `<p class="muted small">${this.tr('rv_no_garage_help')}</p>`}
+      ${gr || v.state === 'stored' || STOP_MODE[m.kind] !== 'road' ? '' : `<p class="muted small">${this.tr('rv_no_garage_help')}</p>`}
+      ${STOP_MODE[m.kind] !== 'road' ? `<p class="muted small">${this.tr('rv_service_' + m.kind)}</p>` : ''}
+      ${this.fleetBlock(v, false)}
       ${better.length ? `<label class="set"><span>${this.tr('rv_replace_rule')}</span><select data-change="rvRule" data-id="${v.id}"><option value="">${this.tr('rv_rule_none')}</option>${better.map((x) => `<option value="${x.id}" ${rule && rule.to === x.id ? 'selected' : ''}>${this.tr('rv_rule_to', { name: esc(x.name), n: rule ? rule.age : 12 })}</option>`).join('')}</select></label>` : ''}
       <h5 id="rv-livery">${this.tr('rv_livery')}</h5><div class="swatches">${cols.map((c) => c === null ? `<button class="swatch auto ${v.color == null && !(line && line.livery) ? 'on' : ''}" data-act="rvColor" data-arg="${v.id}:auto" aria-label="${this.tr('rv_livery_model')}">A</button>` : c === 'line' ? (line ? `<button class="swatch ${line.livery && v.color == null ? 'on' : ''}" style="background:${lineHex(line.color)}" data-act="rvColor" data-arg="${v.id}:line" aria-label="${this.tr('rv_livery_line')}">L</button>` : '') : `<button class="swatch ${v.color === c ? 'on' : ''}" style="background:${lineHex(c)}" data-act="rvColor" data-arg="${v.id}:${c}" aria-label="${lineHex(c)}"></button>`).join('')}</div>`;
   },
@@ -78,7 +80,10 @@ export const RoadUIMixin = {
     const buy = models.map((m) => {
       const locked = P.level < m.level, price = Math.round(m.price * g.difficulty.costMul);
       const caps = Object.keys(roadCaps(m)).slice(0, 4).map((c) => cargoIcon(c)).join('');
-      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
+      // the biggest ships and aircraft need a bigger port or airport
+      const need = m.kind === 'airport' ? m.minAirport || 1 : m.kind === 'dock' ? m.minPort || 1 : 1;
+      const small = need > (s.size || 1) ? this.tr('needs_size', { kind: this.tr((m.kind === 'dock' ? 'port' : 'airport') + '_size_' + need) }) : '';
+      return `<button class="btn ${locked || small ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || small || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : small ? ' · ' + small : ''}</small></button>`;
     }).join('');
     return `${this.stopActions(s)}<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
       <h4>${this.tr('stop_serves')}</h4>
@@ -86,7 +91,7 @@ export const RoadUIMixin = {
       ${!towns.length && !inds.length ? `<p class="muted small">${this.tr(s.kind === 'truck' ? 'stop_no_industry' : 'stop_no_town')}</p>` : ''}
       <h4 id="rs-wait">${this.tr('waiting')}</h4>${stock || `<p class="muted small">${this.tr('none_yet')}</p>`}${this.journeyBlock(s)}
       ${this.ratingBlock(s)}
-      <span id="rs-type"></span>${s.kind === 'airport' ? this.airportBlock(s) : this.stopTypeBlock(s)}
+      <span id="rs-type"></span>${s.kind === 'airport' || s.kind === 'dock' ? this.airportBlock(s) : this.stopTypeBlock(s)}
       <span id="rs-lines"></span>${s.kind !== 'garage' ? this.stopLinesBlock(s) : ''}
       <h4 id="rs-veh">${this.tr('stop_vehicles', { n: vehs.length })}</h4>
       ${vehs.map((v) => `<button class="fin-row" data-act="jump" data-arg="roadveh:${v.id}"><span>${icon(roadModel(v.model).kind, 'mini')} ${esc(v.name)}</span><small>${this.rvStatus(v)}</small><b>${fmt(v.earned)} ●</b></button>`).join('')}
@@ -97,10 +102,20 @@ export const RoadUIMixin = {
   },
   // airport size: regional → international (reach, turnaround, big aircraft)
   airportBlock(s) {
-    const g = this.game, R = g.roads, size = s.size || 1;
-    const cost = R.airportUpgradeCost();
-    const up = size < 2 ? `<button class="btn ${g.economy.canAfford(cost) && !s.owner ? 'primary' : 'ghost'} wide" data-act="airportUpgrade" data-arg="${s.id}" ${g.economy.canAfford(cost) && !s.owner ? '' : 'disabled'}>${icon('up', 'mini')} ${this.tr('airport_upgrade')} · ${fmt(cost)} ●</button><p class="muted small">${this.tr('airport_international_desc')}</p>` : '';
-    return `<div class="card stype"><b>${this.tr('airport_size_' + size)}</b><small>${this.tr('airport_stats', { r: AIRPORT_SIZES[size].radius, t: Math.round(AIRPORT_SIZES[size].turn * 100) })}</small></div>${up}`;
+    const g = this.game, R = g.roads, size = s.size || 1, air = s.kind === 'airport';
+    const S = R.termSizes(s), I = S[size], nx = S[size + 1], pre = air ? 'airport' : 'port';
+    const cost = R.terminalUpgradeCost(s), err = nx ? R.terminalUpgradeError(s) : 'err_max_level';
+    const up = nx ? `<button class="btn ${!err ? 'primary' : 'ghost'} wide" data-act="airportUpgrade" data-arg="${s.id}" ${!err ? '' : `disabled data-tip="${this.tr(err === 'err_locked' ? 'unlock_level' : err, { n: nx.level })}"`}>${icon('up', 'mini')} ${this.tr(pre + '_upgrade_' + nx.id)} · ${fmt(cost)} ●</button><p class="muted small">${this.tr(pre + '_' + nx.id + '_desc')}</p>` : '';
+    let use = '';
+    if (air) {
+      const W = R.runway(s), u = Math.min(1, W.mov / Math.max(1, W.cap));
+      use = `<div class="kvrow" data-tip="${this.tr('runway_tip', { s: W.slot })}"><span>${this.tr('runway_use')}</span>${this.bar(u, u > 0.85 ? 'warn' : '')}<b>${W.mov}/${W.cap}</b></div>${W.circling || W.waiting ? `<p class="muted small">${icon('warn', 'mini')} ${this.tr('runway_busy', { c: W.circling, w: W.waiting })}</p>` : ''}`;
+    } else {
+      const B = R.berths(s);
+      use = `<div class="kvrow" data-tip="${this.tr('berths_tip')}"><span>${this.tr('berths_use')}</span>${this.bar(B.used / B.cap, B.used >= B.cap ? 'warn' : '')}<b>${B.used}/${B.cap}</b></div>${B.queued ? `<p class="muted small">${icon('warn', 'mini')} ${this.tr('berths_queue', { n: B.queued })}</p>` : ''}`;
+    }
+    const stats = air ? this.tr('airport_stats2', { r: I.radius, t: Math.round(I.turn * 100), c: Math.floor(60 / I.slot) }) : this.tr('port_stats', { r: R.stopRadius(s), t: Math.round(I.turn * 100), b: I.berths });
+    return `<div class="card stype"><b>${this.tr(pre + '_size_' + size)}</b><small>${stats}</small></div>${use}${up}`;
   },
   // the actions a stop or a vehicle needs most, one tap away (touch first)
   tactBtn(act, arg, ic, label, dis = false, cls = '') { return `<button class="tact ${cls}" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''}>${icon(ic)}<span>${label}</span></button>`; },
@@ -174,11 +189,19 @@ export const RoadUIMixin = {
       rvSell: (a) => { const v = g().roads.byId(+a); if (!v) return; g().roads.sell(v); g().select(null); },
       rvRouteAdd: (a) => { const [vid, sid] = a.split(':').map(Number); const v = g().roads.byId(vid); if (v && !v.stops.includes(sid)) { v.stops.push(sid); if (v.state === 'idle') v.t = 0; } re(); },
       rvRouteDel: (a) => { const [vid, i] = a.split(':').map(Number); const v = g().roads.byId(vid); if (v && v.stops.length > 1) { v.stops.splice(i, 1); v.idx = v.idx % v.stops.length; } re(); },
-      airportUpgrade: (a) => { const st = g().roads.stopById(+a); if (!st) return; const r = g().roads.upgradeAirport(st); if (r.error) this.error(r.error); else this.toast(this.tr('airport_upgraded', { name: st.name }), 'good', 'airport'); re(); },
+      airportUpgrade: (a) => { const st = g().roads.stopById(+a); if (!st) return; const r = g().roads.upgradeTerminal(st); if (r.error) this.error(r.error); else this.toast(this.tr(st.kind === 'dock' ? 'port_upgraded' : 'airport_upgraded_to', { name: st.name, kind: this.tr((st.kind === 'dock' ? 'port' : 'airport') + '_size_' + st.size) }), 'good', st.kind === 'dock' ? 'dock' : 'airport'); re(); },
       stopUpgrade: (a) => { const st = g().roads.stopById(+a); if (!st) return; const r = g().roads.upgradeStop(st); if (r.error) this.error(r.error); else this.toast(this.tr('stop_upgraded', { name: st.name, t: this.tr('stype_' + st.type) }), 'good', 'bus'); re(); },
       stopFac: (a) => { const [id, f] = a.split(':'); const st = g().roads.stopById(+id); if (!st) return; const r = g().roads.addFacility(st, f); if (r.error) this.error(r.error); re(); },
       rvGarage: (a) => { const v = g().roads.byId(+a); if (!v) return; const r = g().roads.sendToGarage(v); if (r.error) this.error(r.error); else this.toast(this.tr('rv_going_garage', { name: v.name }), 'info', 'depot'); re(); },
       rvService: (a) => { const v = g().roads.byId(+a); if (!v) return; const r = g().roads.sendToGarage(v); if (r.error) this.error(r.error); else { v.service = true; this.toast(this.tr('rv_going_service', { name: v.name }), 'info', 'depot'); } re(); },
+      refurb: (a) => {
+        const [k, id] = String(a).split(':'), G = g();
+        const o = k === 'T' ? G.trains.byId(+id) : G.roads.byId(+id);
+        if (!o) return;
+        const r = G.fleet.refurbish(o, k === 'T');
+        if (r.error) this.error(r.error); else { this.toast(this.tr('refurb_done', { name: o.name, a: r.before.toFixed(0), b: r.after.toFixed(0) }), 'good', 'builder'); G.audio.play('construct'); }
+        re();
+      },
       rvRelease: (a) => { const v = g().roads.byId(+a); if (v) g().roads.releaseFromGarage(v); re(); },
       rvColor: (a) => { const [id, c] = a.split(':'); const v = g().roads.byId(+id); if (!v) return; const l = g().roads.lines.lineOf(v); if (c === 'auto') { v.color = null; if (l) l.livery = false; } else if (c === 'line') { v.color = null; if (l) l.livery = true; } else v.color = +c; re(); },
       rsRename: async (a) => { const s = g().roads.stopById(+a); if (!s) return; const n = await this.prompt(this.tr('rename'), s.name); if (n && n.trim()) { s.name = n.trim().slice(0, 28); g().roads.rebuildStopMesh && g().roads.rebuildStopMesh(); re(); } },

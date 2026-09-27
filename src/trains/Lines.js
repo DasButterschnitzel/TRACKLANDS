@@ -2,6 +2,7 @@
 // the same order form a line. Lines are derived from routes, never stored, so
 // they need no save data. They drive departure spacing (timetables), the lines
 // list, the route overview in the train inspector and the schematic map.
+import { serviceQuality } from '../economy/Quality.js';
 
 const COLORS = ['#e0463c', '#2f8fd8', '#3fae5a', '#e9a23b', '#8a5ab0', '#1fb3a3', '#d05a9a', '#6b7a8f', '#b5773a', '#4a5fd0', '#8fb339', '#c9483a'];
 export const SPACING_CHOICES = [0, -1, 60, 120, 180, 300, 600];   // 0 off, -1 even spacing, else seconds
@@ -11,6 +12,7 @@ export class Lines {
     this.game = game;
     this._c = null; this._t = -1; this._v = -1;
     this.dep = new Map();        // line key -> last departure time from its timing point
+    this.gaps = new Map();       // line key -> recent gaps between departures there
     this.version = 0;            // bump when routes change (UI edits)
   }
 
@@ -64,6 +66,61 @@ export class Lines {
   // income per minute of a line's trains (from their recent earnings)
   income(line) { return line.trains.reduce((a, t) => a + (t.incomeEma || 0), 0); }
 
+  // regularity of the departures at the timing point: 1 even … 0 bunched
+  regularity(line) {
+    const gs = this.gaps.get(line.key) || [];
+    if (gs.length < 3) return null;
+    const m = gs.reduce((a, b) => a + b, 0) / gs.length;
+    if (!(m > 0)) return null;
+    const sd = Math.sqrt(gs.reduce((a, b) => a + (b - m) * (b - m), 0) / gs.length);
+    return Math.max(0, Math.min(1, 1 - sd / m));
+  }
+
+  // Service figures of a line (Phase 7): trains, round trip, interval,
+  // average wait and ride, capacity and travellers carried per month (60 s),
+  // how many wait for it, load, status and quality (with its factors).
+  metrics(line) {
+    const g = this.game, S = g.stations;
+    const tr = line.trains, n = tr.length;
+    const svc = g.network ? g.network.svcOfTrain(tr[0]) : null;
+    const cycle = svc && svc.cycle > 0 ? svc.cycle : this.headway(line) * n;
+    const headway = n && cycle ? cycle / n : 0;
+    const pax = tr.some((t) => (t._st.caps.PASSENGERS || 0) > 0);
+    const capVeh = n ? tr.reduce((a, t) => a + (pax ? (t._st.caps.PASSENGERS || 0) + (t._st.caps.MAIL || 0) : t._st.capFull), 0) / n : 0;
+    const perVeh = cycle > 0 ? capVeh * (60 / cycle) : 0;
+    const capacity = Math.round(perVeh * n);
+    const fin = tr.map((t) => g.ledger.objFin(t));
+    const carried = Math.round(fin.reduce((a, f) => a + (pax ? f.lastPu || 0 : f.lastCu || 0), 0));
+    // travellers (or cargo) waiting at its stations, shared with other lines there
+    let waiting = 0;
+    const L = this.list();
+    for (const id of new Set(line.stops)) {
+      const s = S.byId(id);
+      if (!s) continue;
+      const share = 1 / Math.max(1, L.filter((x) => x.stops.includes(id)).length);
+      waiting += (pax ? (s.stock.PASSENGERS || 0) + (s.stock.MAIL || 0) : Object.keys(s.stock).reduce((a, c) => a + (c === 'PASSENGERS' || c === 'MAIL' ? 0 : s.stock[c]), 0)) * share;
+    }
+    waiting = Math.round(waiting);
+    const demand = carried + waiting;
+    const load = capacity > 0 ? carried / capacity : 0;
+    const ride = tr.filter((t) => t.rideEma > 0);
+    const rideT = ride.length ? ride.reduce((a, t) => a + t.rideEma, 0) / ride.length : null;
+    const dist = ride.length ? ride.reduce((a, t) => a + (t.distEma || 0), 0) / ride.length : null;
+    const delay = n ? tr.reduce((a, t) => a + (t.dly || 0), 0) / n : 0;
+    const reg = this.regularity(line);
+    const lv = line.stops.map((id) => S.byId(id)).filter(Boolean);
+    const stq = lv.length ? lv.reduce((a, s) => a + ((s.level | 0) + 1) / 6, 0) / lv.length : 0.5;
+    let status = 'ok';
+    if (!n) status = 'no_vehicles';
+    else if (tr.some((t) => t.problem === 'no_route' || t.state === 'lost')) status = 'blocked';
+    else if (waiting > Math.max(40, capVeh * 1.5) || load > 0.95) status = 'overcrowded';
+    else if (reg != null && reg < 0.45 && n >= 2) status = 'bunched';
+    else if (n > 1 && load < 0.2 && carried > 0) status = 'underused';
+    const need = perVeh > 0 ? Math.max(1, Math.min(40, Math.ceil(demand / (perVeh * 0.8)))) : n;
+    const q = serviceQuality({ headway, ride: rideT, dist, load, waiting, capVeh, delay, cycle, reg, stations: stq, freight: !pax });
+    return { n, cycle, headway, wait: headway / 2, capacity, carried, demand, waiting, load, status, need, suggest: need - n, rideT, dist, delay, reg, capVeh, quality: q.score, factors: q.factors, pax };
+  }
+
   // ---------- departure spacing ----------
   // route index of the timing point: the first station stop of the route
   timingIdx(t) { return t.route.findIndex((r) => !r.skip && r.st != null && this.game.stations.byId(r.st)); }
@@ -91,7 +148,12 @@ export class Lines {
     if (t.mode !== 'manual' || t.servedIdx == null || t.servedIdx !== this.timingIdx(t)) return;
     const now = this.game.time;
     const key = this.keyOf(this.stops(t));
-    if (key) this.dep.set(key, now);
+    if (key) {
+      // departure gaps at the timing point: how regular the line runs
+      const prev = this.dep.get(key);
+      if (prev != null && now > prev) this.gaps.set(key, (this.gaps.get(key) || []).concat([Math.round((now - prev) * 10) / 10]).slice(-8));
+      this.dep.set(key, now);
+    }
     // round trip without the time spent waiting for the timetable, so even
     // spacing converges on the real headway instead of feeding on itself
     if (t.lastTP != null && now > t.lastTP) {

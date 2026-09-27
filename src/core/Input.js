@@ -399,6 +399,11 @@ export class Input {
       case 'escape': if (g.ui.driveId != null) g.ui.stopDrive(); else if (g.construction.drag) g.construction.touchCancel(); else if (!g.ui.closeTop()) g.construction.setTool('select'); break;
       case 'enter': if (g.construction.drag && g.construction.drag.touch && g.construction.touchReady()) { e.preventDefault(); g.construction.touchCommit(); } break;
       case ' ': if (e.target === document.body || e.target === this.el) { e.preventDefault(); g.togglePause(); } break;
+      // faster / slower (0 · 1 · 2 · 4 · 8)
+      case '.': { const S = [0, 1, 2, 4, 8]; g.setSpeed(S[Math.min(S.length - 1, S.indexOf(g.speed) + 1)]); break; }
+      case ',': { const S = [0, 1, 2, 4, 8]; g.setSpeed(S[Math.max(0, S.indexOf(g.speed) - 1)]); break; }
+      // find anything on the map
+      case 'f': e.preventDefault(); g.ui.openPanel('search'); break;
       case '1': g.construction.setTool('select'); break;
       case '2': g.construction.setTool('track'); break;
       case '3': g.construction.setTool('station'); break;

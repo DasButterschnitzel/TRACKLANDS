@@ -204,6 +204,73 @@ export async function run({ browser, base }) {
     check(st.rate[1] >= st.baseRate * 2.3 && st.handling <= 0.5, `containers load ${Math.round(st.rate[1] / st.baseRate * 100)}% as fast as without equipment; handover takes ×${st.handling}`);
     check(st.third === 'err_max_facilities' && st.thirdL2 == null && st.savedFac.join() === 'coal_loader,container_crane', `a small station takes two facilities, a level 3 station three (${st.third}); facilities are saved`);
   }
+  // ---------- service frequency, spacing, quality, timetable options ----------
+  await startTestGame(page, 4242);
+  const sv = await page.evaluate(async () => {
+    const g = window.__tracklands.game, R = g.roads, N = g.mapSize || 64, out = {};
+    g.economy.coins = 1e8; g.progression.level = 40; g.settings.weather = false;
+    for (let i = 0; i < 8; i++) g.progression.regions.add(i);
+    const d = (a, b) => Math.max(Math.abs(a % N - b % N), Math.abs(Math.floor(a / N) - Math.floor(b / N)));
+    let A = null, B = null;
+    // two stops in a town, as far apart as its streets allow (at least 3 tiles)
+    for (const town of g.towns.list.slice().sort((a, b) => b.pop - a.pop)) {
+      const streets = [...(town.roadSet || [])].filter((i) => !g.net.conn[i]);
+      const pairs = [];
+      for (const a of streets) for (const b of streets) if (a < b && d(a, b) >= 3) pairs.push([a, b, d(a, b)]);
+      pairs.sort((p, q) => q[2] - p[2]);
+      for (const [a, b] of pairs) { if (!R.path(a, b)) continue; const x = R.addStop(a, 'bus'), y = R.addStop(b, 'bus'); if (x.stop && y.stop) { A = x.stop; B = y.stop; break; } if (x.stop) R.removeStop(x.stop, 0); if (y.stop) R.removeStop(y.stop, 0); }
+      if (A) break;
+    }
+    if (!A) return { none: true };
+    const l = R.lines.create({ kind: 'bus', stops: [A.id, B.id] }).line;
+    // three buses bought at the same stop at the same time: bunched from the start
+    for (let k = 0; k < 3; k++) R.buy('citybus', A, null, l);
+    for (let i = 0; i < 30 * 240; i++) { g.tick(1 / 30); if (i % 30 === 0) A.stock.PASSENGERS = Math.max(A.stock.PASSENGERS || 0, 30); }
+    const k = R.lines.metrics(l);
+    out.spacing = l.spacing ?? -1; out.holds = l.holds || 0; out.reg = k.reg; out.gaps = l.gaps; out.q = k.quality; out.factors = k.factors; out.ride = k.rideT; out.iv = k.interval;
+    // clockface: every 20 s needs cycle / 20 buses
+    l.spacing = 20;
+    out.need = R.lines.metrics(l).forIv;
+    const save = JSON.parse(JSON.stringify(g.serialize()));
+    out.saved = save.road.lines.list.find((x) => x.id === l.id).spacing;
+    return out;
+  });
+  check(!sv.none, 'a bus line in the biggest town');
+  if (!sv.none) {
+    check(sv.spacing === -1 && sv.holds > 0 && sv.reg != null && sv.reg > 0.5, `even spacing by default: ${sv.holds} holds turn three bunched buses into a regular service (regularity ${Math.round((sv.reg || 0) * 100)}%, gaps ${JSON.stringify(sv.gaps)}, interval ${Math.round(sv.iv)} s)`);
+    check(sv.q > 0 && sv.q <= 1 && Object.keys(sv.factors).length === 7 && sv.ride > 0, `service quality ${Math.round(sv.q * 100)}% from ${Object.keys(sv.factors).join(', ')} (ride ${Math.round(sv.ride)} s)`);
+    check(sv.need >= 1 && sv.saved === 20, `a clockface interval of 20 s needs ${sv.need} buses; the interval is saved`);
+  }
+  await startTestGame(page, 777);
+  const tt = await page.evaluate(async () => {
+    const g = window.__tracklands.game, S = g.stations;
+    const { RailTests } = await import('./src/debug/RailTests.js');
+    const RT = new RailTests(g);
+    g.economy.coins = 1e8; g.progression.level = 40; g.settings.weather = false;
+    for (let i = 0; i < 8; i++) g.progression.regions.add(i);
+    const hub = RT.buildPaxHub();
+    if (!hub) return { none: true };
+    const { A, H, C, D } = hub;
+    const mine = new Set([A.id, H.id, C.id]);
+    const acc = S.accepts;
+    S.accepts = function (stn, c) { return (c === 'PASSENGERS' && mine.has(stn.id)) || acc.call(this, stn, c); };
+    const t = RT.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, H, C], { act: 'auto' });
+    const t2 = RT.train(['L:trailmaster', 'W:coach', 'W:coach'], D, [A, H, C], { act: 'auto' });
+    // H is a local stop; the first train runs express
+    t.route[1].local = true; t2.route[1].local = true; t.express = true;
+    const calls = new Map();
+    const na = S.noteArrival.bind(S);
+    S.noteArrival = (stn, tr, m) => { const k = tr.id + ':' + stn.id; calls.set(k, (calls.get(k) || 0) + 1); na(stn, tr, m); };
+    for (let i = 0; i < 30 * 360; i++) { g.tick(1 / 30); if (i % 60 === 0) A.stock.PASSENGERS = Math.max(A.stock.PASSENGERS || 0, 60); }
+    S.noteArrival = na; S.accepts = acc;
+    const L = g.lines.of(t2);
+    const k = L ? g.lines.metrics(L) : null;
+    const out = { expH: calls.get(t.id + ':' + H.id) || 0, expC: calls.get(t.id + ':' + C.id) || 0, locH: calls.get(t2.id + ':' + H.id) || 0, q: k && k.quality, cap: k && k.capacity, status: k && k.status };
+    RT.cleanup([t, t2]);
+    return out;
+  });
+  check(!tt.none && tt.expH === 0 && tt.expC > 0 && tt.locH > 0, `an express train passes the local stop H (${tt.expH} calls, ${tt.expC} at C); the other train stops there (${tt.locH})`);
+  check(!tt.none && tt.q > 0 && tt.cap > 0, `a train line has figures: capacity ${tt.cap}/month, quality ${Math.round((tt.q || 0) * 100)}%, status ${tt.status}`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();
   return { ok, lines };

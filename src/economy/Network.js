@@ -281,7 +281,7 @@ export class TransportNetwork {
   addTransfers() {
     const g = this.game, S = g.stations, R = g.roads;
     const keys = [...this.nodes.keys()];
-    const tilesOf = (k) => { const o = this.obj(k); return o.road ? (R ? R.stopTiles(o) : [o.tile]) : S.allTiles(o); };
+    const tilesOf = (k) => { const o = this.nodes.get(k).o; return o.road ? (R ? R.stopTiles(o) : [o.tile]) : S.allTiles(o); };
     const T = new Map(keys.map((k) => [k, tilesOf(k)]));
     const dist = (a, b) => { let d = Infinity; for (const u of T.get(a)) for (const w of T.get(b)) { const x = cheb(u, w); if (x < d) d = x; } return d; };
     const link = (a, b, d, mul = 1) => {

@@ -10,10 +10,10 @@ import { ARCHETYPES, FAMILIES, LANDMARKS, LANDMARK_STAGE, HEIGHT_ORDER, pickArch
 const CLASSES = ['hamlet', 'village', 'small_town', 'town', 'large_town', 'city', 'large_city', 'metropolis', 'megalopolis'];
 // (saves store the index: new types only ever go at the end)
 const ARCH = ['cottage', 'house', 'house2', 'townhouse', 'shop', 'apartment', 'block', 'office', 'tower', 'skyscraper', 'civic', 'warehouse', 'plaza',
-  'terrace', 'chalet', 'farmhouse', 'factory', 'hotel', 'glasstower', 'bungalow', 'boathouse', ...LANDMARKS];
+  'terrace', 'chalet', 'farmhouse', 'factory', 'hotel', 'glasstower', 'bungalow', 'boathouse', ...LANDMARKS, 'mixeduse'];
 // how many travellers a building stands for (catchment coverage)
 const ARCH_W = { cottage: 1, house: 1.5, house2: 1.5, townhouse: 2.5, shop: 1.5, apartment: 4, block: 6, office: 4, tower: 8, skyscraper: 12, civic: 2, warehouse: 1, plaza: 0.5,
-  terrace: 3, chalet: 1.5, farmhouse: 1.2, factory: 1.5, hotel: 5, glasstower: 9, bungalow: 1.2, boathouse: 1, cathedral: 2, museum: 2, monument: 0.5, stadium: 3, clocktower: 1.5, tv_tower: 1, park: 0.5, convention: 3, lighthouse: 0.5, market_hall: 2, university: 5 };
+  terrace: 3, chalet: 1.5, farmhouse: 1.2, factory: 1.5, hotel: 5, glasstower: 9, bungalow: 1.2, boathouse: 1, cathedral: 2, museum: 2, monument: 0.5, stadium: 3, clocktower: 1.5, tv_tower: 1, park: 0.5, convention: 3, lighthouse: 0.5, market_hall: 2, university: 5, mixeduse: 5 };
 // Travellers come from the buildings the company's stations and stops reach:
 // a town sends COV_FLOOR of its travellers to any station in it, plus
 // COV_SPAN times the share of its buildings within walking distance of a
@@ -208,6 +208,17 @@ function buildArch(name, lod = null) {
       w.cyl(0.08, 0.1, 1.1, 8, 0x8a5a4a, { x: 0.5, z: -0.35 });
       w.box(0.2, 0.05, 0.2, 0x5a3a2a, { x: 0.5, y: 1.1, z: -0.35 });
       break;
+    case 'mixeduse':
+      // mixed use: shops with awnings on the ground floor, flats and offices above
+      w.box(1.2, 1.5, 1.0, WALL);
+      w.box(1.1, 0.28, 0.02, GL, { y: 0.04, z: 0.51, glow: true });
+      for (const [x, c] of [[-0.38, 0xc94f4f], [0, 0x3f7a6a], [0.38, 0xe0a33a]]) w.box(0.34, 0.04, 0.24, c, { x, y: 0.36, z: 0.62, rx: 0.35 });
+      for (let f = 1; f < 5; f++) for (const x of [-0.38, 0, 0.38]) { win(w, x, 0.16 + f * 0.29, 0.51); win(w, x, 0.16 + f * 0.29, -0.51); }
+      for (let f = 1; f < 5; f++) { win(w, 0.61, 0.16 + f * 0.29, 0, Math.PI / 2); win(w, -0.61, 0.16 + f * 0.29, 0, Math.PI / 2); }
+      w.box(1.24, 0.06, 1.04, TRIM, { y: 1.5 });
+      r.box(1.1, 0.05, 0.9, 0xffffff, { y: 1.54 });
+      r.box(0.3, 0.16, 0.3, 0xffffff, { x: 0.35, y: 1.58, z: -0.2 });
+      break;
     case 'hotel':
       // resort: hotel with balconies, a canopy and a rooftop sign
       w.box(1.1, 1.9, 0.9, WALL);
@@ -355,7 +366,7 @@ function buildArch(name, lod = null) {
 }
 
 const BUILDING_H = { cottage: 0.8, house: 0.9, house2: 1.2, townhouse: 1.2, shop: 0.7, apartment: 1.6, block: 1.6, office: 2.6, tower: 4.2, skyscraper: 7.2, civic: 1.8, warehouse: 0.9, plaza: 0.6,
-  terrace: 1.4, chalet: 1.0, farmhouse: 1.0, factory: 1.2, hotel: 2.0, glasstower: 4.4, bungalow: 0.6, boathouse: 1.1, cathedral: 2.7, museum: 1.2, monument: 1.9, stadium: 0.9, clocktower: 2.2, tv_tower: 5.6, park: 0.6, convention: 1.1, lighthouse: 2.3, market_hall: 1.0, university: 1.7 };
+  terrace: 1.4, chalet: 1.0, farmhouse: 1.0, factory: 1.2, hotel: 2.0, glasstower: 4.4, bungalow: 0.6, boathouse: 1.1, cathedral: 2.7, museum: 1.2, monument: 1.9, stadium: 0.9, clocktower: 2.2, tv_tower: 5.6, park: 0.6, convention: 1.1, lighthouse: 2.3, market_hall: 1.0, university: 1.7, mixeduse: 1.7 };
 
 export class TownSystem {
   constructor(game) {
@@ -518,6 +529,9 @@ export class TownSystem {
       const r = A ? A.rating(t) : 50;
       let budget = sts.length ? 1 + (r >= 60 ? 1 : 0) + (r >= 80 ? 1 : 0) + Math.min(2, sts.length - 1) : ((t.idleMonths = (t.idleMonths || 0) + 1) % 4 === 0 ? 1 : 0);
       if (r < 20) budget = Math.min(budget, 1);
+      // well connected towns grow faster (Urban accessibility)
+      if (sts.length && g.urban && g.urban.town(t).score >= 0.5) budget += 1;
+      t._belt = g.urban ? (g.urban.beltOf(t) || {}).id || null : null;
       // building materials delivered last month: extra plots and renewals
       t.matLast = t.mat || 0; t.mat = 0;
       if (sts.length && t.matLast > 0) budget += Math.min(MATERIALS_GROWTH.max, Math.floor(t.matLast / MATERIALS_GROWTH.per) + 1);
@@ -537,7 +551,8 @@ export class TownSystem {
       if (!sts.length) continue;
       const P = TOWN_PRODUCTION;
       // frequent, well-connected service attracts more travellers (PaxFlow)
-      const pax = (P.paxBase + t.pop * P.paxPerPop) * (1 + fx.paxProd + (ev.paxProd || 0)) * (t.tourist ? 1.5 : 1) * (g.pax ? g.pax.townMul(sts) : 1) * this.paxMul(t);
+      const U = g.urban;
+      const pax = (P.paxBase + t.pop * P.paxPerPop) * (1 + fx.paxProd + (ev.paxProd || 0)) * (t.tourist ? 1.5 : 1) * (g.pax ? g.pax.townMul(sts) : 1) * this.paxMul(t) * (U ? U.eventMul(t) * (t._belt ? 1.1 : 1) : 1) * (g.env && g.env.demandMul ? g.env.demandMul() : 1);
       const mail = (P.mailBase + t.pop * P.mailPerPop) * (1 + fx.mailProd) * this.arch(t).mail;
       const cov = this.coverage(t, sts);
       t.paxAcc += (pax * COV_FLOOR / 60) * dt;
@@ -684,6 +699,12 @@ export class TownSystem {
     if (t.kind === 'commuter' && c.d >= 3) dens -= 1.3;
     // big cities grow a second centre of high buildings
     if (s >= 5) { const sc = this.subCentre(t); dens += Math.max(0, 1.8 - Math.max(Math.abs(c.x - sc[0]), Math.abs(c.z - sc[1])) * 0.6); }
+    // land value (accessibility, centre, water, parks): valuable land is built denser
+    const U = this.game.urban;
+    if (U && t.buildings.length && t._sts && t._sts.length) dens += Math.max(-0.6, Math.min(0.9, (U.landValueAt(t, idx(c.x, c.z)) / (A.land || 1) - 1) * 0.8));
+    // tourist towns with good access grow hotels; dense centres grow mixed use
+    if (U && s >= 2 && dens >= 1.5 && dens < 4.3 && c.h > 0.72 && U.tourism(t) >= 0.5 && U.town(t).score >= 0.3) return 'hotel';
+    if (s >= 3 && dens >= 2.1 && dens < 3.6 && c.d <= 3 && (c.h * 7.3) % 1 < 0.35) return 'mixeduse';
     if (dens < 0.2) return c.h > 0.5 ? 'house' : 'cottage';
     if (dens < 0.8) return c.h > 0.6 ? 'house2' : c.h > 0.3 ? 'house' : 'cottage';
     if (dens < 1.5) return c.h > 0.55 ? 'house2' : c.h > 0.3 ? 'townhouse' : 'shop';

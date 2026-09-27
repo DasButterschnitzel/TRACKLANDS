@@ -22,6 +22,10 @@ import { ScenarioRun, cleanScenario } from './world/Scenarios.js';
 import { roadModel } from './road/Roads.js';
 import { IndustrySystem } from './world/Industries.js';
 import { TownSystem } from './world/Towns.js';
+import { Urban } from './world/Urban.js';
+import { Fleet } from './economy/Fleet.js';
+import { Standing } from './economy/Standing.js';
+import { Analytics } from './economy/Analytics.js';
 import { DecorSystem } from './world/Decor.js';
 import { Environment } from './world/Environment.js';
 import { TrainSystem, locoModel } from './trains/Trains.js';
@@ -48,6 +52,8 @@ import { EconomySim } from './debug/EconomySim.js';
 import { log } from './core/Log.js';
 
 const STEP = 1 / 30;
+const SIM_BUDGET_MS = 24;     // simulation time per rendered frame at most
+export const SPEEDS = [0, 1, 2, 4, 8];
 
 export class Game {
   constructor(ctx, opts) {
@@ -100,6 +106,10 @@ export class Game {
     this.authority = new Authority(this);
     this.ratings = new CargoRatings(this);
     this.towns.init(this.world);
+    this.urban = new Urban(this);
+    this.fleet = new Fleet(this);
+    this.standing = new Standing(this);
+    this.analytics = new Analytics(this);
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);
     this.maint = new Maintenance(this);
@@ -183,6 +193,11 @@ export class Game {
     this.roads.afterLoad();
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
     this.company.deserialize(s.company);
+    this.urban.deserialize(s.urban);
+    this.standing.deserialize(s.standing);
+    // camera bookmarks and sandbox switches (builder games)
+    this.bookmarks = (Array.isArray(s.bookmarks) ? s.bookmarks : []).filter((b) => b && Number.isFinite(+b.x) && Number.isFinite(+b.z)).slice(0, 12).map((b) => ({ name: String(b.name || 'Bookmark').slice(0, 40), x: +b.x, z: +b.z, zoom: Number.isFinite(+b.zoom) ? Math.max(4, Math.min(200, +b.zoom)) : 22 }));
+    this.sandbox = s.sandbox && typeof s.sandbox === 'object' && this.difficultyId === 'builder' ? { ignoreAuthority: !!s.sandbox.ignoreAuthority } : null;
     if (s.scenario) this.scenario = ScenarioRun.restore(this, s.scenario);
     this.flows.afterLoad();
     this.world.view.recolorTerrain();
@@ -193,7 +208,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), urban: this.urban.serialize(), standing: this.standing.serialize(), bookmarks: this.bookmarks && this.bookmarks.length ? this.bookmarks : undefined, sandbox: this.sandbox || undefined, rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -323,7 +338,7 @@ export class Game {
     return out;
   }
 
-  setSpeed(s) { this.speed = s; this.events.emit('speed', s); }
+  setSpeed(s) { s = SPEEDS.includes(+s) ? +s : 1; this.speed = s; this.events.emit('speed', s); }
   togglePause() { this.setSpeed(this.speed === 0 ? (this._lastSpeed || 1) : (this._lastSpeed = this.speed, 0)); }
 
   // ---------- feedback wiring ----------
@@ -470,6 +485,8 @@ export class Game {
     this.stats.inc('playTime', dt);
     this.industries.tick(dt);
     this.towns.tick(dt);
+    this.urban.tick(dt);
+    this.standing.tick(dt);
     this.stations.tick(dt);
     this.flows.tick(dt);
     this.pax.tick(dt);
@@ -497,11 +514,19 @@ export class Game {
     this.input.update(dt);
     let gameDt = 0;
     if (this.running && this.speed > 0) {
+      // fixed small steps (the same simulation at every speed); at high
+      // speed on a slow device the frame's simulation time is capped, so the
+      // game runs slower than asked rather than skipping steps (effSpeed)
       gameDt = dt * this.speed;
       const steps = Math.max(1, Math.ceil(gameDt / STEP - 1e-6));
       const sub = gameDt / steps;
-      for (let k = 0; k < steps; k++) this.tick(sub);
-    }
+      const t0 = performance.now(), budget = SIM_BUDGET_MS;
+      let done = 0;
+      for (let k = 0; k < steps; k++) { this.tick(sub); done++; if (k + 1 < steps && performance.now() - t0 > budget) break; }
+      gameDt = sub * done;
+      const eff = dt > 0 ? gameDt / dt : this.speed;
+      this.effSpeed = this.effSpeed == null ? eff : this.effSpeed * 0.9 + eff * 0.1;
+    } else this.effSpeed = this.speed;
     this.camera.update(dt);
     this.env.update(dt, gameDt, this.clock);
     this.world.view.update(dt, this.clock);

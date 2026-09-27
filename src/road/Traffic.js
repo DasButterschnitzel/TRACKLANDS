@@ -26,7 +26,7 @@ const LIGHT_GREEN = 5;            // seconds of green per axis
 const GIVE_UP = 15;               // seconds of waiting (not at red) before squeezing through
 const HOLD_T = 1.6;               // a junction reservation lapses unless refreshed
 const CAR_COLORS = [0xc94f4f, 0x3f6e9a, 0xe0a33a, 0xe8e2d4, 0x5aa66a, 0x2b2b2b, 0x8a8f96, 0x6a4a8a];
-const DENSE = { apartment: 1, block: 1, office: 1, tower: 1, skyscraper: 1, shop: 1, townhouse: 0.4, terrace: 0.5, hotel: 1, glasstower: 1, factory: 0.6, boathouse: 0.4, stadium: 1, convention: 1, market_hall: 1, university: 1 };
+const DENSE = { mixeduse: 1, apartment: 1, block: 1, office: 1, tower: 1, skyscraper: 1, shop: 1, townhouse: 0.4, terrace: 0.5, hotel: 1, glasstower: 1, factory: 0.6, boathouse: 0.4, stadium: 1, convention: 1, market_hall: 1, university: 1 };
 const bump = (t, c, w) => Math.exp(-((t - c) ** 2) / (2 * w * w));
 const axisOf = (a, b) => (tx(b) !== tx(a) ? 0 : 1);
 
@@ -227,6 +227,8 @@ export class Traffic {
         if (!v._red) this.stats.redStops++;
         // bus priority: the light turns for the waiting bus sooner
         if (bus && g.progression.fx.busPriority > 0 && !L.pri && L.t > 1.2) { L.t = 1.2; L.pri = true; }
+        // tram priority (research): a waiting tram gets green almost at once
+        if (kind === 'tram' && g.progression.fx.tramPriority > 0 && !L.pri && L.t > 0.6) { L.t = 0.6; L.pri = true; }
       } else if (this.jn.has(b) && (this.exitBusy(b, v.path ? v.path[v.pi + 2] : -1) || !this.reserve(b, key))) lim = STOP_AT;
     } else if (f0 > STOP_AT && this.jn.has(b)) this.reserve(b, key);
     v._red = red;
@@ -240,11 +242,11 @@ export class Traffic {
   // leaving tile a for good (arrived, sold, sent elsewhere)
   vehicleGone(v) { const k = 'v' + v.id; for (const [j, r] of this.res) if (r.k === k) this.res.delete(j); }
   // how freely a company vehicle drives on tile a (1 free … 0.7 busy street)
-  speedMul(a, bus) {
+  speedMul(a, bus, cap = 1) {
     const R = this.game.roads;
     if (bus && R.lane[a]) return 1;
     const n = this.load.get(a) || 0;
-    return clamp(1.1 - 0.06 * n, 0.7, 1);
+    return clamp(1.1 - 0.06 * n / Math.max(0.5, cap), 0.7, 1);
   }
 
   // ---------- car numbers ----------
@@ -256,7 +258,9 @@ export class Traffic {
     for (const b of t.buildings) { tot++; dense += DENSE[b.arch] || 0; }
     const dens = 0.75 + 0.9 * (tot ? dense / tot : 0);
     const tod = this.timeFactor();
-    return Math.max(1, Math.min(Math.round((2 + t.pop / 150) * dens * tod), Math.floor(t.roadSet.size * 0.55), 70));
+    // good public transport takes some cars off the streets (Urban accessibility)
+    const pt = g.urban ? 1 - 0.25 * g.urban.town(t).score : 1;
+    return Math.max(1, Math.min(Math.round((2 + t.pop / 150) * dens * tod * pt), Math.floor(t.roadSet.size * 0.55), 70));
   }
   timeFactor() {
     const env = this.game.env, t = env ? env.timeOfDay : 0.4;
