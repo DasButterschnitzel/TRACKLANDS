@@ -68,7 +68,9 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Tools:** FIND (`F`) for anything named, camera bookmarks, and sandbox tools in builder games. A planning mode and blueprints are deferred: ghost construction would need a second, non-simulated copy of the rail graph, signals and stations. Undo stays the short construction undo.
 - **Metro (deferred):** the railway is a single-level track grid. A production-quality underground metro needs a second track layer, underground stations, portals and a separate view mode. This would destabilise signalling, reservations and saves, so the metro is deferred (as the specification allows). Trams on their own track and busways cover dense urban transit meanwhile.
 
-## Phase 8 (in progress)
+## Phase 8: content, polish and QA
+
+The release audit for all eight phases (what is done, what is deferred and why, and which suite covers it) is in [`docs/AUDIT.md`](docs/AUDIT.md).
 
 - **Save safety:** rolling backups (up to 8, every 5 minutes of play, on leaving to the title, before an import or restore), a read-only health check of the running game, a crash snapshot after an uncaught error with a notice on the next start, autosave interval setting, a changelog (Settings → What's new), and diagnostics without personal data.
 - **Music:** the creator's tracks in a playlist with shuffle, repeat (all/one/off), crossfades, mood and era preferences, and a "now playing" note. No music ships with the game.
