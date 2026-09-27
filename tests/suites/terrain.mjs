@@ -3,7 +3,7 @@
 // mega-map warning), a preset game started by touch that saves its terrain
 // and rebuilds the same world, the climates reaching the regions, farmland
 // on the ground, and a classic production save that is left as it was.
-import { openPage, loadSave, productionSave, ensureOut } from '../lib.mjs';
+import { openPage, loadSave, productionSave, ensureOut, ENGINE } from '../lib.mjs';
 import path from 'path';
 
 export const name = 'terrain';
@@ -12,7 +12,8 @@ export async function run({ browser, base }) {
   let ok = true;
   const check = (c, msg) => { lines.push((c ? 'ok   ' : 'FAIL ') + msg); if (!c) ok = false; };
   const out = ensureOut();
-  const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  // (Firefox has no mobile emulation)
+  const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 390, height: 844 }, hasTouch: true, deviceScaleFactor: 2, ...(ENGINE !== 'firefox' ? { isMobile: true } : {}) });
   await page.waitForFunction(() => window.__tracklands && window.__tracklands.ui, null, { timeout: 30000 });
   await page.evaluate(() => { const app = window.__tracklands; if (app.game) { app.ui.detach(); app.game.dispose(); app.game = null; } app.newGameDialog(); });
   await page.waitForSelector('#ng-terrain');

@@ -123,7 +123,7 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | AI demolition or terraforming | DEFERRED (by design) | companies never demolish buildings or change terrain |
 | CI tiers: static gate (stale service worker fails in seconds), fast gate, integration, release, nightly | PASS | `tools/check.mjs`, `tests.yml`, `deep.yml` |
 | Save fuzz tiers (150 + corpus per push, 400, 1000, 3000 sharded) and the failure corpus | PASS | `savefuzz --corpus` (the corpus catches a removed fix) |
-| Cross-browser smoke (Chromium, Firefox, WebKit) | PASS | `xbrowser`, `hardening` in the browsers job |
+| Cross-browser smoke (Chromium, Firefox, WebKit) | PASS | `xbrowser`, `hardening`, `terrain`, `eras` in the browsers job |
 | Browser hardening: context loss, no WebGL, no IndexedDB, full storage, no service worker, visibility, DPR 1–3, audio unlock, update from 4.0.0 | PASS | `hardening`, `xbrowser` |
 | Audio output in Firefox headless | UNTESTED | the container has no audio device; reported NOT TESTED by the suite |
 | Real-device cloud job (BrowserStack) | NOT EXECUTED | `tests/devicecloud.mjs` runs only with secrets; none are configured, and no result is claimed |
@@ -167,5 +167,8 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Touch and desktop | PASS (headless); real hardware UNTESTED |
 
 ## Fixed during the release cycle
+- 5.0.0: in WebKit the new-game dialog scrolled sideways on a phone (the height-map file input kept its fixed intrinsic width); it now shrinks with the dialog (`terrain` in all three engines).
+- 5.0.0: four new trains shared a silhouette with older models; each has its own length now (`rollingstock`).
+- 5.0.0: the rail AI's alpine and archipelago runs, the terrain dialog and the era suite run in Chromium, Firefox and WebKit (browsers job).
 - The sun's shadow map was kept after a game ended (two textures per restart). It is now freed (`bench` memory audit).
 - F3 was bound twice (debug text and performance overlay). The debug text stays on the backtick key.

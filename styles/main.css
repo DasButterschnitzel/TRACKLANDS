@@ -1016,3 +1016,5 @@ ul.health li.warn { color: var(--warn, #b07a10); }
 .era-seg.era-0 { background: #a8634a; } .era-seg.era-1 { background: #d8b878; } .era-seg.era-2 { background: #9a968e; }
 .era-seg.era-3 { background: #b07a4a; } .era-seg.era-4 { background: #7aa8c8; } .era-seg.era-5 { background: #5aa87a; }
 details.card.history > summary { cursor: pointer; font-weight: 600; }
+/* file inputs have a fixed intrinsic width in WebKit: keep them inside the dialog */
+.modal input[type=file] { min-width: 0; max-width: 100%; flex: 1 1 0; font-size: 12px; }
