@@ -148,6 +148,7 @@ Real devices: `tests/devicecloud.mjs` runs a smoke on BrowserStack real Android 
 | `xbrowser` | The same flows in Chromium, Firefox and WebKit: desktop, phone and tablet viewports at DPR 1–3, touch taps never build, turning the device, reduced motion, IndexedDB, save/load, hiding and showing the page |
 | `ai` | A railway company beside a player network for 15 years: profitable lines, the player's infrastructure untouched, networks never touching, courtesy distance, anti-spam metrics, save/load of its plans, determinism, thinking budget; four companies for ten years; company page, read-only cards, overlay, news; clean liquidation and takeover |
 | `aidecades` | Nightly: four companies for 50 years — networks never touch, fleets follow the eras, loans within limits, memory, save size |
+| `hardening` | Emulated browser conditions in Chromium, Firefox and WebKit: the graphics reset by the browser (saved at once, reloads straight into the game), no WebGL (clear message), no IndexedDB, a full localStorage, no service worker, audio voice budget/mute/suspend (reported NOT TESTED where the environment has no audio output), a real 4.0.0 save, and an update between two builds (one cache left) |
 | `makers` | Every vehicle has a maker and a generation; catalogue maker filter and search |
 
 Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).

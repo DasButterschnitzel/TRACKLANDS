@@ -124,7 +124,7 @@ jobs:
           npx playwright install --with-deps ${{ matrix.engine }}
       - env:
           BROWSER: ${{ matrix.engine }}
-        run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser
+        run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser hardening
 
   devicecloud:
     needs: static

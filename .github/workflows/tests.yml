@@ -94,4 +94,4 @@ jobs:
         env:
           BROWSER: ${{ matrix.engine }}
         # Firefox gets WebGL only with a display
-        run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser
+        run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser hardening

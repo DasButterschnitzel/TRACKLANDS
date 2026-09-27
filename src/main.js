@@ -18,6 +18,7 @@ import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, GAME_PRESETS } from './config.j
 import { log } from './core/Log.js';
 import { RIVAL_COUNTS, RIVAL_TIMINGS } from './world/Rivals.js';
 import { AI_LEVEL_IDS } from './world/RailAI.js';
+const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchend'];
 
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
@@ -62,7 +63,15 @@ class App {
     this.gpu = this.detectGpu();
     this.autoGfx = this.autoProfile();
     log.info('gfx', 'renderer ready', { gpu: this.gpu, auto: this.autoGfx, dpr: window.devicePixelRatio });
-    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.flushSave(); this.ui && this.ui.toast(t('err_generic'), 'error'); });
+    // the browser reset the graphics (driver hiccup, memory pressure): save at
+    // once, tell the player, and when the graphics come back reload straight
+    // into the saved game (nothing in the simulation or the save is lost)
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.flushSave();
+      if (this.game && !this.game.testMode) { try { sessionStorage.setItem('tracklands.resume', '1'); } catch (err) { /* no session storage */ } }
+      this.ui && this.ui.toast(t('err_gpu_lost'), 'warn');
+    });
     canvas.addEventListener('webglcontextrestored', () => location.reload());
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -78,9 +87,16 @@ class App {
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('pagehide', () => this.flushSave());
-    document.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
+    // audio may start only after a gesture; browsers differ in which events
+    // count (Firefox: click and keys, not pointerdown), so try each until it runs
+    const unlock = () => { this.audio.unlock(); if (this.audio.ctx && this.audio.ctx.state === 'running') for (const ev of UNLOCK_EVENTS) document.removeEventListener(ev, unlock, true); };
+    for (const ev of UNLOCK_EVENTS) document.addEventListener(ev, unlock, true);
     this.showTitle();
     this.crashNotice();
+    // back from a graphics reset: straight into the saved game
+    let resume = false;
+    try { resume = sessionStorage.getItem('tracklands.resume') === '1'; sessionStorage.removeItem('tracklands.resume'); } catch (e) { /* no session storage */ }
+    if (resume && this.save) { log.info('gfx', 'resuming after a graphics reset'); this.startGame({ save: this.save }); }
     this.last = performance.now();
     requestAnimationFrame((ts) => this.loop(ts));
     $('#loading').classList.add('done');
