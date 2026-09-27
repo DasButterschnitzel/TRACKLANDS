@@ -12,6 +12,9 @@ import { LayerView } from './world/LayerView.js';
 import { StationSystem } from './rail/Stations.js';
 import { PaxFlow } from './rail/PaxFlow.js';
 import { Lines } from './trains/Lines.js';
+import { Plans } from './rail/Plans.js';
+import { Blueprints } from './rail/Blueprints.js';
+import { PlanView } from './rail/PlanView.js';
 import { Construction } from './rail/Construction.js';
 import { Works } from './rail/Works.js';
 import { RailFurniture } from './rail/RailFurniture.js';
@@ -132,6 +135,9 @@ export class Game {
     this.particles = new Particles(this);
     this.env = new Environment(this);
     this.construction = new Construction(this);
+    this.plans = new Plans(this);
+    this.blueprints = new Blueprints(this);
+    this.planView = new PlanView(this);
     this.works = new Works(this);
     this.furniture = new RailFurniture(this);
     this.overlays = new Overlays(this);
@@ -213,6 +219,7 @@ export class Game {
     this.history.deserialize(s.history);
     this.urban.deserialize(s.urban);
     this.standing.deserialize(s.standing);
+    this.plans.deserialize(s.plans);
     // camera bookmarks and sandbox switches (builder games)
     this.bookmarks = (Array.isArray(s.bookmarks) ? s.bookmarks : []).filter((b) => b && Number.isFinite(+b.x) && Number.isFinite(+b.z)).slice(0, 12).map((b) => ({ name: String(b.name || 'Bookmark').slice(0, 40), x: +b.x, z: +b.z, zoom: Number.isFinite(+b.zoom) ? Math.max(4, Math.min(200, +b.zoom)) : 22 }));
     this.sandbox = s.sandbox && typeof s.sandbox === 'object' && this.difficultyId === 'builder' ? { ignoreAuthority: !!s.sandbox.ignoreAuthority } : null;
@@ -226,7 +233,7 @@ export class Game {
       saveVersion: SAVE_VERSION, gameVersion: GAME_VERSION, seed: this.world.seed, worldGen: this.world.genVersion, terrain: this.world.terrain, mapSize: this.mapSize, hmap: this.hmap ? b64(this.hmap) : undefined, difficulty: this.difficultyId,
       time: this.time, savedAt: Date.now(),
       net: this.net.serialize(), stations: this.stations.serialize(), industries: this.industries.serialize(), towns: this.towns.serialize(),
-      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), history: this.history.serialize(), urban: this.urban.serialize(), standing: this.standing.serialize(), bookmarks: this.bookmarks && this.bookmarks.length ? this.bookmarks : undefined, sandbox: this.sandbox || undefined, rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
+      trains: this.trains.serialize(), economy: this.economy.serialize(), ledger: this.ledger.serialize(), maint: this.maint.serialize(), road: this.roads.serialize(), news: this.news.serialize(), company: this.company.serialize(), history: this.history.serialize(), urban: this.urban.serialize(), standing: this.standing.serialize(), bookmarks: this.bookmarks && this.bookmarks.length ? this.bookmarks : undefined, plans: this.plans.serialize(), sandbox: this.sandbox || undefined, rivals: this.rivals.serialize(), scenario: this.scenario ? this.scenario.serialize() : undefined, progression: this.progression.serialize(), stats: this.stats.serialize(),
       works: this.works.serialize(), env: this.env.serialize(), camera: this.camera.serialize(), decor: this.decor.serialize(), cleared: [...this.cleared],
       tutorial: this.tutorial ? this.tutorial.serialize() : null,
     };
@@ -555,6 +562,7 @@ export class Game {
     this.layerView.update(dt);
     this.furniture.update(dt);
     this.overlays.update(dt);
+    this.planView.update(dt);
     this.trains.updateVisuals(dt);
     this.stations.updateVisuals(dt, this.clock);
     this.industries.updateVisuals(dt, this.clock);

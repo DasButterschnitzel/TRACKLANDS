@@ -1024,3 +1024,13 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 /* track roles (Phase 11) */
 .role-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle;background:#8a8f96}
 .role-dot.r1{background:#4ad07a}.role-dot.r2{background:#e04a6a}.role-dot.r3{background:#d08a3a}
+/* plans and blueprints (Phase 11) */
+.bp-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.07)}
+.bp-row>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-steps{margin:6px 0 8px;padding-left:20px}
+.plan-steps li{display:flex;align-items:center;gap:6px;min-height:32px}
+.plan-steps li.bad{color:#b8392c}
+.plan-steps li .icon-btn{margin-left:auto}
+.card.plan.on{box-shadow:0 0 0 2px #6ad0ff inset}
+.bp-json{width:100%;font-family:ui-monospace,monospace;font-size:12px}
+.tool.planmode.on{background:#2f7fa8;color:#fff}

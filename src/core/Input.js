@@ -415,13 +415,15 @@ export class Input {
       case '7': g.construction.setTool('decor'); break;
       case '8': g.construction.setTool('signal'); break;
       case '9': g.construction.setTool('waypoint'); break;
-      case 'r': g.construction.setTool('road'); break;
+      case 'r': if (g.construction.tool === 'blueprint') { g.construction.bpRotate(); break; } g.construction.setTool('road'); break;
+      // planning mode (Phase 11): J toggles it; with a blueprint in hand, R turns and M mirrors it
+      case 'j': g.plans.setOn(!g.plans.on); g.ui.renderToolbar(); g.ui.toast(g.ui.tr(g.plans.on ? 'plan_on' : 'plan_off'), 'info', 'plans'); break;
       case 'b': g.construction.setTool('roadstop'); break;
       case 'l': g.construction.setTool('line'); break;
       case 'i': g.construction.setTool('industry'); break;
       case 'o': g.ui.toggleOverlayMenu(); break;
       case 't': g.ui.openPanel('trains'); break;
-      case 'm': g.ui.openPanel('map'); break;
+      case 'm': if (g.construction.tool === 'blueprint') { g.construction.bpToggleMirror(); break; } g.ui.openPanel('map'); break;
       case '?': g.ui.actions.help('start'); break;
       case 'q': g.camera.rotate(-1); break;
       case 'e': g.camera.rotate(1); break;

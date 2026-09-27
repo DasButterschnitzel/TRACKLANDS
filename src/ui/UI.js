@@ -24,6 +24,7 @@ import { NewsUIMixin } from './NewsUI.js';
 import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
+import { PlanUIMixin } from './PlanUI.js';
 import { PhotoModeMixin } from './PhotoMode.js';
 import { CompanyUIMixin } from './CompanyUI.js';
 import { CHANGELOG } from '../changelog.js';
@@ -86,6 +87,7 @@ export class UI {
     E.on('overlay', () => this.renderToolbar());
     E.on('consistChanged', () => { if (this.panel === 'builder') this.refreshPanel(); });
     E.on('layerView', () => this.renderToolbar());
+    E.on('plans', () => { const pl = game.plans; if (this._planOn !== pl.on) this.renderToolbar(); this._planOn = pl.on; if (this.panel === 'plans') this.refreshPanel(); });
   }
 
   detach() {
@@ -206,7 +208,7 @@ export class UI {
   }
 
   renderRail() {
-    const items = ['company', 'finance', 'trains', 'news', 'search', 'lists', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
+    const items = ['company', 'finance', 'trains', 'news', 'search', 'lists', 'plans', 'research', 'objectives', 'contracts', 'collection', 'map', 'achievements', 'handbook', 'settings'];
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'finance' ? 'coin' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
@@ -221,6 +223,7 @@ export class UI {
     const menuOpen = $('#overlay-menu') && !$('#overlay-menu').hidden;
     $('#toolbar').innerHTML = `<div class="tools">${tools.map(btn).join('')}</div>
       <div class="tools2">
+        <button class="tool small planmode ${g.plans && g.plans.on ? 'on' : ''}" data-act="planMode" data-arg="${g.plans && g.plans.on ? 0 : 1}" data-tip="${this.tr('plan_mode')} (J)" aria-label="${this.tr('plan_mode')}" aria-pressed="${!!(g.plans && g.plans.on)}">${icon('plans')}</button>
         <button class="tool small layerview ${g.layerView && g.layerView.mode !== 'surface' ? 'on' : ''}" data-act="layerView" data-tip="${this.tr('layer_view')}: ${this.tr('lv_' + (g.layerView ? g.layerView.mode : 'surface'))} (U)" aria-label="${this.tr('layer_view')}">${icon('tunnel')}<i class="lv-tag">${this.tr('lv_short_' + (g.layerView ? g.layerView.mode : 'surface'))}</i></button>
         <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')} (O)${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
         <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
@@ -658,6 +661,7 @@ export class UI {
       credits: { title: 'credits', render: () => this.pCredits() },
       handbook: { title: 'handbook', render: () => this.pHandbook() },
       changelog: { title: 'whats_new', render: () => this.pChangelog() },
+      plans: { title: 'menu_plans', render: () => this.pPlans() },
       search: { title: 'menu_search', render: () => this.pSearch(), after: () => { const q = document.getElementById('find-q'); if (q && window.innerWidth >= 760) q.focus(); } },
     };
   }
@@ -1472,6 +1476,7 @@ export class UI {
       jumpHQ: () => { const G = g(), h = G.company.hq; if (h) { this.closePanel(); G.camera.focus(tileCX(h.tile) + 1, tileCZ(h.tile) + 1, 14); } },
       weatherInfo: () => this.toast(this.weatherText(), 'info', 'w_' + (g().settings.weather ? g().env.weather : 'clear')),
       ...this.railActions(),
+      ...this.planActions(),
       ...this.liveryActions(),
       ...this.financeActions(),
       ...this.roadActions(),
@@ -1588,4 +1593,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin, PhotoModeMixin, CompanyUIMixin);
+Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin, PhotoModeMixin, CompanyUIMixin, PlanUIMixin);

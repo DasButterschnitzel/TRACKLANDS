@@ -144,6 +144,7 @@ export class Construction {
     if (p) this.hoverP = p;
     if (this.drag) return;
     const g = this.game;
+    if (this.tool === 'blueprint') { this.previewBlueprint(tile); return; }
     if (this.tool === 'select' || this.tool === 'train' || tile < 0) { this.ghost.count = 0; this.cover.count = 0; this.flush(this.ghost); return; }
     let ok = true, info = '';
     if (this.tool === 'station') { this.previewStation(tile, tile); return; }
@@ -278,6 +279,8 @@ export class Construction {
       case 'station': this.drag = { a: tile, b: tile }; this.previewStation(tile, tile); break;
       case 'signal': this.drag = { a: tile, b: tile, p: p || this.hoverP }; break;
       case 'waypoint': this.toggleWaypoint(tile); break;
+      case 'blueprint': this.placeBlueprint(tile); break;
+      case 'bpcapture': this.drag = { a: tile, b: tile }; this.previewRect(tile, tile); break;
       case 'depot': this.placeDepot(tile); break;
       case 'decor': this.drag = { tiles: new Set([tile]) }; this.placeDecor(tile); break;
       case 'road': this.drag = { a: tile, b: tile }; this.previewRoad(); break;
@@ -304,6 +307,8 @@ export class Construction {
       this.drag.b = tile; this.previewStation(this.drag.a, tile);
     } else if (this.tool === 'road' && tile !== this.drag.b) {
       this.drag.b = tile; this.previewRoad();
+    } else if (this.tool === 'bpcapture' && tile !== this.drag.b) {
+      this.drag.b = tile; this.previewRect(this.drag.a, tile);
     }
   }
   pointerUp(tile) {
@@ -323,6 +328,16 @@ export class Construction {
         else if (lane) this.game.ui.toast(this.game.ui.tr('lane_built', { n: r.n }), 'good', 'bus');
       }
       this.hover(this.hoverTile);
+      return;
+    }
+    if (this.tool === 'bpcapture') {
+      const d = this.drag;
+      this.drag = null;
+      if (tile >= 0) d.b = tile;
+      this.clearPreview();
+      const r = this.game.blueprints.capture(d.a, d.b);
+      if (r.error) this.game.ui.error(r.error);
+      else { this.game.ui.toast(this.game.ui.tr('bp_captured', { n: r.bp.runs.length }), 'good', 'blueprint'); this.setTool('select'); this.game.ui.openPanel('plans'); }
       return;
     }
     if (this.tool === 'station') {
@@ -558,6 +573,13 @@ export class Construction {
     const g = this.game, plan = this.plan;
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
     if (plan.roleOnly) { this.applyRole(plan); return; }
+    // planning mode: the drag becomes a step of the active project, nothing is built or paid
+    if (g.plans && g.plans.on) {
+      const d = this.drag;
+      const r = g.plans.addStep(plan.pair ? { op: 'pair', a: d.a, b: d.b, tier: this.tier, side: this.pairSide, roles: this.pairRoles, L: layerOf(d.a) } : { op: 'track', a: d.a, b: d.b, tier: this.tier, mode: this.trackMode, L: this.layer });
+      if (r.error) g.ui.error(r.error); else g.ui.toast(g.ui.tr('plan_step_added', { name: r.project.name, n: r.project.steps.length }), 'info', 'track');
+      return;
+    }
     if (plan.pair) {
       if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
       const e = plan.parts.map((p) => this.trackCheck(p)).find(Boolean);
@@ -669,6 +691,41 @@ export class Construction {
     for (let k = 0; k < plan.tiles.length; k += 2) { const t = plan.tiles[k]; g.particles.emit('dust', tileCX(t), net.railH(t) + 0.2, tileCZ(t), 2); }
     g.events.emit('trackBuilt', plan);
     void mid;
+  }
+
+  // ---------- blueprints (Phase 11) ----------
+  bpRotate() { this.bpRot = ((this.bpRot || 0) + 1) & 3; this.hover(this.hoverTile); }
+  bpToggleMirror() { this.bpMirror = !this.bpMirror; this.hover(this.hoverTile); }
+  // where the blueprint would go: each run planned now (the ground decides bridges and tunnels)
+  previewBlueprint(tile) {
+    const g = this.game, bp = g.blueprints.byId(this.bpId);
+    if (!bp || tile < 0) { this.clearPreview(); return; }
+    const r = g.blueprints.steps(bp, baseTile(tile), this.bpRot || 0, !!this.bpMirror);
+    let k = 0, cost = 0, bad = 0;
+    if (!r.error) for (const s of r.steps) {
+      const v = g.plans.dry(s);
+      cost += v.cost;
+      if (v.error) bad++;
+      for (const t of v.tiles.length ? v.tiles : [s.a ?? s.tile ?? (s.key >> 3)]) { if (k >= 400) break; this.putQuad(this.ghost, k++, t, v.error ? 0xd0503f : 0x6ad0ff); }
+    }
+    this.ghost.count = k; this.flush(this.ghost);
+    g.ui.cursorInfo(r.error ? g.ui.tr(r.error) : `${g.ui.tr(bp.name.startsWith('bp_') ? bp.name : 'bp_placed')} · ${fmt(cost)} ●${bad ? ' · ' + g.ui.tr('bp_blocked_n', { n: bad }) : ''}`, !r.error && !bad);
+  }
+  placeBlueprint(tile) {
+    const g = this.game, bp = g.blueprints.byId(this.bpId);
+    if (!bp) return;
+    const r = g.blueprints.place(bp, tile, this.bpRot || 0, !!this.bpMirror);
+    if (r.error) { g.ui.error(r.error); return; }
+    g.ui.toast(g.ui.tr('bp_placed_plan', { name: r.project.name }), 'good', 'plans');
+    this.setTool('select');
+    g.ui.openPanel('plans');
+  }
+  previewRect(a, b) {
+    const x0 = Math.min(tx(a), tx(b)), x1 = Math.max(tx(a), tx(b)), z0 = Math.min(tz(a), tz(b)), z1 = Math.max(tz(a), tz(b));
+    let k = 0;
+    for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) if (k < 400 && (x === x0 || x === x1 || z === z0 || z === z1 || this.game.net.conn[idx(x, z)])) this.putQuad(this.ghost, k++, idx(x, z), this.game.net.conn[idx(x, z)] ? 0x6ad0ff : 0xc0c8d0);
+    this.ghost.count = k; this.flush(this.ghost);
+    this.game.ui.cursorInfo(`${x1 - x0 + 1} × ${z1 - z0 + 1}`, x1 - x0 <= 48 && z1 - z0 <= 48);
   }
 
   // ---------- four-track corridors (Phase 11) ----------
@@ -835,6 +892,7 @@ export class Construction {
   }
   buildStationDrag(a, b) {
     const g = this.game;
+    if (g.plans && g.plans.on) { const r = g.plans.addStep({ op: 'station', a, b, tracks: this.stationTracks || 1 }); if (r.error) g.ui.error(r.error); else g.ui.toast(g.ui.tr('plan_step_added', { name: r.project.name, n: r.project.steps.length }), 'info', 'station'); return; }
     const r = this.stationOp(a, b, this.stationTracks || 1);
     if (r.error === 'err_train_on_track') g.ui.offerWorks('station', { a, b, tracks: this.stationTracks || 1 });
     else if (r.error) g.ui.error(r.error);
@@ -894,6 +952,7 @@ export class Construction {
   }
   placeDepot(tile) {
     const g = this.game;
+    if (g.plans && g.plans.on) { const r = g.plans.addStep({ op: 'depot', tile }); if (r.error) g.ui.error(r.error); else g.ui.toast(g.ui.tr('plan_step_added', { name: r.project.name, n: r.project.steps.length }), 'info', 'depot'); return; }
     const prevConn = this.neighborhoodConn(tile);
     const r = g.stations.buildDepot(tile);
     if (r.error) { g.ui.error(r.error); return; }
@@ -1122,8 +1181,8 @@ export class Construction {
 
   // ---------- undo ----------
   pushUndo(e) {
-    if (this._collect) { this._collect.push(e); return; }
     e.time = this.game.clock;
+    if (this._collect) { this._collect.push(e); return; }
     this.undoStack.push(e);
     if (this.undoStack.length > 10) this.undoStack.shift();
     this.game.events.emit('undo', this.canUndo());
