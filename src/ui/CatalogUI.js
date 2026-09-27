@@ -149,7 +149,7 @@ export const CatalogUIMixin = {
 
   catStat(it, k) {
     switch (k) {
-      case 'speed': return `${Math.round(it.speed)} km/h`;
+      case 'speed': return `${this.spd(Math.round(it.speed))}`;
       case 'power': return it.power ? `${fmt(it.power)} kW` : '—';
       case 'accel': return it.accel ? it.accel.toFixed(1) : '—';
       case 'cap': return it.cap ? `${it.cap}` : '—';
@@ -206,7 +206,7 @@ export const CatalogUIMixin = {
       <select data-change="catRole" aria-label="${this.tr('cat_role')}">${opt('', c.role, this.tr('cat_role') + ': ' + this.tr('cat_all'))}${roles.map((r) => opt(r, c.role, this.tr(r))).join('')}</select>
       <select data-change="catCargo" aria-label="${this.tr('cat_cargo')}">${opt('', c.cargo, this.tr('cat_cargo') + ': ' + this.tr('cat_all'))}${CARGO_IDS.map((x) => opt(x, c.cargo, this.cargoName(x))).join('')}</select>
       <select data-change="catPower" aria-label="${this.tr('cat_k_power')}">${[0, 1000, 3000, 6000, 10000].map((v) => opt(v, c.power, v ? '≥ ' + fmt(v) + ' kW' : this.tr('cat_k_power') + ': ' + this.tr('cat_all'))).join('')}</select>
-      <select data-change="catSpeed" aria-label="${this.tr('cat_k_speed')}">${[0, 80, 120, 160, 250].map((v) => opt(v, c.speed, v ? '≥ ' + v + ' km/h' : this.tr('cat_k_speed') + ': ' + this.tr('cat_all'))).join('')}</select>
+      <select data-change="catSpeed" aria-label="${this.tr('cat_k_speed')}">${[0, 80, 120, 160, 250].map((v) => opt(v, c.speed, v ? '≥ ' + this.spd(v) : this.tr('cat_k_speed') + ': ' + this.tr('cat_all'))).join('')}</select>
       <select data-change="catSort" aria-label="${this.tr('cat_sort')}">${['level', 'speed', 'power', 'cap', 'price', 'op'].map((k) => opt(k, c.sort, this.tr('cat_sort') + ': ' + this.tr(k === 'level' ? 'cat_k_level' : 'cat_k_' + k))).join('')}</select>
       <div class="chips">${['unlocked', 'owned', 'fav'].map((k) => `<button class="chip ${c[k] ? 'on' : ''}" data-act="catToggle" data-arg="${k}" aria-pressed="${!!c[k]}">${k === 'fav' ? icon('star', 'mini') : ''}${this.tr('cat_only_' + k)}</button>`).join('')}</div></div>`;
     const shown = list.slice(0, c.n);

@@ -63,8 +63,9 @@ import * as tools from './suites/tools.mjs';
 import * as savesafety from './suites/savesafety.mjs';
 import * as music from './suites/music.mjs';
 import * as campaign from './suites/campaign.mjs';
+import * as helpui from './suites/helpui.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

@@ -249,7 +249,7 @@ export class Input {
     const G = this.gesture;
     if (!G || G.state !== 'pending' || !this.pointers.has(id) || this.pointers.size !== 1) return;
     G.cued = true;
-    try { navigator.vibrate && navigator.vibrate(12); } catch (err) { /* not allowed */ }
+    if (this.game.settings.haptics !== false) try { navigator.vibrate && navigator.vibrate(12); } catch (err) { /* not allowed */ }
   }
   // when (event time) the finger first left the tap slop
   slopTime(e, ptr) {
@@ -385,6 +385,7 @@ export class Input {
     const g = this.game;
     if (!g.running) return;
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); g.construction.undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === 'k') { e.preventDefault(); g.ui.openPanel('search'); return; }
     // driver mode: W / S set the power, X brakes
     if (g.ui.driveId != null && (k === 'w' || k === 's' || k === 'x' || k === 'arrowup' || k === 'arrowdown')) {
       const t = g.trains.byId(g.ui.driveId);

@@ -22,7 +22,7 @@ export const DriverUIMixin = {
     let el = document.getElementById('driver');
     if (!el) { el = document.createElement('div'); el.id = 'driver'; el.setAttribute('role', 'group'); document.body.appendChild(el); }
     el.innerHTML = `<div class="drv-head">${icon('train', 'mini')} <b>${esc(t.name)}</b><button class="icon-btn small" data-act="stopDrive" aria-label="${this.tr('drive_stop')}">${icon('close')}</button></div>
-      <div class="drv-speed"><b id="drv-v">0</b><small>km/h</small><span id="drv-lim"></span></div>
+      <div class="drv-speed"><b id="drv-v">0</b><small>${this.spdUnit()}</small><span id="drv-lim"></span></div>
       <label class="drv-lever"><span>${this.tr('drive_power')}</span><input type="range" min="0" max="100" step="5" value="60" data-input="driveThrottle" aria-label="${this.tr('drive_power')}"/></label>
       <div class="row"><button class="btn small" data-act="driveBrake" id="drv-brake">${this.tr('drive_brake')}</button><button class="btn ghost small" data-act="stopDrive">${this.tr('drive_stop')}</button></div>
       <small class="muted">${this.tr('drive_help')}</small>`;
@@ -49,7 +49,7 @@ export const DriverUIMixin = {
     if (this.driveId == null) return;
     const t = this.game.trains.byId(this.driveId);
     if (!t || !t.drive) { this.stopDrive(); return; }
-    const kmh = (v) => Math.round((v / TILE) * KMH_PER_TILE_S);
+    const kmh = (v) => this.spdNum((v / TILE) * KMH_PER_TILE_S);
     const a = document.getElementById('drv-v'), b = document.getElementById('drv-lim'), br = document.getElementById('drv-brake');
     if (a) a.textContent = kmh(t.v);
     if (b) b.textContent = t.drive.limit > 0.05 ? this.tr('drive_limit', { n: kmh(t.drive.limit) }) : this.tr('drive_stopped');

@@ -32,6 +32,10 @@ export const RailUIMixin = {
   vehName(v) { return v.k === 'L' ? locoModel(v.id).name : this.tr('wag_' + v.id); },
   ratingBadge(r) { return `<span class="rating r-${r}">${this.tr('rating_' + r)}</span>`; },
   kmh(v) { return Math.round((v / TILE) * KMH_PER_TILE_S); },
+  // speeds in the unit the player chose (Settings: km/h or mph)
+  spdNum(kmh) { return Math.round(this.app.settings.units === 'imperial' ? kmh * 0.621371 : kmh); },
+  spdUnit() { return this.app.settings.units === 'imperial' ? 'mph' : 'km/h'; },
+  spd(kmh) { return `${this.spdNum(+kmh || 0)} ${this.spdUnit()}`; },
 
   // ---------- consist preview (rendered 3/4 view of the whole train) ----------
   // Returns { url, w, h }. The image scales with the train length so a long
@@ -169,7 +173,7 @@ export const RailUIMixin = {
       <div><small>${this.tr('bld_mass')}</small><b>${Math.round(st.emptyMass)}–${fullMass} t</b></div>
       <div><small>${this.tr('stat_power')}</small><b>${fmt(st.power)} kW</b></div>
       <div><small>${this.tr('bld_rating')}</small>${this.ratingBadge(st.rating)}</div>
-      <div><small>${this.tr('bld_vmax')}</small><b>${Math.round(st.speed)} km/h</b></div>
+      <div><small>${this.tr('bld_vmax')}</small><b>${this.spd(Math.round(st.speed))}</b></div>
       <div><small>${this.tr('stat_accel')}</small><b>${st.accel.toFixed(2)}</b></div>
       <div><small>${this.tr('stat_op')}</small><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b></div>
       <div><small>${this.tr('bld_priority')}</small><b>${this.tr('prio_' + st.priority)}</b></div>
@@ -191,7 +195,7 @@ export const RailUIMixin = {
       items = list.map((m) => {
         const ok = P.locoUnlocked(m), fav = F.has('L:' + m.id);
         return `<button class="pitem ${ok ? '' : 'locked'} ${fav ? 'fav' : ''}" data-act="bldAdd" data-arg="L:${m.id}" ${ok ? '' : 'disabled'} data-tip="${ok ? esc(this.tr('duty_' + (m.duty || 'mixed')) + ' · ' + this.tr('trait_' + m.trait)) + (m.mu ? ' · ' + esc(this.tr('mu_badge')) : '') : esc(this.locoUnlockText(m))}">
-          ${ok ? '' : icon('lock', 'mini')}<b>${esc(m.name)}</b><small>${this.tr('duty_' + (m.duty || 'mixed'))}${m.mu ? ' · ' + this.tr('mu_badge') : ''} · ${m.speed} km/h · ${fmt(m.power)} kW · ${(locoLen(m) / TILE).toFixed(1)} ${this.tr('tiles')}</small><span class="price">${fmt(g.economy.costs.train(m))}●</span></button>`;
+          ${ok ? '' : icon('lock', 'mini')}<b>${esc(m.name)}</b><small>${this.tr('duty_' + (m.duty || 'mixed'))}${m.mu ? ' · ' + this.tr('mu_badge') : ''} · ${this.spd(m.speed)} · ${fmt(m.power)} kW · ${(locoLen(m) / TILE).toFixed(1)} ${this.tr('tiles')}</small><span class="price">${fmt(g.economy.costs.train(m))}●</span></button>`;
       }).join('');
     } else {
       const grp = WAGON_GROUPS.find(([k]) => k === b.cat);
@@ -252,7 +256,7 @@ export const RailUIMixin = {
       const pct = Math.round(g.trains.fillRatio(t) * 100);
       const line = t.mode === 'manual' ? g.lines.of(t) : null;
       return `<div class="trow ${s.warn ? 'warn' : ''}"><button class="trow-main" data-act="jump" data-arg="train:${t.id}"><b>${line ? `<i class="lc-dot" style="background:${line.color}"></i>` : ''}${esc(t.name)}</b><small>${esc(s.text)}</small></button>
-        <span class="trow-meta"><small>${this.kmh(t.v)} km/h · ${pct}%</small>${this.ratingBadge(t._st.rating)}<small>${fmt(t.earned)}●</small></span>
+        <span class="trow-meta"><small>${this.spd(this.kmh(t.v))} · ${pct}%</small>${this.ratingBadge(t._st.rating)}<small>${fmt(t.earned)}●</small></span>
         <span class="trow-btns"><button class="icon-btn small" data-act="follow" data-arg="${t.id}" data-tip="${this.tr('follow')}">${icon('focus')}</button><button class="icon-btn small" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}">${icon('builder')}</button></span></div>`;
     };
     // train groups: one block per group, ungrouped trains last
@@ -325,9 +329,9 @@ export const RailUIMixin = {
       const pick = cands.find((x) => x.id === this.fleetPick[id]) || null;
       let cost = 0;
       if (pick) for (const t of ts) cost += g.trains.consistChangeCost(t, (t.pendingVeh || t.veh).map((v) => (v.k === 'L' && v.id === id ? { ...v, id: pick.id } : v))).net;
-      const opts = `<option value="">${this.tr('fleet_replace')}…</option>${cands.map((x) => `<option value="${x.id}" ${pick && pick.id === x.id ? 'selected' : ''}>${esc(x.name)} · ${Math.round(x.speed)} km/h</option>`).join('')}`;
+      const opts = `<option value="">${this.tr('fleet_replace')}…</option>${cands.map((x) => `<option value="${x.id}" ${pick && pick.id === x.id ? 'selected' : ''}>${esc(x.name)} · ${this.spd(Math.round(x.speed))}</option>`).join('')}`;
       const inc = ts.reduce((a, t) => a + (t.incomeEma || 0), 0);
-      return `<div class="fleet-row"><div class="fr-head"><b>${esc(m.name)}</b><small>${ts.length}× · ${Math.round(m.speed)} km/h · ≈${fmt(Math.round(inc))}●/${this.tr('min')}</small></div>
+      return `<div class="fleet-row"><div class="fr-head"><b>${esc(m.name)}</b><small>${ts.length}× · ${this.spd(Math.round(m.speed))} · ≈${fmt(Math.round(inc))}●/${this.tr('min')}</small></div>
         <div class="row wrap"><select data-change="fleetPick" data-id="${id}" aria-label="${this.tr('fleet_replace')}">${opts}</select>
         <button class="btn small ${pick ? 'primary' : ''}" data-act="fleetReplace" data-arg="${id}" ${pick && (cost <= 0 || g.economy.canAfford(cost)) ? '' : 'disabled'}>${this.tr('fleet_replace_btn')}${pick ? ` · ${cost >= 0 ? fmt(cost) + '●' : '+' + fmt(-cost) + '●'}` : ''}</button></div></div>`;
     }).join('');
@@ -366,12 +370,12 @@ export const RailUIMixin = {
     const mini = t.veh.map((v) => `<i class="mv ${v.k === 'L' ? 'l' : ''}" title="${esc(this.vehName(v))}"></i>`).join('');
     const caps = Object.keys(st.caps).filter((c) => st.caps[c]).map((c) => `<span class="cap">${cargoIcon(c)}${st.caps[c]}</span>`).join('');
     return `<div class="pill-row"><span class="pill">${esc(m.name)}${st.locos.length > 1 ? ` ×${st.locos.length}` : ''}</span><span class="pill">${this.tr('prio_' + st.priority)}</span>${this.ratingBadge(st.rating)}</div>
-      <div class="tstatus ${s.warn ? 'warn' : ''}">${icon(s.warn ? 'warn' : 'route')}<span>${esc(s.text)}</span><small>${this.kmh(t.v)} km/h</small></div>
+      <div class="tstatus ${s.warn ? 'warn' : ''}">${icon(s.warn ? 'warn' : 'route')}<span>${esc(s.text)}</span><small>${this.spd(this.kmh(t.v))}</small></div>
       ${this.trainActions(t)}
       ${t.state === 'stored' ? `<div class="card small">${icon('depot', 'mini')} ${this.tr('depot_parked_hint')}</div>` : ''}
       ${this.fleetBlock(t, true)}
       <button class="consist-mini" data-act="builder" data-arg="${t.id}" data-tip="${this.tr('train_builder')}"><span class="mvs">${mini}</span><span>${icon('builder', 'mini')} ${this.tr('train_builder')}</span></button>
-      <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${Math.round(st.speed)}</b><small>km/h max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
+      <div class="kv-grid small"><div><b>${fmt(t.earned)}</b><small>${this.tr('earned')}</small></div><div><b>${t.trips}</b><small>${this.tr('trips')}</small></div><div><b>${this.spdNum(st.speed)}</b><small>${this.spdUnit()} max</small></div><div><b>${fmt(Math.round(st.op))}/${this.tr('min')}</b><small>${this.tr('stat_op')}</small></div></div>
       <h4>${this.tr('fin_heading')}</h4>${this.finBlock(t)}<p class="muted small">${this.tr('fin_train_value', { v: fmt(Math.round(g.ledger.vehicleValue(t))), age: this.ageText(g.time - (t.bought || 0)) })}</p>${this.handoverNote({ type: 'train', id: t.id })}
       ${this.condBlock(t)}
       <h4>${this.tr('cargo')} · ${loadN}/${st.capFull}</h4><div class="caps">${caps || `<span class="muted small">${this.tr('bld_no_cargo')}</span>`}</div>${cargo}

@@ -234,7 +234,7 @@ export class UI {
     if (C.tool === 'track') {
       sub = TRACK_TIERS.map((t, i) => {
         const locked = t.research && !g.progression.research.has(t.research);
-        return `<button class="chip ${C.tier === i ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="tier" data-arg="${i}" data-tip="${locked ? this.tr('requires') + ': ' + this.tr('res_' + t.research) : this.tr('tier_' + t.id + '_desc')}">${locked ? icon('lock') : ''}<b>${this.tr('tier_' + t.id)}</b><small>${fmt(g.economy.costs.trackTile(i, 0))}● · ${t.speed} km/h</small></button>`;
+        return `<button class="chip ${C.tier === i ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="tier" data-arg="${i}" data-tip="${locked ? this.tr('requires') + ': ' + this.tr('res_' + t.research) : this.tr('tier_' + t.id + '_desc')}">${locked ? icon('lock') : ''}<b>${this.tr('tier_' + t.id)}</b><small>${fmt(g.economy.costs.trackTile(i, 0))}● · ${this.spd(t.speed)}</small></button>`;
       }).join('') + `<span class="sub-sep"></span>` + ['double', 'single'].map((m) => `<button class="chip ${C.trackMode === m ? 'on' : ''}" data-act="trackMode" data-arg="${m}" data-tip="${this.tr('track_' + m + '_desc')}"><b>${this.tr('track_' + m)}</b><small>${m === 'single' ? '−35%' : this.tr('track_double_small')}</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_drag_track')}</span>`;
     } else if (C.tool === 'decor') {
       sub = DECORATIONS.map((d) => {
@@ -260,7 +260,7 @@ export class UI {
       sub = `<button class="chip ${rm === 'road' ? 'on' : ''}" data-act="roadMode" data-arg="road"><b>${icon('road', 'mini')} ${this.tr('road_mode_road')}</b><small>${fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul()))}●</small></button>`
         + `<button class="chip ${rm === 'tram' ? 'on' : ''} ${tramOk ? '' : 'locked'}" data-act="roadMode" data-arg="tram" ${tramOk ? '' : `data-tip="${this.tr('unlock_level', { n: 4 })}"`}>${tramOk ? '' : icon('lock')}<b>${icon('tram', 'mini')} ${this.tr('road_mode_tram')}</b><small>${fmt(Math.round(ROAD_COSTS.tram * g.economy.costs.mul()))}●</small></button>`
         + `<button class="chip ${rm === 'lane' ? 'on' : ''} ${laneOk ? '' : 'locked'}" data-act="roadMode" data-arg="lane" ${laneOk ? '' : `data-tip="${this.tr('lane_locked')}"`}>${laneOk ? '' : icon('lock')}<b>${icon('bus', 'mini')} ${this.tr('road_mode_lane')}</b><small>${fmt(Math.round(ROAD_COSTS.lane * g.economy.costs.mul()))}●</small></button>`
-        + (rm === 'road' ? ROAD_TYPE_IDS.filter((k) => k !== 'local').concat(['local']).sort((a, b) => ROAD_TYPES[a].cost - ROAD_TYPES[b].cost).map((k) => { const T = ROAD_TYPES[k], why = g.roads.typeLocked(k); return `<button class="chip small ${(C.roadType || 'local') === k ? 'on' : ''} ${why ? 'locked' : ''}" data-act="roadType" data-arg="${k}" data-tip="${why ? this.tr(why.key, why) : this.tr('road_type_' + k + '_tip', { limit: T.limit, cap: T.cap })}">${why ? icon('lock') : ''}<b>${this.tr('road_type_' + k)}</b><small>${T.limit} km/h · ${fmt(Math.round(ROAD_COSTS.tile * T.cost * g.economy.costs.mul()))}●</small></button>`; }).join('') : '')
+        + (rm === 'road' ? ROAD_TYPE_IDS.filter((k) => k !== 'local').concat(['local']).sort((a, b) => ROAD_TYPES[a].cost - ROAD_TYPES[b].cost).map((k) => { const T = ROAD_TYPES[k], why = g.roads.typeLocked(k); return `<button class="chip small ${(C.roadType || 'local') === k ? 'on' : ''} ${why ? 'locked' : ''}" data-act="roadType" data-arg="${k}" data-tip="${why ? this.tr(why.key, why) : this.tr('road_type_' + k + '_tip', { limit: T.limit, cap: T.cap })}">${why ? icon('lock') : ''}<b>${this.tr('road_type_' + k)}</b><small>${this.spd(T.limit)} · ${fmt(Math.round(ROAD_COSTS.tile * T.cost * g.economy.costs.mul()))}●</small></button>`; }).join('') : '')
         + `<span class="sub-hint">${this.tr(rm === 'tram' ? 'hint_tram' : rm === 'lane' ? 'hint_lane' : 'hint_road', { cost: fmt(Math.round(ROAD_COSTS.tile * g.economy.costs.mul())) })}</span>`;
     } else if (C.tool === 'roadstop') {
       const LV = { bus: 1, truck: 1, tram: 4, dock: 6, airport: 12, garage: 1 };
@@ -953,7 +953,7 @@ export class UI {
   }
 
   statBars(m) {
-    const rows = [['stat_speed', m.speed / 480, `${m.speed} km/h`], ['stat_accel', m.accel / 3.4, m.accel.toFixed(1)], ['stat_power', m.power / 18000, fmt(m.power) + ' kW'],  ['stat_wagons', m.wagons / 8, m.wagons], ['bld_length', locoLen(m) / 2.4, (locoLen(m) / TILE).toFixed(1) + ' ' + this.tr('tiles')], ['stat_reliability', m.reliability, Math.round(m.reliability * 100) + '%'], ['stat_load', m.load / 1.8, '×' + m.load.toFixed(1)], ['stat_op', m.op / 450, fmt(m.op) + '/min']];
+    const rows = [['stat_speed', m.speed / 480, `${this.spd(m.speed)}`], ['stat_accel', m.accel / 3.4, m.accel.toFixed(1)], ['stat_power', m.power / 18000, fmt(m.power) + ' kW'],  ['stat_wagons', m.wagons / 8, m.wagons], ['bld_length', locoLen(m) / 2.4, (locoLen(m) / TILE).toFixed(1) + ' ' + this.tr('tiles')], ['stat_reliability', m.reliability, Math.round(m.reliability * 100) + '%'], ['stat_load', m.load / 1.8, '×' + m.load.toFixed(1)], ['stat_op', m.op / 450, fmt(m.op) + '/min']];
     return `<div class="sbars">${rows.map(([k, p, v]) => `<div class="sb"><span>${this.tr(k)}</span>${this.bar(p)}<small>${v}</small></div>`).join('')}</div>`;
   }
 
@@ -1053,7 +1053,7 @@ export class UI {
     const rows = [
       ['stat_track', `${fmt(trackLen)} ${this.tr('tiles')}`], ['stat_trainsOwned', g.trains.trains.length], ['stat_stations', g.stations.list.length],
       ['stat_deliveries', fmt(S.deliveries)], ['stat_cargo', fmt(S.cargoUnits)], ['stat_passengers', fmt(S.passengers)], ['stat_coinsEarned', fmt(S.coinsEarned)],
-      ['stat_longestRoute', `${S.longestRoute} ${this.tr('tiles')}`], ['stat_fastest', `${fastest} km/h`], ['stat_topSpeed', `${S.topSpeed} km/h`],
+      ['stat_longestRoute', `${S.longestRoute} ${this.tr('tiles')}`], ['stat_fastest', `${this.spd(fastest)}`], ['stat_topSpeed', `${this.spd(S.topSpeed)}`],
       ['stat_largestTown', largest ? `${largest.name} (${fmt(largest.pop)})` : '-'], ['stat_townsDeveloped', g.towns.list.filter((t) => t.stage > 0).length],
       ['stat_regionsUnlocked', `${g.progression.regions.size}/${REGIONS.length}`], ['stat_bridgesBuilt', S.bridgesBuilt], ['stat_tunnelsBuilt', S.tunnelsBuilt],
       ['stat_contractsDone', S.contractsDone], ['stat_researchDone', S.researchDone], ['stat_playTime', fmtTime(S.playTime)],
@@ -1096,6 +1096,7 @@ export class UI {
       ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p><label class="set"><span>${this.tr('ind_rule')}</span><select data-change="indRule">${['off', 'on'].map((o) => `<option value="${o}" ${this.game.standing.industryRule === o ? 'selected' : ''}>${this.tr('ind_rule_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('ind_rule_desc')}</p>` : ''}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}
+      ${sel('units', 'units', ['metric', 'imperial'])}${tog('haptics', 'haptics')}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
       <h3>${this.tr('save_data')}</h3>
       <label class="set"><span>${this.tr('autosave_every')}</span><select data-change="settingNum" data-key="autosave">${AUTOSAVE_CHOICES.map((n) => `<option value="${n}" ${(s.autosave || 30) === n ? 'selected' : ''}>${this.tr('every_s', { n })}</option>`).join('')}</select></label>
@@ -1143,7 +1144,7 @@ export class UI {
       const cost = g.economy.costs.train(m);
       const err = ok ? g.trains.canBuy(m.id, dep) : 'err_train_locked';
       return `<div class="shop-item ${ok ? '' : 'locked'}"><img alt="" src="${this.locoPreview(m.id, !ok)}"/><div class="si-body"><b>${esc(m.name)}</b>
-        <small>${this.tr('era_' + m.era)} · ${this.tr('role_' + m.role)} · ${m.speed} km/h · ${icon('train', 'mini')}${m.freight}/${m.pax}</small>
+        <small>${this.tr('era_' + m.era)} · ${this.tr('role_' + m.role)} · ${this.spd(m.speed)} · ${icon('train', 'mini')}${m.freight}/${m.pax}</small>
         <small class="trait">${icon('star', 'mini')}${this.tr('trait_' + m.trait)}</small>
         ${ok ? '' : `<small class="muted">${icon('lock', 'mini')} ${this.locoUnlockText(m)}</small>`}</div>
         <button class="btn ${err ? 'ghost' : 'primary'}" data-act="buyTrain" data-arg="${m.id}" ${ok ? '' : 'disabled'} ${err && ok ? `data-tip="${this.tr(err)}"` : ''}>${icon('coin', 'mini')}${fmt(cost)}</button></div>`;

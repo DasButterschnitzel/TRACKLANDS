@@ -434,6 +434,8 @@ export class Construction {
   touchCommit() {
     const d = this.drag;
     if (!d) return;
+    // a short buzz on phones when a plan is built (Settings: haptics)
+    if (this.game.settings.haptics !== false) try { navigator.vibrate && navigator.vibrate(18); } catch (err) { /* not allowed */ }
     if (d.tiles) {
       const tiles = [...d.tiles];
       this.drag = null;

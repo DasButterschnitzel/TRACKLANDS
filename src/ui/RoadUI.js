@@ -40,7 +40,7 @@ export const RoadUIMixin = {
     const models = this.favFirst(ROAD_VEHICLES.filter((m) => (m.kind === 'bus' || m.kind === 'truck') && !m.retired));
     const buy = models.map((m) => {
       const locked = P.level < m.level, price = Math.round(m.price * g.difficulty.costMul);
-      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
+      return `<button class="btn ${locked ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${m.cap} · ${this.spd(m.speed)} · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : ''}</small></button>`;
     }).join('');
     return `<p class="muted">${this.tr('garage_desc')}</p>
       <h4>${this.tr('garage_stored', { n: here.length })}</h4>
@@ -83,7 +83,7 @@ export const RoadUIMixin = {
       // the biggest ships and aircraft need a bigger port or airport
       const need = m.kind === 'airport' ? m.minAirport || 1 : m.kind === 'dock' ? m.minPort || 1 : 1;
       const small = need > (s.size || 1) ? this.tr('needs_size', { kind: this.tr((m.kind === 'dock' ? 'port' : 'airport') + '_size_' + need) }) : '';
-      return `<button class="btn ${locked || small ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || small || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${caps} ${m.cap} · ${m.speed} km/h · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : small ? ' · ' + small : ''}</small></button>`;
+      return `<button class="btn ${locked || small ? 'ghost' : ''} wide rv-buy" data-act="rvBuy" data-arg="${m.id}:${s.id}" ${locked || small || !g.economy.canAfford(price) ? 'disabled' : ''}>${icon(m.kind, 'mini')} <b>${P.favs.has('R:' + m.id) ? '★ ' : ''}${esc(m.name)}</b> <small>${caps} ${m.cap} · ${this.spd(m.speed)} · ${fmt(price)} ●${locked ? ' · ' + this.tr('unlock_level', { n: m.level }) : small ? ' · ' + small : ''}</small></button>`;
     }).join('');
     return `${this.stopActions(s)}<div class="pill-row"><span class="pill">${icon(s.kind, 'mini')} ${this.tr('tool_roadstop_' + s.kind)}</span>${rail ? `<button class="tag link" data-act="jump" data-arg="station:${rail.id}">${icon('station', 'mini')} ${this.tr('stop_feeds', { name: esc(rail.name) })}</button>` : ''}</div>
       <h4>${this.tr('stop_serves')}</h4>
@@ -170,7 +170,7 @@ export const RoadUIMixin = {
     const cands = home ? R.stops.filter((s) => s.kind === m.kind && !s.owner && !v.stops.includes(s.id) && cheb(s.tile, home.tile) <= 40).map((s) => ({ s, ok: !!R.path(home.tile, s.tile) })).filter((x) => x.ok) : [];
     const add = cands.length ? cands.map((x) => `<button class="tag link" data-act="rvRouteAdd" data-arg="${v.id}:${x.s.id}">${icon('plus', 'mini')} ${esc(x.s.name)}</button>`).join('') : `<p class="muted small">${this.tr('rv_no_more_stops')}</p>`;
     const line = R.lines.lineOf(v);
-    return `${this.rvActions(v)}<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${m.speed} km/h</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
+    return `${this.rvActions(v)}<div class="pill-row"><span class="pill">${icon(m.kind, 'mini')} ${esc(m.name)}</span><span class="pill">${this.spd(m.speed)}</span><span class="pill">${this.rvStatus(v)}</span>${line ? `<button class="pill link" data-act="jump" data-arg="line:${line.id}">${this.lineBadge(line)}</button>` : ''}</div>
       <h4>${this.tr('cargo')}</h4>${load || `<p class="muted small">${this.tr('empty')}</p>`}${this.cargoJourneys(v.cargo, null)}
       <span id="rv-line"></span>${this.vehLineBlock(v)}
       ${line ? `<p class="muted small">${this.tr('rv_on_line', { name: esc(line.name) })}</p>` : `<h4>${this.tr('rv_route')}</h4><div class="rv-route">${route}</div>

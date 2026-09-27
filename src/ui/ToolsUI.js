@@ -7,6 +7,18 @@ import { icon } from './icons.js';
 import { WEATHER_IDS } from '../world/Environment.js';
 
 const MAX_BOOKMARKS = 12;
+// commands FIND also offers (a command palette: Ctrl+K or F, then type)
+const COMMANDS = [
+  ['panel', 'company', 'company', 'menu_company'], ['panel', 'finance', 'coin', 'menu_finance'], ['panel', 'trains', 'trains', 'menu_trains'],
+  ['panel', 'news', 'news', 'menu_news'], ['panel', 'lists', 'lists', 'menu_lists'], ['panel', 'research', 'research', 'menu_research'],
+  ['panel', 'contracts', 'contracts', 'menu_contracts'], ['panel', 'objectives', 'objectives', 'menu_objectives'], ['panel', 'map', 'map', 'menu_map'],
+  ['panel', 'collection', 'collection', 'menu_collection'], ['panel', 'handbook', 'handbook', 'handbook'], ['panel', 'settings', 'settings', 'settings'],
+  ['tool', 'track', 'track', 'tool_track'], ['tool', 'station', 'station', 'tool_station'], ['tool', 'depot', 'depot', 'tool_depot'],
+  ['tool', 'road', 'road', 'tool_road'], ['tool', 'roadstop', 'bus', 'tool_roadstop'], ['tool', 'line', 'route', 'tool_line'],
+  ['tool', 'signal', 'signal', 'tool_signal'], ['tool', 'bulldoze', 'bulldoze', 'tool_bulldoze'], ['tool', 'industry', 'factory', 'tool_industry'],
+  ['overlay', 'profit', 'stats', 'ov_profit'], ['overlay', 'traffic', 'layers', 'ov_traffic'], ['overlay', 'towns', 'town', 'ov_towns'], ['overlay', 'industry', 'factory', 'ov_industry'],
+  ['backups', '', 'save', 'backups'], ['panel', 'changelog', 'news', 'whats_new'],
+];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 export const ToolsUIMixin = {
@@ -21,6 +33,7 @@ export const ToolsUIMixin = {
     for (const t of g.trains.trains) add('train', 'train', t.name, { type: 'train', id: t.id });
     for (const v of g.roads.vehicles) if (!v.owner) add('vehicle', 'bus', v.name, { type: 'roadveh', id: v.id });
     for (const l of g.roads.lines.list) add('line', 'route', l.name, { type: 'line', id: l.id });
+    for (const [act, arg, ic, key] of COMMANDS) out.push({ kind: 'command', ic, name: this.tr(key), cmd: { act, arg }, extra: this.tr('find_kind_' + act), key: norm(this.tr(key) + ' ' + key.replace(/_/g, ' ')) });
     return out;
   },
   searchResults(q) {
@@ -28,14 +41,14 @@ export const ToolsUIMixin = {
     if (!k) return [];
     const words = k.split(/\s+/);
     return this.searchIndex().filter((r) => words.every((w) => r.key.includes(w)))
-      .sort((a, b) => (a.key.startsWith(k) ? 0 : 1) - (b.key.startsWith(k) ? 0 : 1) || a.name.localeCompare(b.name)).slice(0, 30);
+      .sort((a, b) => (a.key.startsWith(k) ? 0 : 1) - (b.key.startsWith(k) ? 0 : 1) || (a.kind === 'command' ? 1 : 0) - (b.kind === 'command' ? 1 : 0) || a.name.localeCompare(b.name)).slice(0, 30);
   },
   searchRows() {
     const q = this.searchQuery || '';
     const res = this.searchResults(q);
     if (!q.trim()) return `<p class="muted small">${this.tr('find_hint')}</p>`;
     if (!res.length) return `<p class="muted">${this.tr('find_none', { q: esc(q) })}</p>`;
-    return res.map((r) => `<button class="fin-row find-row" data-act="findGo" data-arg="${r.sel.type}:${r.sel.id}"><span>${icon(r.ic, 'mini')} ${esc(r.name)}</span><small>${this.tr('find_kind_' + r.kind)}${r.extra ? ' · ' + esc(r.extra) : ''}</small></button>`).join('');
+    return res.map((r) => r.cmd ? `<button class="fin-row find-row cmd" data-act="findCmd" data-arg="${r.cmd.act}:${r.cmd.arg}"><span>${icon(r.ic, 'mini')} ${esc(r.name)}</span><small>${esc(r.extra)}</small></button>` : `<button class="fin-row find-row" data-act="findGo" data-arg="${r.sel.type}:${r.sel.id}"><span>${icon(r.ic, 'mini')} ${esc(r.name)}</span><small>${this.tr('find_kind_' + r.kind)}${r.extra ? ' · ' + esc(r.extra) : ''}</small></button>`).join('');
   },
   pSearch() {
     const g = this.game, B = g.bookmarks || [];
@@ -72,6 +85,14 @@ export const ToolsUIMixin = {
     const g = () => this.game;
     const re = () => this.refreshPanel();
     return {
+      findCmd: (a) => {
+        const [act, arg] = a.split(':'), G = g();
+        this.closePanel();
+        if (act === 'panel') this.openPanel(arg);
+        else if (act === 'tool') { G.construction.setTool(arg); this.renderToolbar(); }
+        else if (act === 'overlay') this.actions.overlay(arg);
+        else if (act === 'backups') this.app.backupDialog();
+      },
       findGo: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel, 14); if (window.innerWidth < 760) this.closePanel(); },
       bmAdd: () => { const b = this.addBookmark(); if (b) this.toast(this.tr('bm_added', { name: b.name }), 'good', 'pin'); re(); },
       bmGo: (a) => { const b = (g().bookmarks || [])[+a]; if (b) { g().camera.focus(b.x, b.z, b.zoom); if (window.innerWidth < 760) this.closePanel(); } },

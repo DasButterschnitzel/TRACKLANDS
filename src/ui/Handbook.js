@@ -22,6 +22,12 @@ export const HANDBOOK = [
   { id: 'overview', icon: 'trains', n: 4 },
   { id: 'cities', icon: 'town', n: 5 },
   { id: 'world', icon: 'weather', n: 5 },
+  { id: 'roads', icon: 'road', n: 5 },
+  { id: 'terminals', icon: 'airport', n: 4 },
+  { id: 'standing', icon: 'company', n: 5 },
+  { id: 'fleetcare', icon: 'depot', n: 4 },
+  { id: 'saves', icon: 'save', n: 4 },
+  { id: 'shortcuts', icon: 'settings', n: 8 },
 ];
 
 export const HandbookMixin = {
