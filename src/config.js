@@ -7,6 +7,13 @@ export const GAME_VERSION = '4.0.0';
 export const WORLDGEN_VERSION = 3;   // v3: new industries per region, placed where they make sense
 export const SAVE_VERSION = 3;
 
+// game mode presets (new game dialog, quick start): the choices they fill in
+export const GAME_PRESETS = {
+  builder: { opts: { difficulty: 'relaxed', reliability: 'off', rivals: 0, industryRule: 'off' } },
+  classic: { opts: { difficulty: 'standard', reliability: 'relaxed', rivals: 1, industryRule: 'off' } },
+  tycoon: { opts: { difficulty: 'standard', reliability: 'tycoon', rivals: 3, industryRule: 'on' } },
+};
+
 export const DIFFICULTY = {
   relaxed: { money: 5000, costMul: 0.7, growthMul: 0.8, incomeMul: 1.15, interest: 0.03 },
   standard: { money: 2500, costMul: 1.0, growthMul: 1.0, incomeMul: 1.0, interest: 0.06 },

@@ -109,6 +109,7 @@ export class Game {
     this.urban = new Urban(this);
     this.fleet = new Fleet(this);
     this.standing = new Standing(this);
+    if (!save && opts && (opts.industryRule === 'on' || opts.industryRule === 'off')) this.standing.industryRule = opts.industryRule;
     this.analytics = new Analytics(this);
     this.decor = new DecorSystem(this);
     this.trains = new TrainSystem(this);

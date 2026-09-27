@@ -10,10 +10,23 @@
 //   towns       towns served by a station
 //   profit      profit in one closed month
 //   trains      trains in service
+//   reputation  company reputation at least n (0–100)
+//   lines       bus, tram, ship or air lines with vehicles
+//
+// Campaign (Phase 8): the built-in scenarios in order; each opens when the
+// one before it has been won. A win earns a medal by how early it came:
+// gold in the first half of the time allowed, silver in the first three
+// quarters, bronze later. Medals are kept in this browser.
 import { CARGO, DIFFICULTY } from '../config.js';
 import { MAP_SIZES } from '../util.js';
 
-export const GOAL_KINDS = ['value', 'passengers', 'cargo', 'towns', 'profit', 'trains'];
+export const GOAL_KINDS = ['value', 'passengers', 'cargo', 'towns', 'profit', 'trains', 'reputation', 'lines'];
+export const MEDALS = ['bronze', 'silver', 'gold'];
+// the medal for a win in year y
+export function medalFor(sc, y) {
+  const span = Math.max(1, sc.deadline - sc.startYear), used = (y - sc.startYear) / span;
+  return used <= 0.5 ? 'gold' : used <= 0.75 ? 'silver' : 'bronze';
+}
 
 export const SCENARIOS = [
   { id: 'valley_link', seed: 1001, mapSize: 64, difficulty: 'standard', startYear: 1930, money: 0, deadline: 1945,
@@ -24,6 +37,10 @@ export const SCENARIOS = [
     goals: [{ k: 'towns', n: 15 }, { k: 'trains', n: 25 }, { k: 'value', n: 400000 }] },
   { id: 'modern_express', seed: 5150, mapSize: 64, difficulty: 'standard', startYear: 1990, money: 60000, deadline: 2000,
     goals: [{ k: 'passengers', n: 12000 }, { k: 'profit', n: 9000 }] },
+  { id: 'harbour_towns', seed: 31337, mapSize: 96, difficulty: 'standard', startYear: 1960, money: 20000, deadline: 1985,
+    goals: [{ k: 'lines', n: 3 }, { k: 'passengers', n: 8000 }, { k: 'value', n: 150000 }] },
+  { id: 'regional_champion', seed: 90210, mapSize: 128, difficulty: 'standard', startYear: 1975, money: 30000, deadline: 2000,
+    goals: [{ k: 'reputation', n: 65 }, { k: 'towns', n: 10 }, { k: 'profit', n: 12000 }] },
 ];
 
 // a scenario from the editor or an import: keep only what the game understands
@@ -70,6 +87,8 @@ export class ScenarioRun {
       case 'towns': return g.towns.list.filter((t) => g.stations.list.some((s) => s.links && s.links.towns.includes(t.id))).length;
       case 'profit': return this.best;
       case 'trains': return g.trains.trains.length;
+      case 'reputation': return g.standing ? g.standing.reputation().score : 0;
+      case 'lines': return g.roads ? g.roads.lines.list.filter((l) => g.roads.lines.vehicles(l).length).length : 0;
       default: return 0;
     }
   }

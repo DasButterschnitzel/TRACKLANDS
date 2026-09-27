@@ -983,3 +983,11 @@ ul.changes, ul.health { margin: 4px 0 12px; padding-left: 20px; }
 ul.changes li, ul.health li { margin: 3px 0; }
 ul.health li.bad { color: var(--bad, #c0392b); }
 ul.health li.warn { color: var(--warn, #b07a10); }
+/* new game: presets and map preview; campaign medals */
+.presets { gap: 6px; margin: 4px 0 8px; }
+.presets .chip { flex: 1 1 140px; text-align: left; flex-direction: column; align-items: flex-start; height: auto; padding: 8px 10px; }
+.ng-preview { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.ng-preview canvas { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 8px; box-shadow: var(--shadow); background: #6a8; }
+.medal { display: inline-block; font-size: 1.1em; line-height: 1; }
+.medal.gold { color: #e0b020; } .medal.silver { color: #a8b0b8; } .medal.bronze { color: #b87333; }
+.scn.locked { opacity: .6; }

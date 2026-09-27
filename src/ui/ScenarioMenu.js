@@ -1,7 +1,7 @@
 // Scenario menu on the title screen (built-in and own scenarios, play,
 // export, delete, import) and the scenario editor; plus the in-game goals
 // block and the end-of-scenario dialog.
-import { SCENARIOS, GOAL_KINDS, cleanScenario } from '../world/Scenarios.js';
+import { SCENARIOS, GOAL_KINDS, cleanScenario, MEDALS, medalFor } from '../world/Scenarios.js';
 import { CARGO_IDS, DIFFICULTY } from '../config.js';
 import { MAP_SIZES, fmt, escapeHtml as esc } from '../util.js';
 import { t } from '../i18n.js';
@@ -13,6 +13,22 @@ export function loadCustom() {
 }
 function saveCustom(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
 
+// medals won in this browser: { scenarioId: 'bronze' | 'silver' | 'gold' }
+const MEDAL_KEY = 'tracklands.medals';
+export function loadMedals() {
+  try { const m = JSON.parse(localStorage.getItem(MEDAL_KEY) || '{}'); const out = {}; if (m && typeof m === 'object') for (const k in m) if (MEDALS.includes(m[k]) && /^[\w-]{1,40}$/.test(k)) out[k] = m[k]; return out; } catch (e) { return {}; }
+}
+// keep the better medal
+export function awardMedal(id, medal) {
+  const m = loadMedals();
+  if (!m[id] || MEDALS.indexOf(medal) > MEDALS.indexOf(m[id])) m[id] = medal;
+  try { localStorage.setItem(MEDAL_KEY, JSON.stringify(m)); } catch (e) { /* storage unavailable */ }
+  return m[id];
+}
+// campaign: a built-in scenario is open when it is the first or the one before has a medal
+export function campaignOpen(i, medals = loadMedals()) { return i === 0 || !!medals[SCENARIOS[i - 1].id]; }
+const medalIcon = (m) => (m ? `<span class="medal ${m}" title="${t('medal_' + m)}" aria-label="${t('medal_' + m)}">●</span>` : '');
+
 export const scnName = (sc) => (sc.custom ? sc.name || t('scn_untitled') : t('scn_' + sc.id));
 export function goalText(goal, tr = t) {
   return tr('goal_' + goal.k, { n: fmt(goal.n), c: goal.c ? tr('cargo_' + goal.c) : '' });
@@ -21,11 +37,15 @@ export function goalText(goal, tr = t) {
 // title: list of scenarios
 export function scenarioDialog(app) {
   const own = loadCustom();
-  const row = (sc) => `<div class="scn"><div><b>${esc(scnName(sc))}</b><small>${sc.custom ? '' : esc(t('scn_' + sc.id + '_desc')) + '<br>'}${t('size_' + sc.mapSize)} · ${sc.startYear}–${sc.deadline} · ${t('diff_' + sc.difficulty)}</small>
+  const medals = loadMedals();
+  const row = (sc, i = -1) => { const locked = i >= 0 && !campaignOpen(i, medals); return `<div class="scn ${locked ? "locked" : ""}" data-scn="${esc(sc.id)}"><div><b>${i >= 0 ? `${t('scn_chapter', { n: i + 1 })} · ` : ''}${esc(scnName(sc))}${medals[sc.id] ? " " + medalIcon(medals[sc.id]) : ""}</b><small>${sc.custom ? '' : esc(t('scn_' + sc.id + '_desc')) + '<br>'}${t('size_' + sc.mapSize)} · ${sc.startYear}–${sc.deadline} · ${t('diff_' + sc.difficulty)}</small>
       <ul>${sc.goals.map((g) => `<li>${esc(goalText(g))}</li>`).join('')}</ul></div>
-      <div class="row wrap"><button class="btn primary small" data-play="${esc(sc.id)}">${t('scn_play')}</button>${sc.custom ? `<button class="btn ghost small" data-export="${esc(sc.id)}">${t('scn_export')}</button><button class="btn ghost small danger" data-del="${esc(sc.id)}">${t('scn_delete')}</button>` : ''}</div></div>`;
+      <div class="row wrap">${locked ? `<span class="muted small">${icon('lock', 'mini')} ${t('scn_locked', { name: esc(scnName(SCENARIOS[i - 1])) })}</span>` : `<button class="btn primary small" data-play="${esc(sc.id)}">${t('scn_play')}</button>`}${sc.custom ? `<button class="btn ghost small" data-export="${esc(sc.id)}">${t('scn_export')}</button><button class="btn ghost small danger" data-del="${esc(sc.id)}">${t('scn_delete')}</button>` : ''}</div></div>`; };
+  const won = SCENARIOS.filter((s) => medals[s.id]).length;
   const w = app.ui.modal(`<h2>${icon('objectives')} ${t('scenarios')}</h2>
-    <div class="scn-list">${SCENARIOS.map(row).join('')}${own.map(row).join('')}</div>
+    <h3>${t('campaign')} <small class="muted">${t('campaign_progress', { n: won, of: SCENARIOS.length })}</small></h3>
+    <div class="scn-list">${SCENARIOS.map((s, i) => row(s, i)).join('')}</div>
+    ${own.length ? `<h3>${t('scn_own')}</h3><div class="scn-list">${own.map((s) => row(s)).join('')}</div>` : ''}
     <div class="row wrap end"><button class="btn ghost" data-mbtn="import">${t('scn_import')}</button><button class="btn" data-mbtn="edit">${icon('plus', 'mini')} ${t('scn_editor')}</button><button class="btn ghost" data-mbtn="no">${t('close')}</button></div>`, { onCancel: () => {} });
   w.classList.add('scn-modal');
   const all = [...SCENARIOS.map((s) => ({ ...cleanScenario(s), custom: false })), ...own];
@@ -106,8 +126,15 @@ export const ScenarioUIMixin = {
     const R = this.game.scenario;
     if (!R) return;
     this.app.audio.play(state === 'won' ? 'legend' : 'reject');
+    // a medal for a built-in scenario (the campaign), by how early the win came
+    let medal = null;
+    if (state === 'won') { medal = medalFor(R.sc, this.game.ledger.year()); R.medal = medal; if (!R.sc.custom) awardMedal(R.sc.id, medal); }
+    const i = SCENARIOS.findIndex((s) => s.id === R.sc.id);
+    const nextSc = state === 'won' && i >= 0 ? SCENARIOS[i + 1] : null;
     const w = this.modal(`<h2>${icon('objectives')} ${this.tr(state === 'won' ? 'scn_won_title' : 'scn_lost_title')}</h2>
       <p>${this.tr(state === 'won' ? 'scn_won_desc' : 'scn_lost_desc', { name: esc(scnName(R.sc)), y: this.game.ledger.year() })}</p>
+      ${medal ? `<p class="medal-line">${medalIcon(medal)} <b>${this.tr('medal_won', { m: this.tr('medal_' + medal) })}</b></p>` : ''}
+      ${nextSc ? `<p class="muted">${this.tr('scn_next_open', { name: esc(scnName(nextSc)) })}</p>` : ''}
       <div class="row end"><button class="btn primary" data-mbtn="ok">${this.tr('scn_keep_playing')}</button></div>`);
     w.querySelector('[data-mbtn=ok]').onclick = () => { if (R.state === 'lost') R.state = 'free'; w.remove(); };
   },

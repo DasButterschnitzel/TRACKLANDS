@@ -15,8 +15,11 @@ export async function run({ browser, base }) {
   await page.waitForSelector('#title [data-t=scenarios]', { timeout: 30000 });
   await page.click('#title [data-t=scenarios]');
   await page.waitForTimeout(300);
-  const list = await page.$$eval('.scn-list [data-play]', (els) => els.map((e) => e.dataset.play));
-  check(list.join(',') === 'valley_link,coal_country,grand_network,modern_express', `the title menu lists the built-in scenarios (${list.join(', ')})`);
+  const list = await page.$$eval('.scn-list [data-scn]', (els) => els.map((e) => e.dataset.scn));
+  check(list.join(',') === 'valley_link,coal_country,grand_network,modern_express,harbour_towns,regional_champion', `the title menu lists the built-in scenarios (${list.join(', ')})`);
+  // (Phase 8 campaign: only the first chapter is open at the start)
+  const open = await page.$$eval('.scn-list [data-play]', (els) => els.map((e) => e.dataset.play));
+  check(open.join(',') === 'valley_link', `the campaign opens chapter by chapter (${open.join(', ')})`);
   await page.click('.scn-list [data-play=valley_link]');
   await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running, null, { timeout: 60000 });
   const st = await page.evaluate(() => { const g = window.__tracklands.game; g.tutorial.skip(); document.querySelectorAll('.modal-wrap').forEach((m) => m.remove()); return { sc: g.scenario && g.scenario.sc.id, year: g.ledger.year(), deadline: g.scenario && g.scenario.sc.deadline, goals: g.scenario && g.scenario.sc.goals.length, size: g.mapSize, seed: g.world.seed }; });

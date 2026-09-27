@@ -68,6 +68,13 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Tools:** FIND (`F`) for anything named, camera bookmarks, and sandbox tools in builder games. A planning mode and blueprints are deferred: ghost construction would need a second, non-simulated copy of the rail graph, signals and stations. Undo stays the short construction undo.
 - **Metro (deferred):** the railway is a single-level track grid. A production-quality underground metro needs a second track layer, underground stations, portals and a separate view mode. This would destabilise signalling, reservations and saves, so the metro is deferred (as the specification allows). Trams on their own track and busways cover dense urban transit meanwhile.
 
+## Phase 8 (in progress)
+
+- **Save safety:** rolling backups (up to 8, every 5 minutes of play, on leaving to the title, before an import or restore), a read-only health check of the running game, a crash snapshot after an uncaught error with a notice on the next start, autosave interval setting, a changelog (Settings → What's new), and diagnostics without personal data.
+- **Music:** the creator's tracks in a playlist with shuffle, repeat (all/one/off), crossfades, mood and era preferences, and a "now playing" note. No music ships with the game.
+- **Campaign:** the six built-in scenarios open one after another. A win earns gold, silver or bronze by how early it came.
+- **New games:** quick start from the title, game mode presets (relaxed builder, classic, tycoon challenge) and a map preview of the chosen seed and size. Terrain presets and an advanced generator are not offered: the generator has no terrain parameters besides an imported height map, and the game shows no options it cannot honour.
+
 ## Tests
 
 The full regression suite runs headless in Chromium (Playwright) against a built-in static server:

@@ -8,11 +8,12 @@ import { SaveStore, migrate, validate, exportText, importText, downloadJSON } fr
 import { Backups, healthOfGame } from './save/Backups.js';
 import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
-import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES } from './util.js';
+import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES, N, setMapSize } from './util.js';
+import { generateWorld } from './world/WorldGen.js';
 import { readHeightmap } from './world/Heightmap.js';
 import { scenarioDialog } from './ui/ScenarioMenu.js';
 import { icon } from './ui/icons.js';
-import { DIFFICULTY, SAVE_VERSION, GAME_VERSION } from './config.js';
+import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, GAME_PRESETS } from './config.js';
 import { log } from './core/Log.js';
 
 const SETTINGS_KEY = 'tracklands.settings';
@@ -225,7 +226,8 @@ class App {
       <h1 class="logo">TRACK<span>LANDS</span></h1><p class="tagline">${t('tagline')}</p>
       <div class="title-btns">
         ${has ? `<button class="btn primary big" data-t="continue">${t('continue')}${info}</button>` : `<button class="btn primary big" data-t="new">${t('start_journey')}</button>`}
-        ${has ? `<button class="btn big" data-t="new">${t('new_game')}</button>` : ''}
+        ${has ? `<button class="btn big" data-t="new">${t('new_game')}</button>` : `<button class="btn big" data-t="new">${t('new_game_custom')}</button>`}
+        <button class="btn" data-t="quick">${icon('play')} ${t('quick_start')}</button>
         <button class="btn" data-t="scenarios">${icon('objectives')} ${t('scenarios')}</button>
         <button class="btn" data-t="settings">${icon('settings')} ${t('settings')}</button>
         <button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>
@@ -239,6 +241,7 @@ class App {
   titleAction(a) {
     if (a === 'continue') this.startGame({ save: this.save });
     else if (a === 'new') this.newGameDialog();
+    else if (a === 'quick') this.quickStart();
     else if (a === 'scenarios') scenarioDialog(this);
     else if (a === 'settings') this.ui.openPanel('settings');
     else if (a === 'credits') this.ui.openPanel('credits');
@@ -252,10 +255,45 @@ class App {
     }
   }
 
+  // quick start: a small standard world with one rival, no questions (a
+  // running company is backed up first and asked about)
+  async quickStart() {
+    if (this.save && !(await this.ui.confirm(t('new_game_overwrite'), t('quick_start'), true))) return;
+    if (this.save) await this.backupNow('before_import', this.save);
+    this.startGame({ seed: Math.floor(Math.random() * 1e9), ...GAME_PRESETS.classic.opts, mapSize: 64, startYear: 1950 });
+  }
+
+  // a small picture of the world a seed makes (terrain, water, regions)
+  drawPreview(canvas, seed, size) {
+    if (this.game) return false;          // (the generator uses the global map size)
+    const prev = N;
+    setMapSize(size);
+    let W;
+    try { W = generateWorld(seed); } catch (e) { setMapSize(prev); return false; }
+    const n = N, ctx = canvas.getContext('2d'), img = ctx.createImageData(n, n);
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n * n; i++) { const h = W.tileH[i]; if (h < lo) lo = h; if (h > hi) hi = h; }
+    for (let i = 0; i < n * n; i++) {
+      const k = i * 4, h = (W.tileH[i] - lo) / Math.max(1e-6, hi - lo);
+      let r, gC, b;
+      if (W.type[i] === 1) { r = 70; gC = 130; b = 200; } else if (h > 0.75) { r = 170 + h * 60; gC = 165 + h * 60; b = 160 + h * 60; } else { r = 90 + h * 70; gC = 140 + h * 50; b = 70 + h * 30; }
+      if (W.trees && W.trees[i]) { r *= 0.8; gC *= 0.9; b *= 0.8; }
+      // region borders
+      const x = i % n, z = (i / n) | 0;
+      if ((x + 1 < n && W.region[i + 1] !== W.region[i]) || (z + 1 < n && W.region[i + n] !== W.region[i])) { r *= 0.7; gC *= 0.7; b *= 0.7; }
+      img.data[k] = r; img.data[k + 1] = gC; img.data[k + 2] = b; img.data[k + 3] = 255;
+    }
+    canvas.width = n; canvas.height = n;
+    ctx.putImageData(img, 0, 0);
+    setMapSize(prev);
+    return true;
+  }
+
   newGameDialog() {
     const seed = String(Math.floor(Math.random() * 1e9));
     const w = this.ui.modal(`<h2>${t('new_game')}</h2>
       ${this.save ? `<p class="card warn">${icon('warn')} ${t('new_game_overwrite')}</p>` : ''}
+      <div class="presets row wrap">${Object.keys(GAME_PRESETS).map((k) => `<button class="chip" data-preset="${k}" data-tip="${t('preset_' + k + '_desc')}"><b>${t('preset_' + k)}</b><small>${t('preset_' + k + '_desc')}</small></button>`).join('')}</div>
       <label class="set"><span>${t('world_seed')}</span><span class="row"><input class="inp" id="ng-seed" value="${seed}" maxlength="24"/><button class="btn ghost" id="ng-rand">${t('random')}</button></span></label>
       <div class="diffs">${Object.keys(DIFFICULTY).map((d) => `<label class="diff"><input type="radio" name="diff" value="${d}" ${d === 'standard' ? 'checked' : ''}/><b>${t('diff_' + d)}</b><small>${t('diff_' + d + '_desc')}</small></label>`).join('')}</div>
       <h3>${t('ng_world')}</h3>
@@ -265,8 +303,24 @@ class App {
       <p class="muted small">${t('ng_heightmap_help')}</p>
       <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${[0, 1, 2, 3].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
+      <label class="set"><span>${t('ind_rule')}</span><select id="ng-ind">${['off', 'on'].map((o) => `<option value="${o}">${t('ind_rule_' + o)}</option>`).join('')}</select></label>
+      ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><small class="muted">${t('map_preview')}</small></div>`}
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
-    w.querySelector('#ng-rand').onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); };
+    // the map preview follows the seed and the size
+    const seedNum = () => { const raw = w.querySelector('#ng-seed').value.trim() || seed; return /^\d+$/.test(raw) ? parseInt(raw, 10) % 4294967296 : hashStr(raw); };
+    let pt = null;
+    const preview = () => { clearTimeout(pt); pt = setTimeout(() => { const c = w.querySelector('#ng-map'); if (c) this.drawPreview(c, seedNum(), +w.querySelector('input[name=size]:checked').value); }, 150); };
+    w.querySelector('#ng-seed').addEventListener('input', preview);
+    w.querySelectorAll('input[name=size]').forEach((r) => r.addEventListener('change', preview));
+    preview();
+    // presets fill in the choices below them
+    w.querySelectorAll('[data-preset]').forEach((b) => { b.onclick = () => {
+      const P = GAME_PRESETS[b.dataset.preset].opts;
+      const d = w.querySelector(`input[name=diff][value=${P.difficulty}]`); if (d) d.checked = true;
+      w.querySelector('#ng-rel').value = P.reliability; w.querySelector('#ng-rivals').value = String(P.rivals); w.querySelector('#ng-ind').value = P.industryRule;
+      w.querySelectorAll('[data-preset]').forEach((x) => x.classList.toggle('on', x === b));
+    }; });
+    w.querySelector('#ng-rand').onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); preview(); };
     w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
     w.querySelector('[data-mbtn=go]').onclick = async () => {
       const raw = w.querySelector('#ng-seed').value.trim() || seed;
@@ -276,13 +330,14 @@ class App {
       const startYear = +w.querySelector('#ng-year').value;
       const reliability = w.querySelector('#ng-rel').value;
       const rivals = +w.querySelector('#ng-rivals').value;
+      const industryRule = w.querySelector('#ng-ind').value;
       const file = w.querySelector('#ng-hmap').files[0];
       let hmap = null;
       if (file) {
         try { hmap = await readHeightmap(file, mapSize); } catch (e) { this.ui.toast(t('ng_heightmap_bad'), 'error'); return; }
       }
       w.remove();
-      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals });
+      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals, industryRule });
     };
   }
 
