@@ -547,7 +547,12 @@ export class Game {
     this.ui.update(dt);
     if (this.running) {
       this.autosaveT -= dt;
-      if (this.autosaveT <= 0) { this.autosaveT = 30; this.save(); }
+      if (this.autosaveT <= 0) {
+        this.autosaveT = this.settings.autosave || 30; this.save();
+        // a rolling backup every few minutes of play
+        this.backupT = (this.backupT || 0) + (this.settings.autosave || 30);
+        if (this.backupT >= 300 && this.ctx.app && this.ctx.app.backupNow) { this.backupT = 0; this.ctx.app.backupNow('auto'); }
+      }
     }
     this.renderer.render(this.scene, this.camera.camera);
   }

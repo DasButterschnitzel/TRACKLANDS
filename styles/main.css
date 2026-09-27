@@ -977,3 +977,9 @@ table.cmp th[scope=row] { color: var(--ink2); font-weight: 600; white-space: now
 .sharebar i { display: block; height: 100%; }
 .sharebar i + i { border-left: 2px solid var(--panel, #fff); }
 .spd.throttled { box-shadow: inset 0 -2px 0 var(--warn, #e0a030); }
+/* save safety and changelog */
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+ul.changes, ul.health { margin: 4px 0 12px; padding-left: 20px; }
+ul.changes li, ul.health li { margin: 3px 0; }
+ul.health li.bad { color: var(--bad, #c0392b); }
+ul.health li.warn { color: var(--warn, #b07a10); }

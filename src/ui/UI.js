@@ -24,6 +24,8 @@ import { NewsUIMixin } from './NewsUI.js';
 import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
+import { CHANGELOG } from '../changelog.js';
+import { healthOfGame, AUTOSAVE_CHOICES, BACKUP_CHOICES } from '../save/Backups.js';
 import { roadModel, STOP_KINDS } from '../road/Roads.js';
 import { AuthorityUIMixin } from './AuthorityUI.js';
 import { LineUIMixin } from './LineUI.js';
@@ -635,6 +637,7 @@ export class UI {
       trains: { title: 'menu_trains', render: () => this.pTransport(), live: true },
       credits: { title: 'credits', render: () => this.pCredits() },
       handbook: { title: 'handbook', render: () => this.pHandbook() },
+      changelog: { title: 'whats_new', render: () => this.pChangelog() },
       search: { title: 'menu_search', render: () => this.pSearch(), after: () => { const q = document.getElementById('find-q'); if (q && window.innerWidth >= 760) q.focus(); } },
     };
   }
@@ -1089,13 +1092,31 @@ export class UI {
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}
       <label class="set"><span>${this.tr('ui_scale')}</span><input type="range" min="0.8" max="1.4" step="0.05" value="${s.uiScale}" data-change="setting" data-key="uiScale"/></label>${lang}
-      <h3>${this.tr('save_data')}</h3><div class="row wrap">
+      <h3>${this.tr('save_data')}</h3>
+      <label class="set"><span>${this.tr('autosave_every')}</span><select data-change="settingNum" data-key="autosave">${AUTOSAVE_CHOICES.map((n) => `<option value="${n}" ${(s.autosave || 30) === n ? 'selected' : ''}>${this.tr('every_s', { n })}</option>`).join('')}</select></label>
+      <label class="set"><span>${this.tr('backups_keep')}</span><select data-change="settingNum" data-key="backups">${BACKUP_CHOICES.map((n) => `<option value="${n}" ${(s.backups ?? 5) === n ? 'selected' : ''}>${n ? n : this.tr('none_opt')}</option>`).join('')}</select></label>
+      <div class="row wrap"><button class="btn" data-act="backups">${icon('save', 'mini')} ${this.tr('backups')}</button>${inGame ? `<button class="btn ghost" data-act="saveHealth">${icon('check', 'mini')} ${this.tr('health_check')}</button>` : ''}</div>
+      <div class="row wrap">
         ${inGame ? `<button class="btn" data-act="exportSave">${this.tr('export_save')}</button>` : ''}
         <button class="btn" data-act="importSave">${this.tr('import_save')}</button>
         ${inGame ? `<button class="btn ghost" data-act="resetTutorial">${this.tr('reset_tutorial')}</button>` : ''}
         <button class="btn danger" data-act="resetGame">${this.tr('reset_game')}</button></div>
       <div class="row wrap"><button class="btn ghost small" data-act="copyDiagnostics">${this.tr('copy_diagnostics')}</button></div>
-      <p class="muted small">${this.tr('storage_info')} · v${GAME_VERSION}</p>`;
+      <p class="muted small">${this.tr('storage_info')} · <button class="linkbtn" data-act="panel" data-arg="changelog">v${GAME_VERSION} · ${this.tr('whats_new')}</button></p>`;
+  }
+
+  pChangelog() {
+    const de = getLang() === 'de';
+    return CHANGELOG.map((e) => `<h3>v${e.v} <small class="muted">${e.date}</small></h3><ul class="changes">${(de ? e.de : e.en).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`).join('');
+  }
+
+  // a report of what should never be in the running game (read only)
+  healthReport() {
+    const h = healthOfGame(this.game);
+    const rows = h.issues.map((i) => `<li class="${i.sev}">${this.tr('health_' + i.key)} · ${i.n}</li>`).join('');
+    const w = this.modal(`<h2>${this.tr('health_check')}</h2>${h.issues.length ? `<ul class="health">${rows}</ul>` : `<p class="good">${icon('check')} ${this.tr('health_ok')}</p>`}<p class="muted small">${this.tr('health_help')}</p><div class="row end"><button class="btn primary" data-mbtn="ok">${this.tr('ok')}</button></div>`, { onCancel: () => {} });
+    w.querySelector('[data-mbtn=ok]').onclick = () => w.remove();
+    return h;
   }
 
   pCredits() {
@@ -1383,6 +1404,8 @@ export class UI {
       defaultLivery: (a) => { g().progression.defaultLivery = a; this.refreshPanel(); },
       defaultStyle: (a) => { g().progression.defaultStationStyle = a; this.refreshPanel(); },
       jump: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel); if (window.innerWidth < 760) this.closePanel(); },
+      backups: () => this.app.backupDialog(),
+      saveHealth: () => this.healthReport(),
       copyDiagnostics: async () => {
         const txt = this.app.diagnostics();
         try { await navigator.clipboard.writeText(txt); this.toast(this.tr('diagnostics_copied'), 'good', 'check'); }
@@ -1437,6 +1460,7 @@ export class UI {
       ...this.catalogInputs(),
       companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
+      settingNum: (el) => { const v = parseInt(el.value, 10); if (Number.isFinite(v)) this.app.setSetting(el.dataset.key, v); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
       indRule: (el) => { if (this.game && ['off', 'on'].includes(el.value)) { this.game.standing.industryRule = el.value; this.refreshPanel(); } },

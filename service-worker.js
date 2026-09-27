@@ -5,7 +5,7 @@
 // service worker installs the complete new set in the background and waits;
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
-const CACHE = 'tracklands-3.0.0-fe093ab6f0';
+const CACHE = 'tracklands-4.0.0-34dc9d5022';
 const ASSETS = [
   './',
   './assets/music/README.md',
@@ -19,6 +19,7 @@ const ASSETS = [
   './src/Game.js',
   './src/audio/Audio.js',
   './src/audio/MusicManager.js',
+  './src/changelog.js',
   './src/config.js',
   './src/core/CameraController.js',
   './src/core/Input.js',
@@ -55,6 +56,7 @@ const ASSETS = [
   './src/road/RoadModels.js',
   './src/road/Roads.js',
   './src/road/Traffic.js',
+  './src/save/Backups.js',
   './src/save/Save.js',
   './src/services/Monetization.js',
   './src/style.js',

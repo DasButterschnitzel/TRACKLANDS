@@ -5,6 +5,7 @@ import { Game } from './Game.js';
 import { UI } from './ui/UI.js';
 import { AudioEngine } from './audio/Audio.js';
 import { SaveStore, migrate, validate, exportText, importText, downloadJSON } from './save/Save.js';
+import { Backups, healthOfGame } from './save/Backups.js';
 import { TitleScene } from './title/TitleScene.js';
 import { t, setLang, detectLang, getLang } from './i18n.js';
 import { hashStr, fmt, fmtTime, escapeHtml, MAP_SIZES } from './util.js';
@@ -17,7 +18,7 @@ import { log } from './core/Log.js';
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'auto', shadows: 'medium', particles: 'high', dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true,
+  graphics: 'auto', shadows: 'medium', particles: 'high', autosave: 30, backups: 5, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
   instantBuild: false, keepTool: true,
 };
@@ -66,12 +67,14 @@ class App {
     this.applyUiSettings();
     this.ui.relocalize();
     await this.store.init();
+    this.backups = new Backups(this.store);
     this.save = await this.loadNewestSave();
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('pagehide', () => this.flushSave());
     document.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
     this.showTitle();
+    this.crashNotice();
     this.last = performance.now();
     requestAnimationFrame((ts) => this.loop(ts));
     $('#loading').classList.add('done');
@@ -100,6 +103,8 @@ class App {
       version: GAME_VERSION, save: SAVE_VERSION, time: new Date().toISOString(), ua: navigator.userAgent, lang: getLang(),
       screen: { w: innerWidth, h: innerHeight, dpr: window.devicePixelRatio }, gpu: this.gpu, webgl2: !!(r && r.capabilities.isWebGL2),
       gfx: { setting: this.settings.graphics, effective: this.gfx() }, fps: Math.round(this.fps), settings: this.settings,
+      backups: this.settings.backups, autosave: this.settings.autosave,
+      health: g ? healthOfGame(g) : null,
       game: g ? { seed: g.world.seed, time: Math.round(g.time), trains: g.trains.trains.length, stations: g.stations.list.length, level: g.progression.level, errors: g.trains.errors || 0, collisions: g.trains.collisions, incidents: g.trains.incidents.length } : null,
       log: log.entries(120),
     };
@@ -201,7 +206,7 @@ class App {
     try {
       if (this.game) this.game.frame(dt);
       else if (this.title) { this.title.render(dt); this.audio.update(dt); }
-    } catch (e) { console.error(e); if ((this._loopErrs = (this._loopErrs || 0) + 1) < 20) log.error('loop', String(e && e.message || e)); }
+    } catch (e) { console.error(e); if ((this._loopErrs = (this._loopErrs || 0) + 1) < 20) log.error('loop', String(e && e.message || e)); this.crashSnapshot(e); }
     requestAnimationFrame((t2) => this.loop(t2));
   }
 
@@ -225,7 +230,8 @@ class App {
         <button class="btn" data-t="settings">${icon('settings')} ${t('settings')}</button>
         <button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>
         <button class="btn" data-t="credits">${t('credits')}</button>
-      </div></div>`;
+        <button class="btn ghost" data-t="backups">${icon('save')} ${t('backups')}</button>
+      </div><p class="muted small ver"><button class="linkbtn" data-t="changelog">v${GAME_VERSION} · ${t('whats_new')}</button></p></div>`;
     $('#title').querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => { this.audio.unlock(); this.audio.play('click'); this.titleAction(b.dataset.t); }; });
   }
   onRelocalize() { if (this.title && !this.game) this.renderTitle(); }
@@ -236,6 +242,8 @@ class App {
     else if (a === 'scenarios') scenarioDialog(this);
     else if (a === 'settings') this.ui.openPanel('settings');
     else if (a === 'credits') this.ui.openPanel('credits');
+    else if (a === 'changelog') this.ui.openPanel('changelog');
+    else if (a === 'backups') this.backupDialog();
     else if (a === 'stats') {
       const S = this.save && this.save.stats;
       const rows = S ? [['stat_deliveries', fmt(S.deliveries)], ['stat_passengers', fmt(S.passengers)], ['stat_coinsEarned', fmt(S.coinsEarned)], ['stat_trainsBought', S.trainsBought], ['stat_track', fmt(S.trackBuilt)], ['stat_regionsUnlocked', S.regionsUnlocked], ['stat_playTime', fmtTime(S.playTime)]] : [];
@@ -294,7 +302,7 @@ class App {
       }
       try {
         if (this.title) { this.title.dispose(); this.title = null; }
-        this.game = new Game({ renderer: this.renderer, audio: this.audio, settings: this.settings, store: this.store, ui: this.ui }, opts);
+        this.game = new Game({ renderer: this.renderer, audio: this.audio, settings: this.settings, store: this.store, ui: this.ui, app: this }, opts);
       } catch (e) {
         console.error('Game start failed', e);
         shell.hidden = true;
@@ -316,7 +324,8 @@ class App {
     const backup = await this.store.get('backup');
     const w = this.ui.modal(`<h2>${t('load_failed')}</h2><p>${t('load_failed_desc')}</p><div class="row end wrap">
       ${backup && !validate(migrate(backup) || {}) ? `<button class="btn primary" data-mbtn="backup">${t('load_backup')}</button>` : ''}
-      <button class="btn danger" data-mbtn="new">${t('start_fresh')}</button></div>`);
+      <button class="btn" data-mbtn="list">${t('backups')}</button><button class="btn danger" data-mbtn="new">${t('start_fresh')}</button></div>`);
+    w.querySelector('[data-mbtn=list]').onclick = () => { w.remove(); this.backupDialog(); };
     const b = w.querySelector('[data-mbtn=backup]');
     if (b) b.onclick = () => { w.remove(); this.startGame({ save: backup }); };
     w.querySelector('[data-mbtn=new]').onclick = async () => { w.remove(); await this.store.remove('main'); try { localStorage.removeItem('tracklands.save'); } catch (e) { /* ignore */ } this.save = null; this.showTitle(); };
@@ -327,11 +336,66 @@ class App {
   async toTitle() {
     if (!this.game) return;
     await this.game.save();
+    await this.backupNow('title');
     this.save = this.game.testMode ? await this.loadNewestSave() : this.game.serialize();
     this.ui.detach();
     this.game.dispose();
     this.game = null;
     this.showTitle();
+  }
+
+  // ---------- save safety (src/save/Backups.js) ----------
+  // a backup now (every few minutes of play, leaving to the title, before an import)
+  async backupNow(reason = 'auto', data = null) {
+    if (!this.backups) return null;
+    if (!data) { if (!this.game || this.game.testMode) return null; data = this.game.serialize(); }
+    return this.backups.snapshot(data, reason, this.settings.backups ?? 5);
+  }
+  // after an uncaught error in a running game: keep one snapshot and say so next time
+  crashSnapshot(e) {
+    if (!this.game || this.game.testMode || this._crashSaved) return;
+    this._crashSaved = true;
+    try {
+      const d = this.game.serialize();
+      this.store.put('crash', d);
+      localStorage.setItem('tracklands.crash', JSON.stringify({ at: Date.now(), msg: String(e && e.message || e).slice(0, 120) }));
+    } catch (x) { /* nothing more to do */ }
+  }
+  // a notice after a session that ended with an error
+  crashNotice() {
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem('tracklands.crash') || 'null'); } catch (e) { c = null; }
+    if (!c) return;
+    try { localStorage.removeItem('tracklands.crash'); } catch (e) { /* ignore */ }
+    const w = this.ui.modal(`<h2>${t('crash_title')}</h2><p>${t('crash_desc')}</p><div class="row end wrap"><button class="btn" data-mbtn="bk">${t('backups')}</button><button class="btn primary" data-mbtn="ok">${t('ok')}</button></div>`, { onCancel: () => {} });
+    w.querySelector('[data-mbtn=ok]').onclick = () => w.remove();
+    w.querySelector('[data-mbtn=bk]').onclick = () => { w.remove(); this.backupDialog(); };
+  }
+  // the list of backups (and the crash snapshot): restore any of them
+  async backupDialog() {
+    const list = (await this.backups.index()).sort((a, b) => b.savedAt - a.savedAt);
+    const crash = await this.store.get('crash');
+    const when = (ms) => new Date(ms).toLocaleString(getLang() === 'de' ? 'de-DE' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' });
+    const row = (key, e) => `<div class="fin-row"><span><b>${when(e.savedAt)}</b> <small class="muted">${t('bk_reason_' + (e.reason || 'auto'))}</small><br><small>${t('bk_summary', { y: e.year, lvl: e.level, c: fmt(e.coins), n: e.trains })}</small></span><button class="btn small" data-bk="${key}">${t('bk_restore')}</button></div>`;
+    const rows = list.map((e) => row(e.key, e)).join('') + (crash && !crash.corrupt ? row('crash', { ...this.backups.summary(crash), reason: 'crash', savedAt: crash.savedAt || Date.now() }) : '');
+    const w = this.ui.modal(`<h2>${t('backups')}</h2><p class="muted small">${t('bk_help', { n: this.settings.backups ?? 5 })}</p><div class="fin-list">${rows || `<p class="muted">${t('bk_none')}</p>`}</div><div class="row end wrap">${this.game && !this.game.testMode ? `<button class="btn" data-mbtn="now">${t('bk_now')}</button>` : ''}<button class="btn primary" data-mbtn="ok">${t('ok')}</button></div>`, { onCancel: () => {} });
+    w.querySelector('[data-mbtn=ok]').onclick = () => w.remove();
+    const now = w.querySelector('[data-mbtn=now]');
+    if (now) now.onclick = async () => { await this.backupNow('manual'); w.remove(); this.ui.toast(t('bk_done'), 'good', 'check'); this.backupDialog(); };
+    w.querySelectorAll('[data-bk]').forEach((b) => { b.onclick = async () => {
+      const key = b.dataset.bk;
+      const d = key === 'crash' ? (() => { const m = migrate(crash); return m && !validate(m) ? m : null; })() : await this.backups.load(key);
+      if (!d) { this.ui.error('err_save_invalid'); return; }
+      if (!(await this.ui.confirm(t('bk_confirm'), t('bk_restore'), true))) return;
+      w.remove();
+      // the game being replaced is kept as a backup first
+      if (this.game && !this.game.testMode) await this.backupNow('before_restore');
+      await this.store.put('main', d);
+      try { localStorage.setItem('tracklands.save', JSON.stringify(d)); } catch (e) { /* ignore */ }
+      if (this.game) { this.ui.detach(); this.game.dispose(); this.game = null; }
+      this.ui.closePanel();
+      this.startGame({ save: d });
+    }; });
   }
 
   flushSave() {
@@ -406,6 +470,7 @@ class App {
       if (err) { this.ui.error(err); return; }
       if (!(await this.ui.confirm(t('confirm_import'), t('import_save'), true))) return;
       w.remove();
+      await this.backupNow('before_import');
       if (original) await this.store.put('pre_v' + SAVE_VERSION, original);
       await this.store.put('main', data);
       await this.store.put('backup', data);

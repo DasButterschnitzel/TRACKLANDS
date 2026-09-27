@@ -44,6 +44,7 @@ const P = {
   town: '<rect x="3" y="11" width="6" height="10" fill="currentColor"/><rect x="10" y="5" width="6" height="16" fill="currentColor" opacity=".8"/><rect x="17" y="9" width="4" height="12" fill="currentColor" opacity=".6"/>',
   factory: '<path d="M3 21V11l5 3v-3l5 3v-3l5 3V4h3v17z" fill="currentColor"/>',
   lock: '<rect x="5" y="10" width="14" height="11" rx="2" fill="currentColor"/><path d="M8 10V7a4 4 0 018 0v3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  save: '<path d="M5 3h11l4 4v14H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 3v5h7V3M8 21v-7h9v7" fill="none" stroke="currentColor" stroke-width="2"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="currentColor"/>',
   info: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
