@@ -29,8 +29,13 @@ export function startServer() {
 }
 
 let _pw = null;
+// BROWSER=firefox|webkit picks another engine (cross-browser suites). Firefox
+// gets WebGL only with a display, so it runs headed (use xvfb-run on CI).
+export const ENGINE = process.env.BROWSER || 'chromium';
 export async function launchBrowser() {
   if (!_pw) _pw = await import('playwright');
+  if (ENGINE === 'firefox') return _pw.firefox.launch({ headless: false, firefoxUserPrefs: { 'webgl.force-enabled': true } });
+  if (ENGINE === 'webkit') return _pw.webkit.launch();
   const opts = { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] };
   if (process.env.CHROMIUM_PATH) opts.executablePath = process.env.CHROMIUM_PATH;
   return _pw.chromium.launch(opts);

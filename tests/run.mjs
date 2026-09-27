@@ -69,8 +69,9 @@ import * as branding from './suites/branding.mjs';
 import * as makers from './suites/makers.mjs';
 import * as bench from './suites/bench.mjs';
 import * as qa from './suites/qa.mjs';
+import * as xbrowser from './suites/xbrowser.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];

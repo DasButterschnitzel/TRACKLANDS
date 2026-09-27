@@ -1,0 +1,11 @@
+{
+  "_comment": "Save-fuzz failures that were real bugs, replayed on every run with --corpus (fast CI gate). Either a random case number (case) or recorded mutations (base v3|prod + ops, 'op:path.to.key'). Add every newly fixed fuzz failure here.",
+  "savefuzz": [
+    { "id": "upgrade-level-object", "note": "an object as a train upgrade level produced NaN locomotive geometry (fixed in 991e74e)", "base": "v3", "ops": ["obj:trains.0.upg.efficiency"] },
+    { "id": "upgrade-level-string", "note": "same bug, a string level", "base": "v3", "ops": ["str:trains.0.upg.engine"] },
+    { "id": "station-id-huge", "note": "a huge station id collided with the road-stop network key (fixed in Phase 7)", "base": "v3", "ops": ["huge:stations.stations.0.id"] },
+    { "id": "station-id-duplicate", "note": "two stations with one id after a damaged save", "base": "v3", "ops": ["dup:stations.stations"] },
+    { "id": "train-veh-empty", "note": "a train without vehicles must be dropped, not crash the renderer", "base": "v3", "ops": ["empty:trains.0.consist"] },
+    { "id": "coins-string", "note": "non-numeric money", "base": "prod", "ops": ["str:economy.coins"] }
+  ]
+}

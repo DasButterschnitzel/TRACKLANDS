@@ -1,0 +1,147 @@
+# Deep QA tiers, off the normal feedback path:
+#   integration — manual, or when the PR is marked ready for review:
+#                 400 save-fuzz cases (2 shards), full qa, bench, perf
+#   release     — manual, or a v* tag: 1000 save-fuzz cases (4 shards),
+#                 rail fuzzer, production save, full qa, bench, perf, gallery
+#   nightly     — every night: 3000 save-fuzz cases (6 shards), 200 rail
+#                 fuzzer seeds, long game and competitor decades, bench, perf
+# Every tier also replays the failure corpus. Shards use fixed seed ranges,
+# so a failing case reproduces with `node tests/run.mjs savefuzz --seed=N --cases=1`.
+name: deep
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: integration, release or nightly
+        required: true
+        default: integration
+        type: choice
+        options: [integration, release, nightly]
+  pull_request:
+    types: [ready_for_review]
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '17 3 * * *'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.t.outputs.tier }}
+      shards: ${{ steps.t.outputs.shards }}
+      cases: ${{ steps.t.outputs.cases }}
+      suites: ${{ steps.t.outputs.suites }}
+    steps:
+      - id: t
+        run: |
+          tier="${{ github.event.inputs.tier }}"
+          if [ "${{ github.event_name }}" = "schedule" ]; then tier=nightly; fi
+          if [ "${{ github.event_name }}" = "push" ]; then tier=release; fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then tier=integration; fi
+          case "$tier" in
+            integration) shards='[1,2]'; cases=400; suites='qa bench perf' ;;
+            release) shards='[1,2,3,4]'; cases=1000; suites='qa bench perf prodsave fuzz gallery' ;;
+            *) shards='[1,2,3,4,5,6]'; cases=3000; suites='qa bench perf prodsave gallery' ;;
+          esac
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"; echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "cases=$cases" >> "$GITHUB_OUTPUT"; echo "suites=$suites" >> "$GITHUB_OUTPUT"
+          echo "tier $tier: $cases save-fuzz cases in $shards shards; suites: $suites"
+
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/check.mjs
+
+  savefuzz:
+    needs: [plan, static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    name: savefuzz (${{ needs.plan.outputs.tier }}, shard ${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Save fuzz shard
+        run: node tests/run.mjs savefuzz --cases=${{ needs.plan.outputs.cases }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --corpus
+
+  suites:
+    needs: [plan, static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    name: suites (${{ needs.plan.outputs.tier }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Deep suites
+        run: node tests/run.mjs ${{ needs.plan.outputs.suites }}
+      - name: Rail fuzzer (nightly range)
+        if: needs.plan.outputs.tier == 'nightly'
+        run: node tests/run.mjs fuzz --from=1 --to=200
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-output-${{ needs.plan.outputs.tier }}
+          path: tests/output
+          if-no-files-found: ignore
+
+  browsers:
+    needs: [plan, static]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, firefox, webkit]
+    name: browsers (${{ matrix.engine }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps ${{ matrix.engine }}
+      - env:
+          BROWSER: ${{ matrix.engine }}
+        run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser
+
+  devicecloud:
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: real devices (optional)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real-device cloud
+        env:
+          BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+          BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+        run: |
+          if [ -z "$BROWSERSTACK_USERNAME" ] || [ -z "$BROWSERSTACK_ACCESS_KEY" ]; then
+            echo "NOT EXECUTED: REAL DEVICE CLOUD NOT CONFIGURED (set BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY secrets to enable)"
+            echo "### Real devices: NOT EXECUTED — device cloud not configured" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          npm install --no-audit --no-fund
+          node tests/devicecloud.mjs

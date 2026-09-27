@@ -95,6 +95,22 @@ node tests/run.mjs rail seeds prodsave           # selected suites
 node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 ```
 
+### CI tiers
+
+| Tier | When | What |
+|---|---|---|
+| static | every push, ~1 min | `node tools/check.mjs`: service worker current (a stale one fails here, not after the long suites), every module parses, relative imports resolve, JSON valid |
+| fast gate | every push, after static | the functional suites in parallel groups, 150 save-fuzz cases plus the failure corpus, `qa` and `bench` in quick mode, and the cross-browser smoke in Chromium, Firefox and WebKit |
+| integration | manual, or PR marked ready for review (`deep.yml`) | 400 save-fuzz cases in 2 shards, full `qa`, `bench`, `perf`, browsers |
+| release | manual, or a `v*` tag | 1000 save-fuzz cases in 4 shards, rail fuzzer, production save, full `qa`, `bench`, `perf`, gallery, browsers |
+| nightly | every night | 3000 save-fuzz cases in 6 shards, 200 rail-fuzzer seeds and the long suites |
+
+Save fuzzing is deterministic and shardable: `node tests/run.mjs savefuzz --cases=1000 --shard=2/4` runs cases 251–500. A failure prints its case number, save version and mutations, with a one-line reproduction (`--seed=N --cases=1`). Every fuzz failure that was a real bug goes into `tests/fuzz-corpus.json` (a case number or the recorded mutations) and is replayed on every push with `--corpus`; rail-fuzzer bugs go into `tests/regression-seeds.json`.
+
+Cross-browser: `BROWSER=webkit node tests/run.mjs xbrowser`, `BROWSER=firefox xvfb-run -a node tests/run.mjs xbrowser` (Firefox has WebGL only with a display). These are emulated viewports in desktop engines, not real devices.
+
+Real devices: `tests/devicecloud.mjs` runs a smoke on BrowserStack real Android devices and desktop Safari when the `BROWSERSTACK_USERNAME` / `BROWSERSTACK_ACCESS_KEY` secrets are set; otherwise it reports **NOT EXECUTED** and never fails CI. No real-device test has run for this project so far.
+
 | Suite | What it protects |
 |---|---|
 | `unit` | Save pipeline without a browser: migration idempotency, sanitizer repairs, rejection of non-saves |
@@ -118,6 +134,7 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | `branding` | Company logo editor, headquarters sign, logo in the save, station styles |
 | `bench` | Benchmark worlds (64², 128², 192² with trains) against the frame budgets and the draw-call/scene baseline in `tests/perf-baseline.json` (`BENCH_UPDATE=1` rewrites it); memory over four game starts; the performance overlay; windowed lists |
 | `qa` | Content QA (every name in English and German, sane vehicle data), 600 random route requests (valid, repeatable, fast), a six-year game with chaos edits and save/load round trips under the health check, economic stability on three worlds, the new achievements and statistics, photo mode |
+| `xbrowser` | The same flows in Chromium, Firefox and WebKit: desktop, phone and tablet viewports at DPR 1–3, touch taps never build, turning the device, reduced motion, IndexedDB, save/load, hiding and showing the page |
 | `makers` | Every vehicle has a maker and a generation; catalogue maker filter and search |
 
 Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).
