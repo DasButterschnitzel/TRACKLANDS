@@ -345,6 +345,12 @@ body.panel-wide #tutorial { right: auto; left: calc(80px + var(--safe-l)); top: 
 .busy-card { display: grid; justify-items: center; gap: 12px; }
 #busy-text { margin: 0; color: #fff; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.6); min-height: 1.2em; }
 #perf-hud { position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 70; pointer-events: none; font: 11px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #e8f0e8; background: rgba(10,14,20,.72); padding: 6px 8px; border-radius: 6px; }
+body.photo-mode #hud, body.photo-mode #toasts, body.photo-mode #panel, body.photo-mode #tooltip, body.photo-mode #stopmarks { display: none !important; }
+body.photo-nolabels #labels, body.photo-nolabels #floats { display: none !important; }
+#photo-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 75; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px; border-radius: 14px; background: rgba(12,16,24,.62); backdrop-filter: blur(6px); max-width: calc(100vw - 32px); opacity: .9; transition: opacity .2s; }
+#photo-bar:hover { opacity: 1; }
+#photo-bar .btn.on { outline: 2px solid #f2d06b; }
+#photo-bar.flash { box-shadow: 0 0 0 100vmax rgba(255,255,255,.35); }
 #perf-hud .over { color: #ff8a70; font-weight: 700; }
 
 /* ---------- title & loading ---------- */

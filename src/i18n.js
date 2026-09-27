@@ -12,6 +12,8 @@ export function setLang(l) { lang = LANGS.some((x) => x.id === l) ? l : 'en'; do
 export function getLang() { return lang; }
 
 // optional texts (e.g. per-tool tips) are probed without counting as missing
+// whether a language has its own text for a key (content QA)
+export function hasIn(l, key) { return !!(DICT[l] && DICT[l][key] != null); }
 export function has(key) { return (DICT[lang] && DICT[lang][key]) != null || DICT.en[key] != null; }
 
 export function t(key, p) {

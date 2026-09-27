@@ -1,6 +1,7 @@
 // Company level, research, regions, objectives, achievements, train collection,
 // cosmetics, legacy and the Railway Legend completion state.
 import { validToken } from '../trains/Livery.js';
+import { roadModel } from '../road/Roads.js';
 import {
   MAX_LEVEL, xpForLevel, rpForLevel, RESEARCH, RESEARCH_UNLOCK_LEVEL, REGIONS, OBJECTIVES, ACHIEVEMENTS, LOCOS, ERA_RESEARCH, locoResearch,
   LIVERIES, STATION_STYLES, REGION_PREV_OBJECTIVES, REGION_DEVELOPED_AT, LEGACY_LEVEL, LEGEND_REQ, COSTS, WAGONS, ROAD_VEHICLES,
@@ -219,6 +220,17 @@ export class Progression {
     g.stats.set('modelsOwned', this.owned.size);
     g.stats.set('trainsOwned', g.trains.trains.length);
     g.stats.set('electricTrains', g.trains.electricCount());
+    // the other modes and the company (Phase 8 achievements)
+    const R = g.roads;
+    if (R) {
+      const kinds = { tram: 0, dock: 0, airport: 0 };
+      for (const v of R.vehicles) { const m = roadModel(v.model); if (m && kinds[m.kind] != null) kinds[m.kind]++; }
+      g.stats.set('roadOwned', R.vehicles.length);
+      g.stats.set('tramsOwned', kinds.tram); g.stats.set('shipsOwned', kinds.dock); g.stats.set('planesOwned', kinds.airport);
+      g.stats.set('linesRun', R.lines ? R.lines.list.filter((l) => R.vehicles.some((v) => v.line === l.id)).length : 0);
+    }
+    if (g.standing) g.stats.max('maxReputation', Math.round(g.standing.reputation().score));
+    if (g.ledger) g.stats.set('yearsInBusiness', Math.max(0, g.ledger.year() - g.ledger.startYear));
   }
   isUnlocked(u) {
     if (!u) return true;

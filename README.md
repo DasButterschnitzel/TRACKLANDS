@@ -78,6 +78,7 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Branding:** a company logo (shape, symbol or initials, second colour, "surprise me") in the company panel and on a sign at the headquarters; three more station styles (harbour, art deco, steel and glass).
 - **Manufacturers:** every vehicle belongs to one of twelve invented makers (Hollin & Ruck, Northvale Motive, Voltaris, Citymotor, Skyhaven Aero …); within a maker its models form generations by era. The catalogue shows maker and generation, filters by maker and finds models by maker name.
 - **Performance:** a performance overlay (Settings → Graphics or `F3`) with frame rate and where the frame time goes (simulation, visuals, rendering), draw calls, scene memory and vehicle counts, each against a budget; long lists (world lists, line and stop vehicles) show 60 rows and add more on demand; a label on the busy screen while the world is built or a save loads; the world build time and the frame breakdown in the diagnostics. The sun's shadow map is now freed when a game ends (it was kept over restarts). The world is built in one step on the main thread; a worker was not added because the generator shares its tables with the renderer.
+- **QA and long game:** nine more achievements (road fleet, trams, ships, aircraft, lines, cargo, reputation, a decade and half a century in business) and the matching statistics; photo mode (`P`, the palette or Settings) hides the interface, takes a PNG picture on the device, runs a slow cinematic camera around the view or after the selected vehicle and can hide the names; a `qa` suite (content in both languages, pathfinding under load, a six-year game with live edits and save/load round trips, economic stability on three worlds) and the save fuzzer at 1000 cases in CI.
 - **New games:** quick start from the title, game mode presets (relaxed builder, classic, tycoon challenge) and a map preview of the chosen seed and size. Terrain presets and an advanced generator are not offered: the generator has no terrain parameters besides an imported height map, and the game shows no options it cannot honour.
 
 ## Tests
@@ -103,7 +104,7 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | `persist` | Save/reload with live edits; offline progress is capped, never negative, and claimable once |
 | `import` | UI import of the TRKL1 export (v2 → v3 with a `pre_v3` backup), malformed input, cancel, export → import |
 | `tutorial` | The full tutorial with real mouse input |
-| `savefuzz` | 300 mutated saves either load and keep running cleanly or are rejected with the load-failed dialog |
+| `savefuzz` | 300 mutated saves (1000 in the CI `qa` group) either load and keep running cleanly or are rejected with the load-failed dialog |
 | `monkey` | Deterministic random UI input on desktop, phone (touch, German) and tablet |
 | `ui` | Screenshots of the main screens from 1366×768 to 3440×1440, plus tablet and phone; layout checks for overflow, clipping, touch targets and missing strings |
 | `perf` | Tick cost with 8, 24 and 50 trains; a 60-minute session checked for leaks |
@@ -114,6 +115,7 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | `packs` | Content-pack schema: good entries load, bad ones are listed and left out |
 | `branding` | Company logo editor, headquarters sign, logo in the save, station styles |
 | `bench` | Benchmark worlds (64², 128², 192² with trains) against the frame budgets and the draw-call/scene baseline in `tests/perf-baseline.json` (`BENCH_UPDATE=1` rewrites it); memory over four game starts; the performance overlay; windowed lists |
+| `qa` | Content QA (every name in English and German, sane vehicle data), 600 random route requests (valid, repeatable, fast), a six-year game with chaos edits and save/load round trips under the health check, economic stability on three worlds, the new achievements and statistics, photo mode |
 | `makers` | Every vehicle has a maker and a generation; catalogue maker filter and search |
 
 Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).

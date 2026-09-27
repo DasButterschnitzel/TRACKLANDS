@@ -429,7 +429,8 @@ export class Input {
       case '+': case '=': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) + 1); g.ui.renderToolbar(); } else g.camera.zoom(0.8); break;
       case '-': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) - 1); g.ui.renderToolbar(); } else g.camera.zoom(1.25); break;
       case 'h': g.ui.toggleHeatmap(); break;
-      case 'f3': case '`': e.preventDefault(); g.ui.toggleDebug(); break;
+      case 'p': g.ui.setPhoto(!g.ui.photoOn()); break;
+      case '`': e.preventDefault(); g.ui.toggleDebug(); break;
       default: break;
     }
   }

@@ -27,7 +27,7 @@ export const HANDBOOK = [
   { id: 'standing', icon: 'company', n: 5 },
   { id: 'fleetcare', icon: 'depot', n: 4 },
   { id: 'saves', icon: 'save', n: 4 },
-  { id: 'shortcuts', icon: 'settings', n: 9 },
+  { id: 'shortcuts', icon: 'settings', n: 10 },
 ];
 
 export const HandbookMixin = {

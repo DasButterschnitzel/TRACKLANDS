@@ -14,6 +14,7 @@ export const CHANGELOG = [
       'Save safety: rolling backups, a save health check, crash snapshots and autosave settings',
       'Manufacturers and generations in the vehicle catalogue, with a maker filter',
       'Performance overlay (F3), quicker long lists, and a fix for memory kept between games',
+      'Photo mode (P) with a cinematic camera, nine new achievements and more statistics',
     ],
     de: [
       'Reisen: Fahrgäste und Fracht reisen durchgehend mit Zweck, steigen um und zahlen einmal bei Ankunft',
@@ -26,6 +27,7 @@ export const CHANGELOG = [
       'Speichersicherheit: rollierende Backups, Spielstand-Check, Absturz-Sicherung und Autosave-Einstellungen',
       'Hersteller und Generationen im Fahrzeugkatalog, mit Herstellerfilter',
       'Leistungsanzeige (F3), schnellere lange Listen und ein Fix für Speicher, der zwischen Spielen liegen blieb',
+      'Fotomodus (P) mit Kamerafahrt, neun neue Erfolge und mehr Statistik',
     ],
   },
   {

@@ -17,7 +17,7 @@ const COMMANDS = [
   ['tool', 'road', 'road', 'tool_road'], ['tool', 'roadstop', 'bus', 'tool_roadstop'], ['tool', 'line', 'route', 'tool_line'],
   ['tool', 'signal', 'signal', 'tool_signal'], ['tool', 'bulldoze', 'bulldoze', 'tool_bulldoze'], ['tool', 'industry', 'factory', 'tool_industry'],
   ['overlay', 'profit', 'stats', 'ov_profit'], ['overlay', 'traffic', 'layers', 'ov_traffic'], ['overlay', 'towns', 'town', 'ov_towns'], ['overlay', 'industry', 'factory', 'ov_industry'],
-  ['backups', '', 'save', 'backups'], ['panel', 'changelog', 'news', 'whats_new'],
+  ['backups', '', 'save', 'backups'], ['panel', 'changelog', 'news', 'whats_new'], ['photo', '', 'camera', 'photo_mode'],
 ];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -92,6 +92,7 @@ export const ToolsUIMixin = {
         else if (act === 'tool') { G.construction.setTool(arg); this.renderToolbar(); }
         else if (act === 'overlay') this.actions.overlay(arg);
         else if (act === 'backups') this.app.backupDialog();
+        else if (act === 'photo') this.setPhoto(true);
       },
       findGo: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel, 14); if (window.innerWidth < 760) this.closePanel(); },
       bmAdd: () => { const b = this.addBookmark(); if (b) this.toast(this.tr('bm_added', { name: b.name }), 'good', 'pin'); re(); },

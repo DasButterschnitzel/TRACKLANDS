@@ -24,6 +24,7 @@ import { NewsUIMixin } from './NewsUI.js';
 import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
+import { PhotoModeMixin } from './PhotoMode.js';
 import { CHANGELOG } from '../changelog.js';
 import { PACKS } from '../content/Packs.js';
 import { logoSVG, cleanLogo, randomLogo, LOGO_SHAPES, LOGO_SYMBOLS, LOGO_COLORS2 } from '../world/Logo.js';
@@ -86,6 +87,7 @@ export class UI {
 
   detach() {
     if (this.driveId != null) this.stopDrive();
+    if (this.photoOn()) this.setPhoto(false);
     this.game = null;
     this.hud.hidden = true;
     this.closePanel(); this.showInspector(null);
@@ -315,6 +317,7 @@ export class UI {
       const p = g.entityPos(f ? { type: f[0], id: +f[1] } : { type: 'train', id: this.followId });
       if (p) { g.camera.target.x += (p.x - g.camera.target.x) * Math.min(1, dt * 5); g.camera.target.z += (p.z - g.camera.target.z) * Math.min(1, dt * 5); } else this.followId = null;
     }
+    this.photoUpdate(dt);
     this.updateFloats(dt);
     this.updateDriver();
     this.updateHandles();
@@ -693,6 +696,7 @@ export class UI {
     if (def.after) def.after();
   }
   closeTop() {
+    if (this.photoOn()) { this.setPhoto(false); return true; }
     const m = $('#modal-root');
     if (m.children.length) { const last = m.lastElementChild; if (last._cancel) last._cancel(); return true; }
     if (this.panel) { this.closePanel(); return true; }
@@ -1064,6 +1068,8 @@ export class UI {
       ['stat_largestTown', largest ? `${largest.name} (${fmt(largest.pop)})` : '-'], ['stat_townsDeveloped', g.towns.list.filter((t) => t.stage > 0).length],
       ['stat_regionsUnlocked', `${g.progression.regions.size}/${REGIONS.length}`], ['stat_bridgesBuilt', S.bridgesBuilt], ['stat_tunnelsBuilt', S.tunnelsBuilt],
       ['stat_contractsDone', S.contractsDone], ['stat_researchDone', S.researchDone], ['stat_playTime', fmtTime(S.playTime)],
+      ['stat_roadOwned', fmt(S.roadOwned || 0)], ['stat_shipsPlanes', `${fmt(S.shipsOwned || 0)} / ${fmt(S.planesOwned || 0)}`], ['stat_linesRun', fmt(S.linesRun || 0)],
+      ['stat_maxReputation', fmt(S.maxReputation || 0)], ['stat_years', fmt(S.yearsInBusiness || 0)], ['stat_achievements', `${g.progression.achievements.size}/${ACHIEVEMENTS.length}`],
     ];
     const cargo = CARGO_IDS.filter((c) => S.cargo[c]).map((c) => `<div class="cstat">${cargoIcon(c)}<span>${this.cargoName(c)}</span><b>${fmt(S.cargo[c])}</b></div>`).join('');
     return `<div class="stats">${rows.map(([k, v]) => `<div><span>${this.tr(k)}</span><b>${v}</b></div>`).join('')}</div><h3>${this.tr('cargo_transported')}</h3><div class="cstats">${cargo || `<p class="muted">${this.tr('none_yet')}</p>`}</div>`;
@@ -1099,7 +1105,7 @@ export class UI {
     const inGame = !!this.game;
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}${this.musicBlock()}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
-      ${tog('dayNight', 'day_night')}${sel('dayLength', 'day_length', ['short', 'normal', 'long'])}${tog('weather', 'weather')}${tog('extremeWeather', 'extreme_weather')}${tog('labels', 'world_labels')}${tog('perfHud', 'perf_hud')}
+      ${tog('dayNight', 'day_night')}${sel('dayLength', 'day_length', ['short', 'normal', 'long'])}${tog('weather', 'weather')}${tog('extremeWeather', 'extreme_weather')}${tog('labels', 'world_labels')}${tog('perfHud', 'perf_hud')}${inGame ? `<div class="row wrap"><button class="btn small" data-act="photo">${icon('camera', 'mini')} ${this.tr('photo_mode')} (P)</button></div>` : ''}
       ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p><label class="set"><span>${this.tr('ind_rule')}</span><select data-change="indRule">${['off', 'on'].map((o) => `<option value="${o}" ${this.game.standing.industryRule === o ? 'selected' : ''}>${this.tr('ind_rule_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('ind_rule_desc')}</p>` : ''}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}
@@ -1415,6 +1421,7 @@ export class UI {
       ...this.industryActions(),
       ...this.newsActions(),
       ...this.toolsActions(),
+      ...this.photoActions(),
       ...this.driverActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
@@ -1520,4 +1527,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin);
+Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin, PhotoModeMixin);

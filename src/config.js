@@ -620,6 +620,16 @@ export const ACHIEVEMENTS = [
   { id: 'grand_terminal', stat: 'maxStationLevel', target: 5, rp: 2 },
   { id: 'fleet_commander', stat: 'trainsOwned', target: 20, rp: 2 },
   { id: 'railway_legend', stat: 'legend', target: 1, rp: 5 },
+  // Phase 8: the other modes, the company and the long game
+  { id: 'road_fleet', stat: 'roadOwned', target: 10, rp: 1 },
+  { id: 'tram_town', stat: 'tramsOwned', target: 5, rp: 2 },
+  { id: 'harbour_master', stat: 'shipsOwned', target: 3, rp: 2 },
+  { id: 'airline', stat: 'planesOwned', target: 3, rp: 2 },
+  { id: 'line_manager', stat: 'linesRun', target: 5, rp: 2 },
+  { id: 'cargo_mover', stat: 'cargoUnits', target: 50000, rp: 2 },
+  { id: 'trusted_name', stat: 'maxReputation', target: 75, rp: 2 },
+  { id: 'decade', stat: 'yearsInBusiness', target: 10, rp: 2 },
+  { id: 'half_century', stat: 'yearsInBusiness', target: 50, rp: 5 },
 ];
 
 // ---------- REGION OBJECTIVES ----------
