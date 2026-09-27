@@ -45,12 +45,12 @@ export class TransportOverview {
   // modes with vehicles or own stops (the others are only offered)
   inUse(m) {
     const g = this.game, R = g.roads;
-    if (m === 'rail') return g.trains.trains.length > 0 || g.stations.list.length > 0;
+    if (m === 'rail') return g.trains.mine().length > 0 || g.stations.mine().length > 0;
     return !!R && (R.vehicles.some((v) => !v.owner && modeOfRoad(v) === m) || R.stops.some((s) => !s.owner && s.kind === MODE_KIND[m]));
   }
   vehicles(mode) {
     const g = this.game;
-    if (mode === 'rail') return g.trains.trains;
+    if (mode === 'rail') return g.trains.mine();
     if (!g.roads) return [];
     return g.roads.vehicles.filter((v) => !v.owner && (!mode || mode === 'all' || modeOfRoad(v) === mode));
   }
@@ -86,7 +86,7 @@ export class TransportOverview {
   records(mode = 'all') {
     return this.cached('rec:' + mode, 1, () => {
       const out = [];
-      if (mode === 'all' || mode === 'rail') for (const t of this.game.trains.trains) out.push(this.vehRecord(t, true));
+      if (mode === 'all' || mode === 'rail') for (const t of this.game.trains.mine()) out.push(this.vehRecord(t, true));
       if (mode !== 'rail') for (const v of this.vehicles(mode)) out.push(this.vehRecord(v, false));
       return out;
     });
@@ -105,7 +105,7 @@ export class TransportOverview {
           out.push(this.svc({ id: `t:${l.key}`, mode: 'rail', name: g.lines.name(l), color: l.color, stops: l.stops.map((id) => (g.stations.byId(id) || {}).name || '?'), recs, headway: hw, sel: `train:${l.trains[0].id}` }));
         }
         // trains on automatic orders: a service of their own each
-        for (const t of g.trains.trains) if (!lined.has(t)) {
+        for (const t of g.trains.mine()) if (!lined.has(t)) {
           const r = this.vehRecord(t, true);
           out.push(this.svc({ id: `a:${t.id}`, mode: 'rail', name: t.name, color: null, auto: true, stops: [], recs: [r], headway: 0, sel: `train:${t.id}` }));
         }
@@ -145,7 +145,7 @@ export class TransportOverview {
       const svcs = this.services(mode).filter((s) => !s.auto || s.n);
       const sum = (k) => recs.reduce((a, r) => a + (r[k] || 0), 0);
       const probs = this.problems().filter((p) => mode === 'all' || p.mode === mode);
-      const stops = mode === 'rail' ? this.game.stations.list.length : this.game.roads ? this.game.roads.stops.filter((s) => !s.owner && (mode === 'all' || KIND_MODE[s.kind] === mode)).length : 0;
+      const stops = mode === 'rail' ? this.game.stations.mine().length : this.game.roads ? this.game.roads.stops.filter((s) => !s.owner && (mode === 'all' || KIND_MODE[s.kind] === mode)).length : 0;
       return { mode, vehicles: recs.length, services: svcs.length, lines: svcs.filter((s) => !s.auto).length, stops, rev: sum('rev'), cost: sum('cost'), profit: sum('profit'), cur: sum('cur'), pu: sum('pu'), cu: sum('cu'), issues: probs.filter((p) => p.sev !== 'info').length, bad: probs.filter((p) => p.sev === 'bad').length };
     });
   }
@@ -169,15 +169,15 @@ export class TransportOverview {
       const sev = a.key === 'adv_deadlock' || a.key === 'adv_overloaded' ? 'bad' : a.key === 'adv_line_saturated' ? 'info' : 'warn';
       out.push({ key: a.key, p: { ...(a.p || {}) }, who: a.name || null, sev, mode: 'rail', sel: a.station != null ? `station:${a.station}` : a.train != null ? `train:${a.train}` : null, tile: a.tile, preview: a.preview, act: a.act === 'upgrade' && a.station != null ? { act: 'jump', arg: `station:${a.station}`, label: 'tm_open_station' } : null });
     }
-    for (const t of g.trains.trains) {
+    for (const t of g.trains.mine()) {
       if (t.state === 'lost' || (t.problem && (t.problem === 'no_route' || t.problem === 'no_depot_route'))) out.push({ key: 'pb_no_route', p: { name: t.name }, sev: 'bad', mode: 'rail', sel: `train:${t.id}` });
       else if (t.dly > 45 && t.trips > 3) out.push({ key: 'pb_rail_delay', p: { name: t.name, n: Math.round(t.dly) }, sev: 'warn', mode: 'rail', sel: `train:${t.id}`, w: t.dly });
     }
     // unprofitable trains: a full month in the red
-    for (const t of g.trains.trains) { const f = g.ledger.objFin(t); if (t.trips > 6 && f.lastCost > 0 && f.lastRev < f.lastCost * 0.6 && g.ledger.monthIndex() > 1) out.push({ key: 'pb_unprofitable', p: { name: t.name, n: Math.round(f.lastCost - f.lastRev) }, sev: 'info', mode: 'rail', sel: `train:${t.id}` }); }
+    for (const t of g.trains.mine()) { const f = g.ledger.objFin(t); if (t.trips > 6 && f.lastCost > 0 && f.lastRev < f.lastCost * 0.6 && g.ledger.monthIndex() > 1) out.push({ key: 'pb_unprofitable', p: { name: t.name, n: Math.round(f.lastCost - f.lastRev) }, sev: 'info', mode: 'rail', sel: `train:${t.id}` }); }
     // a railway station fed by bus lines that its trains cannot clear
     const R = g.roads;
-    if (R) for (const s of g.stations.list) {
+    if (R) for (const s of g.stations.mine()) {
       // (only stops that actually hand travellers over)
       const feeders = R.stops.filter((x) => !x.owner && x.rail === s.id && x.stats && x.stats.transfers > 0);
       if (!feeders.length) continue;

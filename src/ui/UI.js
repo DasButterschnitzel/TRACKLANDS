@@ -25,6 +25,7 @@ import { DriverUIMixin } from './DriverUI.js';
 import { ScenarioUIMixin } from './ScenarioMenu.js';
 import { ToolsUIMixin } from './ToolsUI.js';
 import { PhotoModeMixin } from './PhotoMode.js';
+import { CompanyUIMixin } from './CompanyUI.js';
 import { CHANGELOG } from '../changelog.js';
 import { PACKS } from '../content/Packs.js';
 import { logoSVG, cleanLogo, randomLogo, LOGO_SHAPES, LOGO_SYMBOLS, LOGO_COLORS2 } from '../world/Logo.js';
@@ -546,7 +547,7 @@ export class UI {
     };
     const order = [];
     // pending construction sites always show (they block trains)
-    if (vs < 70) for (const w of g.works.list) {
+    if (vs < 70) for (const w of g.works.list.filter((x) => !x.owner)) {
       const el = this.label('works:' + w.id, 'works');
       const sig = getLang() + w.id;
       if (el._sig !== sig) { el._sig = sig; el._w = 0; el.innerHTML = `${icon('warn', 'w')}<span>${this.tr('works_label')}</span>`; el.dataset.tip = this.tr('works_cancel'); }
@@ -638,6 +639,7 @@ export class UI {
       news: { title: 'menu_news', render: () => this.pNews(), live: true },
       lists: { title: 'menu_lists', render: () => this.pLists() },
       achievements: { title: 'menu_achievements', render: () => this.pAchievements() },
+      rival: { title: 'rivals', render: () => this.pRival(), live: true },
       settings: { title: 'settings', render: () => this.pSettings() },
       trainshop: { title: 'train_shop', render: () => this.pTrainShop() },
       builder: { title: 'train_builder', render: () => this.pBuilder(), wide: true },
@@ -721,8 +723,8 @@ export class UI {
       <div class="kv-grid">
         <div>${icon('coin')}<b>${fmt(E.coins)}</b><small>${this.tr('coins')}</small></div>
         <div>${icon('rp')}<b>${P.rp}</b><small>${this.tr('research_points')}</small></div>
-        <div>${icon('train')}<b>${g.trains.trains.length}</b><small>${this.tr('stat_trainsOwned')}</small></div>
-        <div>${icon('station')}<b>${g.stations.list.length}</b><small>${this.tr('stat_stations')}</small></div>
+        <div>${icon('train')}<b>${g.trains.mine().length}</b><small>${this.tr('stat_trainsOwned')}</small></div>
+        <div>${icon('station')}<b>${g.stations.mine().length}</b><small>${this.tr('stat_stations')}</small></div>
         <div>${icon('coin')}<b>${fmt(E.avgIncomePerMin())}</b><small>${this.tr('income_min')}</small></div>
         <div>${icon('map')}<b>${P.regions.size}/${REGIONS.length}</b><small>${this.tr('stat_regionsUnlocked')}</small></div>
       </div>
@@ -738,12 +740,12 @@ export class UI {
     const mine = g.ledger.companyValue().total;
     const rows = [{ name: g.company.name, color: g.company.color, value: mine, you: true }, ...Rv.list.map((r) => ({ name: r.name, color: r.color, value: r.value(), r }))].sort((a, b) => b.value - a.value);
     const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-    const list = `<div class="fin-list">${rows.map((x, i) => `<div class="fin-row ${x.you ? 'you' : ''}"><span><b>${i + 1}.</b> <i class="rdot" style="background:${hex(x.color)}"></i> ${escapeHtml(x.name)}${x.you ? ` <small>(${this.tr('rival_you')})</small>` : ` <small class="muted">${this.tr('rival_strategy_' + (x.r.strategy || 'intercity'))}</small>`}${x.r && x.r.forSale ? ` <span class="pill warn">${this.tr('rival_for_sale')}</span>` : ''}</span><small>${x.r ? this.tr('rival_stats', { b: x.r.vehicles().length, s: x.r.stops().length, p: fmt(x.r.lastProfit) }) : ''}</small><b>${fmt(x.value)} ●</b></div>`).join('')}</div>`;
+    const list = `<div class="fin-list">${rows.map((x, i) => `<div class="fin-row ${x.you ? 'you' : ''}"><span><b>${i + 1}.</b> <i class="rdot" style="background:${hex(x.color)}"></i> ${x.you ? escapeHtml(x.name) : `<button class="linkbtn" data-act="rivalPage" data-arg="${x.r.id}">${escapeHtml(x.name)}</button>`}${x.you ? ` <small>(${this.tr('rival_you')})</small>` : ` <small class="muted">${this.tr('rival_strategy_' + (x.r.strategy || 'intercity'))}</small>`}${x.r && x.r.forSale ? ` <span class="pill warn">${this.tr('rival_for_sale')}</span>` : ''}</span><small>${x.r ? this.rivalRow(x.r) : ''}</small><b>${fmt(x.value)} ●</b></div>`).join('')}</div>`;
     // buying a rival
     const buy = Rv.list.map((r) => { const err = Rv.acquireError(r), price = Rv.acquirePrice(r); return `<button class="btn small ${err ? 'ghost' : ''}" data-act="rivalBuy" data-arg="${r.id}" ${err ? `disabled data-tip="${this.tr(err === 'err_locked' ? 'unlock_level' : err, { n: 8 })}"` : ''}>${icon('company', 'mini')} ${this.tr('rival_buy', { name: escapeHtml(r.short) })} · ${fmt(price)} ●</button>`; }).join('');
     // market share in the towns where rivals run
     const towns = new Set();
-    for (const s of g.roads.stops) if (s.owner && s.links) for (const id of s.links.towns || []) towns.add(id);
+    for (const s of [...g.roads.stops, ...g.stations.list]) if (s.owner && s.links) for (const id of s.links.towns || []) towns.add(id);
     const share = [...towns].map((id) => g.towns.byId(id)).filter(Boolean).slice(0, 6).map((t) => {
       const M = Rv.marketShare(t);
       if (!M.tot) return '';
@@ -1004,7 +1006,7 @@ export class UI {
     const g = this.game, P = g.progression;
     const regions = REGIONS.map((r, i) => `<button class="mreg ${P.regionUnlocked(i) ? 'on' : ''}" data-act="focusRegion" data-arg="${i}">${icon(P.regionUnlocked(i) ? 'map' : 'lock')}<span>${this.tr('region_' + r.id)}</span><small>${P.regionUnlocked(i) ? `${P.regionObjectivesDone(i)}/${(OBJECTIVES[r.id] || []).length}` : this.tr('unlock_level', { n: r.level })}</small></button>`).join('');
     const towns = g.towns.list.filter((t) => P.regionUnlocked(t.region)).map((t) => `<button class="mitem" data-act="jump" data-arg="town:${t.id}">${icon('town')}<span>${esc(t.name)}</span><small>${this.tr('stage_' + g.towns.stageName(t))}</small></button>`).join('');
-    const trains = g.trains.trains.map((t) => `<button class="mitem" data-act="jump" data-arg="train:${t.id}">${icon('train')}<span>${esc(t.name)}</span><small>${this.tr('tstate_' + t.state)}</small></button>`).join('');
+    const trains = g.trains.mine().map((t) => `<button class="mitem" data-act="jump" data-arg="train:${t.id}">${icon('train')}<span>${esc(t.name)}</span><small>${this.tr('tstate_' + t.state)}</small></button>`).join('');
     const mode = this.mapMode || 'geo';
     const seg = `<div class="seg tabs" role="tablist"><button role="tab" aria-selected="${mode === 'geo'}" class="${mode === 'geo' ? 'on' : ''}" data-act="mapMode" data-arg="geo">${this.tr('map_geo')}</button><button role="tab" aria-selected="${mode === 'lines'}" class="${mode === 'lines' ? 'on' : ''}" data-act="mapMode" data-arg="lines">${this.tr('map_schematic')}</button></div>`;
     if (mode === 'lines') return seg + (networkMapSVG(g, g.lines.list().map((l) => ({ ...l, name: g.lines.name(l) })), { tr: (k) => this.tr(k) }) || `<p class="muted">${this.tr('netmap_empty')}</p>`) + `<h3>${this.tr('trains')}</h3><div class="mlist">${trains}</div>`;
@@ -1040,7 +1042,7 @@ export class UI {
     ctx.fillStyle = '#f4efe6'; ctx.strokeStyle = '#2b3445';
     for (const t of g.towns.list) { const r = s * (1.2 + t.stage * 0.4); ctx.beginPath(); ctx.arc((t.x + 0.5) * s, (t.z + 0.5) * s, r, 0, 7); ctx.fill(); ctx.stroke(); }
     ctx.fillStyle = '#e0a33a';
-    for (const t of g.trains.trains) { const p = g.entityPos({ type: 'train', id: t.id }); if (p) { ctx.beginPath(); ctx.arc(p.x / TILE * s, p.z / TILE * s, s * 0.9, 0, 7); ctx.fill(); } }
+    for (const t of g.trains.mine()) { const p = g.entityPos({ type: 'train', id: t.id }); if (p) { ctx.beginPath(); ctx.arc(p.x / TILE * s, p.z / TILE * s, s * 0.9, 0, 7); ctx.fill(); } }
     // view marker
     const c = g.camera.target;
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
@@ -1059,10 +1061,10 @@ export class UI {
   pStats() {
     const g = this.game, S = g.stats.data;
     let trackLen = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) trackLen++;
-    const fastest = g.trains.trains.reduce((m, t) => Math.max(m, Math.round(t._st.speed)), 0);
+    const fastest = g.trains.mine().reduce((m, t) => Math.max(m, Math.round(t._st.speed)), 0);
     const largest = g.towns.largest();
     const rows = [
-      ['stat_track', `${fmt(trackLen)} ${this.tr('tiles')}`], ['stat_trainsOwned', g.trains.trains.length], ['stat_stations', g.stations.list.length],
+      ['stat_track', `${fmt(trackLen)} ${this.tr('tiles')}`], ['stat_trainsOwned', g.trains.mine().length], ['stat_stations', g.stations.mine().length],
       ['stat_deliveries', fmt(S.deliveries)], ['stat_cargo', fmt(S.cargoUnits)], ['stat_passengers', fmt(S.passengers)], ['stat_coinsEarned', fmt(S.coinsEarned)],
       ['stat_longestRoute', `${S.longestRoute} ${this.tr('tiles')}`], ['stat_fastest', `${this.spd(fastest)}`], ['stat_topSpeed', `${this.spd(S.topSpeed)}`],
       ['stat_largestTown', largest ? `${largest.name} (${fmt(largest.pop)})` : '-'], ['stat_townsDeveloped', g.towns.list.filter((t) => t.stage > 0).length],
@@ -1153,7 +1155,7 @@ export class UI {
 
   pTrainShop() {
     const g = this.game, P = g.progression;
-    const depots = g.stations.depots;
+    const depots = g.stations.myDepots();
     let dep = g.stations.depotById(this.shopDepot);
     if (!dep) dep = depots.find((d) => g.net.conn[d.tile]) || depots[0];
     this.shopDepot = dep ? dep.id : null;
@@ -1191,11 +1193,11 @@ export class UI {
     if (!el._pressHook) { el._pressHook = true; el.addEventListener('pointerdown', () => { this._panelPressT = performance.now(); }, true); }
     let title = '', body = '', ic = 'info';
     switch (sel.type) {
-      case 'station': { const s = g.stations.byId(sel.id); if (!s) return this.game.select(null); ic = 'station'; title = s.name; body = this.iStation(s); break; }
-      case 'depot': { const d = g.stations.depotById(sel.id); if (!d) return this.game.select(null); ic = 'depot'; title = d.name; body = this.iDepot(d); break; }
+      case 'station': { const s = g.stations.byId(sel.id); if (!s) return this.game.select(null); ic = 'station'; title = s.name; body = s.owner ? this.iRivalRail('station', s) : this.iStation(s); break; }
+      case 'depot': { const d = g.stations.depotById(sel.id); if (!d) return this.game.select(null); ic = 'depot'; title = d.name; body = d.owner ? this.iRivalRail('depot', d) : this.iDepot(d); break; }
       case 'industry': { const i = g.industries.byId(sel.id); if (!i) return this.game.select(null); ic = 'factory'; title = g.industries.displayName(i); body = this.iIndustry(i); break; }
       case 'town': { const t = g.towns.byId(sel.id); if (!t) return this.game.select(null); ic = 'town'; title = t.name; body = this.iTown(t); break; }
-      case 'train': { const t = g.trains.byId(sel.id); if (!t) return this.game.select(null); ic = 'train'; title = t.name; body = this.iTrain(t); break; }
+      case 'train': { const t = g.trains.byId(sel.id); if (!t) return this.game.select(null); ic = 'train'; title = t.name; body = t.owner ? this.iRivalRail('train', t) : this.iTrain(t); break; }
       case 'roadstop': { const s = g.roads.stopById(sel.id); if (!s) return this.game.select(null); ic = s.kind; title = s.name; body = this.iRoadStop(s); break; }
       case 'roadveh': { const v = g.roads.byId(sel.id); if (!v) return this.game.select(null); ic = roadModel(v.model).kind; title = v.name; body = this.iRoadVeh(v); break; }
       case 'line': { const l = g.roads.lines.byId(sel.id); if (!l) return this.game.select(null); ic = 'route'; title = this.tr('line_title', { name: l.name }); body = this.iLine(l); break; }
@@ -1255,7 +1257,7 @@ export class UI {
   iTown(t) {
     const g = this.game;
     const req = g.towns.requirement(t);
-    const sts = g.stations.list.filter((s) => s.links.towns.includes(t.id));
+    const sts = g.stations.mine().filter((s) => s.links.towns.includes(t.id));
     const bars = req ? Object.keys(req).map((c) => {
       const have = Math.floor(t.progress[c] || 0);
       return `<div class="crow">${cargoIcon(c)}<span>${this.cargoName(c)}</span>${this.bar(have / req[c], have >= req[c] ? 'good' : '')}<b>${have}/${req[c]}</b></div>`;
@@ -1283,7 +1285,7 @@ export class UI {
     const g = this.game, T = g.towns, R = g.roads;
     const A = T.arch(t);
     const lms = t.buildings.filter((b) => LANDMARKS.includes(b.arch) || b.arch === 'civic');
-    const sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(t.id));
+    const sts = g.stations.mine().filter((s) => s.links && s.links.towns.includes(t.id));
     const stops = R ? R.stops.filter((s) => !s.owner && s.links && s.links.towns.includes(t.id)) : [];
     const modes = [];
     if (sts.length) modes.push(`${icon('train', 'mini')} ${sts.length}`);
@@ -1375,7 +1377,25 @@ export class UI {
     let nodes = 0; for (let i = 0; i < N * N; i++) if (g.net.conn[i]) nodes++;
     const sel = g.selection ? `${g.selection.type}:${g.selection.id}` : '-';
     const tr = g.selection && g.selection.type === 'train' ? g.trains.byId(g.selection.id) : null;
-    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)} resv ${tr.resvEnd}/${tr.steps.length}\n blockedBy ${tr.blockedBy} ${tr.blockKind || ''} prio ${tr._st.prioRank}\n veh ${tr.veh.map((v) => v.k + v.id + (v.r ? 'r' : '')).join(' ')}` : ''}\nrail: switches ${g.net.switches.size} jres ${g.net.jres.size} runs ${g.net.runLocks.size}\ngraph ${g.net.validateGraph(99).length} issues · headings ${g.trains.validateHeadings().length}\nsignals ${g.net.signals.size} collisions ${g.trains.collisions} deadlocks ${g.trains.incidents.length}\ngfx ${this.app.settings.graphics}→${this.app.gfx()} gpu ${(this.app.gpu || '').slice(0, 40)}\nlog ${JSON.stringify(log.counts())}\n${log.entries(6).map((e) => `${(e.t / 1000).toFixed(0)}s ${e.lvl} [${e.cat}] ${e.msg}`).join('\n')}`;
+    $('#debug').textContent = `FPS ${Math.round(this.app.fps)}\ncalls ${info.render.calls} tris ${fmt(info.render.triangles)}\ngeo ${info.memory.geometries} tex ${info.memory.textures}\ntrains ${g.trains.trains.length} rail tiles ${nodes}\nnet v${g.net.version} routes cached ${g.net.routeCache.size}\nspeed ${g.speed}x  time ${Math.round(g.time)}s\ncoins ${Math.round(g.economy.coins)}\nselected ${sel}${tr ? `\n state ${tr.state} steps ${tr.steps.length} s ${tr.s.toFixed(2)} stop ${tr.stopS.toFixed(2)}\n held ${tr.held.size} wait ${tr.wait.toFixed(1)} resv ${tr.resvEnd}/${tr.steps.length}\n blockedBy ${tr.blockedBy} ${tr.blockKind || ''} prio ${tr._st.prioRank}\n veh ${tr.veh.map((v) => v.k + v.id + (v.r ? 'r' : '')).join(' ')}` : ''}\nrail: switches ${g.net.switches.size} jres ${g.net.jres.size} runs ${g.net.runLocks.size}\ngraph ${g.net.validateGraph(99).length} issues · headings ${g.trains.validateHeadings().length}\nsignals ${g.net.signals.size} collisions ${g.trains.collisions} deadlocks ${g.trains.incidents.length}\ngfx ${this.app.settings.graphics}→${this.app.gfx()} gpu ${(this.app.gpu || '').slice(0, 40)}\nlog ${JSON.stringify(log.counts())}\n${log.entries(6).map((e) => `${(e.t / 1000).toFixed(0)}s ${e.lvl} [${e.cat}] ${e.msg}`).join('\n')}${this.aiDebugText()}`;
+  }
+  // developer view of the competitors' planners (never shown in normal play):
+  // projects with stage, estimate, budget and last observation, the latest
+  // decisions with reasons, and the anti-spam metrics
+  aiDebugText() {
+    const g = this.game, Rv = g.rivals;
+    if (!Rv || !Rv.list.length) return '';
+    let s = `\n\nAI (${Rv.aiLevel}) think ${Rv.thinkMs.toFixed(0)} ms total`;
+    for (const r of Rv.list) {
+      s += `\n${r.short} ${r.strategy}${r.personality ? '/' + r.personality : ''} cash ${Math.round(r.money)} loan ${r.loan || 0} start m${r.startAt}`;
+      const P = Rv.planner(r);
+      if (!P) continue;
+      for (const p of r.rail.projects) s += `\n #${p.id} ${p.stage} ${P.endName(p.a)}→${P.endName(p.b)} ${p.cargo}${p.est ? ` est ${p.est.rev}/y roi ${Math.round((p.roi ?? p.est.roi) * 100)}%` : ''}${p.budget ? ` budget ${p.budget}` : ''} ${p.mode || ''}${p.loops ? ` loops ${p.loops}` : ''}${p.obs ? ` obs ${JSON.stringify(p.obs)}` : ''}`;
+      const M = P.metrics();
+      s += `\n metrics tiles ${M.trackTiles} unused ${(M.unusedTrack * 100).toFixed(0)}% dup ${M.duplicateCorridors} idle trains ${M.unusedVehicles} idle stations ${M.idleStations}`;
+      for (const e of r.rail.log.slice(-4)) s += `\n  m${e.m} ${e.kind}: ${e.text}`;
+    }
+    return s;
   }
 
   toggleHeatmap() { this.actions.overlay('traffic'); }
@@ -1422,6 +1442,7 @@ export class UI {
       ...this.newsActions(),
       ...this.toolsActions(),
       ...this.photoActions(),
+      ...this.companyActions(),
       ...this.driverActions(),
       undo: () => g().construction.undo(),
       grant: () => { const n = g().economy.claimGrant(); if (n) this.toast(this.tr('grant_received', { n: fmt(n) }), 'good', 'gift'); },
@@ -1527,4 +1548,4 @@ export class UI {
   }
 }
 
-Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin, PhotoModeMixin);
+Object.assign(UI.prototype, FlowUIMixin, CatalogUIMixin, LineUIMixin, TransportUIMixin, RailUIMixin, HandbookMixin, LiveryEditorMixin, FinanceUIMixin, AuthorityUIMixin, RoadUIMixin, IndustryUIMixin, NewsUIMixin, DriverUIMixin, ScenarioUIMixin, ToolsUIMixin, PhotoModeMixin, CompanyUIMixin);

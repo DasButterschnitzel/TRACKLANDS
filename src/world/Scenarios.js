@@ -84,9 +84,9 @@ export class ScenarioRun {
       case 'value': return g.ledger.companyValue().total;
       case 'passengers': return S.passengers || 0;
       case 'cargo': return (S.cargo && S.cargo[goal.c]) || 0;
-      case 'towns': return g.towns.list.filter((t) => g.stations.list.some((s) => s.links && s.links.towns.includes(t.id))).length;
+      case 'towns': return g.towns.list.filter((t) => g.stations.mine().some((s) => s.links && s.links.towns.includes(t.id))).length;
       case 'profit': return this.best;
-      case 'trains': return g.trains.trains.length;
+      case 'trains': return g.trains.mine().length;
       case 'reputation': return g.standing ? g.standing.reputation().score : 0;
       case 'lines': return g.roads ? g.roads.lines.list.filter((l) => g.roads.lines.vehicles(l).length).length : 0;
       default: return 0;

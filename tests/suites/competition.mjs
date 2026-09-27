@@ -14,7 +14,7 @@ export async function run({ browser, base }) {
     const app = window.__tracklands;
     document.querySelectorAll('.modal-wrap').forEach((m) => m.remove());
     if (app.game) { app.ui.detach(); app.game.dispose(); app.game = null; }
-    app.startGame({ seed: 4242, difficulty: 'standard', test: true, paused: true, rivals: 3 });
+    app.startGame({ seed: 4242, difficulty: 'standard', test: true, paused: true, rivals: 3, rivalMix: 'road' });
   });
   await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running, null, { timeout: 60000 });
   const r = await page.evaluate(async () => {

@@ -2,6 +2,19 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '5.0.0', date: '2026-09',
+    en: [
+      'Competitor railways: companies with their own personalities plan, build, run, expand and modernize railways with their own money, and never touch yours',
+      'A page for every competitor, a companies overlay, and a flag and livery for their stations and trains',
+      'New games: up to eight competitors, when they start and how well they plan',
+    ],
+    de: [
+      'Konkurrierende Eisenbahnen: Firmen mit eigenem Charakter planen, bauen, betreiben, erweitern und modernisieren Strecken mit eigenem Geld und rühren deine nie an',
+      'Eine Seite für jede Konkurrenzfirma, eine Firmen-Karte und Flagge und Lackierung für ihre Bahnhöfe und Züge',
+      'Neue Spiele: bis zu acht Konkurrenten, wann sie starten und wie gut sie planen',
+    ],
+  },
+  {
     v: '4.0.0', date: '2026-09',
     en: [
       'Journeys: passengers and freight travel end to end with a purpose, change vehicles and modes, and pay once on arrival',

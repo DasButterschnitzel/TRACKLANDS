@@ -41,6 +41,10 @@ export class RailNetwork {
     this.version = 1;
     this.resv = new Int32Array(N * N * 2);
     this.single = new Uint8Array(N * N);        // 1 = single track (one shared lane)
+    // who owns a track or station tile: 0 the player, k the k-th rival company
+    // (src/world/RailRivals.js). Companies never build on, through or into each
+    // other's tiles, so their networks never touch and share no signals.
+    this.own = new Uint8Array(N * N);
     this.signals = new Map();                   // tile*8+dir -> {type:'block'|'path', oneway}
     this.waypoints = new Map();                 // tile -> {id, name}
     this.jres = new Map();                      // junction tile -> Map(trainId -> [a, b])
@@ -178,9 +182,14 @@ export class RailNetwork {
 
   // ---------- buildability ----------
   isUnlocked(i) { return this.game.progression.regionUnlocked(this.world.region[i]); }
+  // the company acting now (a rival while its planner builds), as an owner index
+  actorIdx() { const a = this.game.actor; return a ? a.idx : 0; }
+  // a track/station tile that belongs to another company
+  foreign(i) { return (this.conn[i] !== 0 || this.special.has(i)) && this.own[i] !== this.actorIdx(); }
   tileBlockedReason(i) {
     if (i < 0) return 'err_out_of_map';
     if (!this.isUnlocked(i)) return 'err_locked_region';
+    if (this.foreign(i)) return 'err_not_yours';
     const b = this.game.occupancy.blocked[i];
     if (b === 1) return 'err_town_building';
     if (b === 2) return 'err_industry';
@@ -229,6 +238,9 @@ export class RailNetwork {
   passable(i, isEnd) {
     if (i < 0) return false;
     if (this.tileBlockedReason(i)) return false;
+    // a rival laying a new line keeps it separate from existing track (lines
+    // meet at stations only), so its network stays readable
+    if (this.game.aiNewLine && !isEnd && (this.conn[i] || this.special.has(i))) return false;
     const s = this.special.get(i);
     if (s && s.type === 'depot' && !isEnd) return false;
     return true;
@@ -310,6 +322,9 @@ export class RailNetwork {
   connect(i, d) {
     const j = step(i, d);
     if (j < 0) return;
+    const a = this.actorIdx();
+    if (!this.conn[i] && !this.special.has(i)) this.own[i] = a;
+    if (!this.conn[j] && !this.special.has(j)) this.own[j] = a;
     this.conn[i] |= 1 << d;
     this.conn[j] |= 1 << opp(d);
   }
@@ -319,6 +334,8 @@ export class RailNetwork {
     this.conn[i] = 0;
     this.tier[i] = 0;
     this.single[i] = 0;
+    if (!this.special.has(i)) this.own[i] = 0;
+    for (let d = 0; d < 8; d++) { const j = step(i, d); if (j >= 0 && !this.conn[j] && !this.special.has(j)) this.own[j] = 0; }
     for (let d = 0; d < 8; d++) this.signals.delete(i * 8 + d);
     this.waypoints.delete(i);
   }
@@ -718,6 +735,7 @@ export class RailNetwork {
   // ---------- signals ----------
   signalAt(tile, dir) { return dir == null ? null : this.signals.get(tile * 8 + dir) || null; }
   canPlaceSignal(tile, dir) {
+    if (this.foreign(tile)) return 'err_not_yours';
     if (!this.conn[tile] || !this.hasDir(tile, dir)) return 'err_signal_no_track';
     if (this.isJunction(tile)) return 'err_signal_junction';
     if (this.special.has(tile)) return 'err_signal_station';
@@ -727,7 +745,7 @@ export class RailNetwork {
   // ---------- serialization ----------
   serialize() {
     return {
-      conn: b64(this.conn), tier: b64(this.tier), single: b64(this.single),
+      conn: b64(this.conn), tier: b64(this.tier), single: b64(this.single), own: this.own.some((x) => x) ? b64(this.own) : undefined,
       signals: [...this.signals].map(([k, v]) => [k, v.type, v.oneway ? 1 : 0]),
       waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
     };
@@ -746,6 +764,8 @@ export class RailNetwork {
       if (this.tier[i] > 3) this.tier[i] = 0;
     }
     if (typeof d.single === 'string' && d.single) { const sg = unb64(d.single); if (sg.length === N * N) this.single.set(sg); }
+    this.own.fill(0);
+    if (typeof d.own === 'string' && d.own) { const ow = unb64(d.own); if (ow.length === N * N) for (let i = 0; i < N * N; i++) this.own[i] = ow[i] <= 8 ? ow[i] : 0; }
     for (let i = 0; i < N * N; i++) if (!this.conn[i]) this.single[i] = 0; else if (this.single[i] > 1) this.single[i] = 1;
     if (Array.isArray(d.signals)) for (const e of d.signals) {
       if (!Array.isArray(e)) continue;

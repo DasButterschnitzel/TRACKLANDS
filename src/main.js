@@ -16,6 +16,8 @@ import { scenarioDialog } from './ui/ScenarioMenu.js';
 import { icon } from './ui/icons.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, GAME_PRESETS } from './config.js';
 import { log } from './core/Log.js';
+import { RIVAL_COUNTS, RIVAL_TIMINGS } from './world/Rivals.js';
+import { AI_LEVEL_IDS } from './world/RailAI.js';
 
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
@@ -305,7 +307,12 @@ class App {
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
       <p class="muted small">${t('ng_heightmap_help')}</p>
-      <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${[0, 1, 2, 3].map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${RIVAL_COUNTS.map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <details class="ng-more"><summary>${t('ng_rivals_more')}</summary>
+        <label class="set"><span>${t('ng_rival_timing')}</span><select id="ng-rtiming">${RIVAL_TIMINGS.map((o) => `<option value="${o}">${t('rival_timing_' + o)}</option>`).join('')}</select></label>
+        <label class="set"><span>${t('ng_ai_level')}</span><select id="ng-ailevel">${AI_LEVEL_IDS.map((o) => `<option value="${o}" ${o === 'standard' ? 'selected' : ''}>${t('ai_level_' + o)}</option>`).join('')}</select></label>
+        <p class="muted small">${t('ng_rivals_help')}</p>
+      </details>
       <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
       <label class="set"><span>${t('ind_rule')}</span><select id="ng-ind">${['off', 'on'].map((o) => `<option value="${o}">${t('ind_rule_' + o)}</option>`).join('')}</select></label>
       ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><small class="muted">${t('map_preview')}</small></div>`}
@@ -334,6 +341,7 @@ class App {
       const startYear = +w.querySelector('#ng-year').value;
       const reliability = w.querySelector('#ng-rel').value;
       const rivals = +w.querySelector('#ng-rivals').value;
+      const rivalTiming = w.querySelector('#ng-rtiming').value, aiLevel = w.querySelector('#ng-ailevel').value;
       const industryRule = w.querySelector('#ng-ind').value;
       const file = w.querySelector('#ng-hmap').files[0];
       let hmap = null;
@@ -341,7 +349,7 @@ class App {
         try { hmap = await readHeightmap(file, mapSize); } catch (e) { this.ui.toast(t('ng_heightmap_bad'), 'error'); return; }
       }
       w.remove();
-      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals, industryRule });
+      this.startGame({ seed: num, difficulty: diff, mapSize, startYear, reliability, hmap, rivals, industryRule, rivalTiming, aiLevel });
     };
   }
 

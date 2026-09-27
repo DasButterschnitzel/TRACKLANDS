@@ -12,8 +12,8 @@ const STEPS = [
   { id: 'build_station_town', target: 'town', ui: 'tool-station', done: (g, T) => !!T.stationFor('town', T.townId) },
   { id: 'choose_track', ui: 'tool-track', done: (g) => g.construction.tool === 'track' },
   { id: 'connect', target: 'between', done: (g, T) => T.linkedPair() },
-  { id: 'build_depot', ui: 'tool-depot', target: 'between', done: (g, T) => T.stationsFor('town', T.townId).some((a) => g.stations.depots.some((d) => g.net.connected(d.tile, a.tile))) },
-  { id: 'buy_train', ui: 'tool-train', done: (g) => g.trains.trains.length > 0 },
+  { id: 'build_depot', ui: 'tool-depot', target: 'between', done: (g, T) => T.stationsFor('town', T.townId).some((a) => g.stations.myDepots().some((d) => g.net.connected(d.tile, a.tile))) },
+  { id: 'buy_train', ui: 'tool-train', done: (g) => g.trains.mine().length > 0 },
   { id: 'watch_collect', target: 'train', done: (g, T) => T.flags.loaded },
   { id: 'deliver', target: 'train', done: (g) => g.stats.data.deliveries > 0 },
   { id: 'reward', button: 'tut_collect', reward: true },
@@ -41,13 +41,13 @@ export class Tutorial {
     game.events.on('levelUp', (lvl) => { if (lvl === 3) this.hintOnce('research'); if (lvl === 4) this.hintOnce('regions'); if (lvl === 2) this.hintOnce('upgrades'); });
     game.events.on('regionUnlocked', () => this.hintOnce('new_region'));
     game.events.on('eventStart', () => this.hintOnce('events'));
-    game.events.on('trainBought', () => { if (game.trains.trains.length === 2) this.hintOnce('second_train'); });
+    game.events.on('trainBought', () => { if (game.trains.mine().length === 2) this.hintOnce('second_train'); });
   }
 
   get active() { return !this.finished && this.game.settings.tutorial !== false; }
 
   stationsFor(kind, id) {
-    return this.game.stations.list.filter((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));
+    return this.game.stations.mine().filter((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));
   }
   // any forest station connected by rail to any Greenfield station
   linkedPair() {
@@ -56,7 +56,7 @@ export class Tutorial {
   }
 
   stationFor(kind, id) {
-    return this.game.stations.list.find((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));
+    return this.game.stations.mine().find((s) => s.links && (kind === 'town' ? s.links.towns.includes(id) : s.links.industries.includes(id)));
   }
 
   targetPos(t) {
@@ -68,7 +68,7 @@ export class Tutorial {
       if (!i || !w) return null;
       return { x: ((i.x + 1) + (w.x + 0.5)) / 2 * TILE, y: 3, z: ((i.z + 1) + (w.z + 0.5)) / 2 * TILE };
     }
-    if (t === 'train') { const tr = g.trains.trains[0]; if (tr && tr.visual) { const p = tr.visual.cars[0].mesh.position; return { x: p.x, y: p.y + 2.2, z: p.z }; } }
+    if (t === 'train') { const tr = g.trains.mine()[0]; if (tr && tr.visual) { const p = tr.visual.cars[0].mesh.position; return { x: p.x, y: p.y + 2.2, z: p.z }; } }
     return null;
   }
 
@@ -107,7 +107,7 @@ export class Tutorial {
       ['timetable', () => lines.some((l) => l.trains.length >= 2 && l.trains.every((t) => !t.spacing))],
       ['transfers', () => (S.paxTransfers || 0) > 0],
       ['overtaking', () => (S.overtakes || 0) > 0],
-      ['station_types', () => g.stations.list.some((s) => ['city', 'central', 'grand', 'hs', 'yard', 'intermodal'].includes(s.kind))],
+      ['station_types', () => g.stations.mine().some((s) => ['city', 'central', 'grand', 'hs', 'yard', 'intermodal'].includes(s.kind))],
       ['opportunities', () => g.selection && g.selection.type === 'industry'],
       ['town_growth', () => g.towns.list.some((t) => t.stage >= 2)],
       ['passing_loop', () => g.advisor().some((a) => a.key === 'adv_passing_loop' || a.key === 'adv_single_short')],

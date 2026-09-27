@@ -76,7 +76,7 @@ export class Fleet {
     if (this._towns && this._t === now) return this._towns;
     const set = new Set();
     const add = (o) => { if (o && o.links) for (const id of o.links.towns || []) set.add(id); };
-    for (const t of g.trains.trains) if (t.heritage) {
+    for (const t of g.trains.mine()) if (t.heritage) {
       // its route (manual) or the stations its service calls at (auto)
       const sv = !(t.route && t.route.length) && g.network ? g.network.svcOfTrain(t) : null;
       if (sv) for (const st of sv.stops) add(g.stations.byId(st.k)); else for (const r of t.route || []) add(g.stations.byId(r.st));

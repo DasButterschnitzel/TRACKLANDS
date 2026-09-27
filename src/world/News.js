@@ -16,6 +16,7 @@ export class News {
     this.items = [];
     this.seq = 1;
     this.unread = 0;
+    this.rivalPlanM = {};
     this.firsts = new Set();     // 'town:<id>', 'cargo:<C>': first arrivals already reported
     this.best = 0;               // best monthly profit so far
     this.mute = true;            // quiet while the game is being set up (Game unmutes)
@@ -44,7 +45,7 @@ export class News {
     E.on('townEvent', (ev, t) => this.add('towns', 'news_town_event', { town: tname(t), ev: 'tev_' + ev.kind }, { type: 'town', id: t.id }));
     E.on('districtEvolved', (t, from, to) => this.add('towns', 'news_district', { town: tname(t), from: 'dist_' + from, to: 'dist_' + to }, { type: 'town', id: t.id }));
     E.on('regionUnlocked', (r) => this.add('company', 'news_region', { region: 'region_' + (REGIONS[r] ? REGIONS[r].id : r) }));
-    E.on('stationBuilt', (s) => this.add('company', 'news_station', { name: s.name }, { type: 'station', id: s.id }));
+    E.on('stationBuilt', (s) => { if (!s.owner) this.add('company', 'news_station', { name: s.name }, { type: 'station', id: s.id }); });
     E.on('trainBrokeDown', (t) => this.add('company', 'news_breakdown', { name: t.name }, { type: 'train', id: t.id }));
     E.on('industryClosing', (ind) => this.add('industry', 'news_ind_closing', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
     E.on('industryClosed', (ind) => this.add('industry', 'news_ind_closed', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
@@ -57,6 +58,16 @@ export class News {
     E.on('rivalForSale', (r) => this.add('economy', 'news_rival_for_sale', { rival: r.name }));
     E.on('rivalAcquired', (r, x) => this.add('economy', 'news_rival_acquired', { rival: r.name, s: x.stops, v: x.vehicles }));
     E.on('rivalLine', (r, a, b) => this.add('economy', 'news_rival_line', { rival: r.name, a: a.name, b: b.name }));
+    // railway companies: plans, openings, double track and closures, never
+    // more than one planning note per company a year (no notification spam)
+    E.on('rivalProject', (r, p, what) => {
+      const P = g.rivals.planner(r);
+      if (!P) return;
+      const m = g.ledger.monthIndex();
+      if (what === 'plan') { if (m - (this.rivalPlanM[r.id] ?? -99) < 12) return; this.rivalPlanM[r.id] = m; }
+      this.add('economy', 'news_rival_' + what, { rival: r.name, a: P.endName(p.a), b: P.endName(p.b) });
+    });
+    E.on('rivalClosed', (r) => this.add('economy', 'news_rival_closed', { rival: r.name }));
     E.on('weather', (w) => { if (w === 'storm' || w === 'snow' || w === 'heatwave' || w === 'blizzard') this.add('weather', 'news_weather_' + w, {}); });
     E.on('delivery', (d) => {
       if (d.town && !this.firsts.has('town:' + d.town.id)) {
@@ -78,7 +89,7 @@ export class News {
   // a save from before the newspaper: what is already served is not news
   seedFromWorld() {
     const g = this.game;
-    for (const s of [...g.stations.list, ...(g.roads ? g.roads.stops : [])]) {
+    for (const s of [...g.stations.mine(), ...(g.roads ? g.roads.stops.filter((x) => !x.owner) : [])]) {
       if (!((s.delivered || 0) + (s.picked || 0) > 0)) continue;
       for (const id of (s.links && s.links.towns) || []) this.firsts.add('town:' + id);
     }

@@ -27,10 +27,10 @@ export const ToolsUIMixin = {
     const g = this.game, out = [];
     const add = (kind, ic, name, sel, extra = '') => out.push({ kind, ic, name, sel, extra, key: norm(name + ' ' + extra) });
     for (const t of g.towns.list) if (g.progression.regionUnlocked(t.region)) add('town', 'town', t.name, { type: 'town', id: t.id }, fmt(t.pop));
-    for (const s of g.stations.list) add('station', 'station', s.name, { type: 'station', id: s.id });
+    for (const s of g.stations.mine()) add('station', 'station', s.name, { type: 'station', id: s.id });
     for (const s of g.roads.stops) if (s.kind !== 'garage' || !s.owner) add('stop', s.kind === 'dock' ? 'dock' : s.kind === 'airport' ? 'airport' : 'bus', s.name, { type: 'roadstop', id: s.id }, s.owner ? (g.rivals.byId(s.owner) || {}).short || '' : '');
     for (const i of g.industries.list) if (g.progression.regionUnlocked(i.region)) add('industry', 'factory', g.industries.displayName(i), { type: 'industry', id: i.id });
-    for (const t of g.trains.trains) add('train', 'train', t.name, { type: 'train', id: t.id });
+    for (const t of g.trains.mine()) add('train', 'train', t.name, { type: 'train', id: t.id });
     for (const v of g.roads.vehicles) if (!v.owner) add('vehicle', 'bus', v.name, { type: 'roadveh', id: v.id });
     for (const l of g.roads.lines.list) add('line', 'route', l.name, { type: 'line', id: l.id });
     for (const [act, arg, ic, key] of COMMANDS) out.push({ kind: 'command', ic, name: this.tr(key), cmd: { act, arg }, extra: this.tr('find_kind_' + act), key: norm(this.tr(key) + ' ' + key.replace(/_/g, ' ')) });

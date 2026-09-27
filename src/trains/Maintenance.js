@@ -59,7 +59,7 @@ export class Maintenance {
     if (this.t < 0.5) return;
     const step = this.t; this.t = 0;
     const g = this.game;
-    for (const t of g.trains.trains) {
+    for (const t of g.trains.mine()) {
       if (t.cond == null) t.cond = this.baseCond(t);
       if (t.broken > 0) { t.broken = Math.max(0, t.broken - step); if (!t.broken) g.events.emit('trainRepaired', t); continue; }
       if (t.state !== 'run' || t.v < 0.2) continue;

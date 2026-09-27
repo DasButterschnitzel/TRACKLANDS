@@ -36,7 +36,7 @@ export class Standing {
   // ---------- reputation ----------
   servedTowns() {
     const g = this.game, set = new Set();
-    for (const s of g.stations.list) if (s.links) for (const id of s.links.towns) set.add(id);
+    for (const s of g.stations.mine()) if (s.links) for (const id of s.links.towns) set.add(id);
     if (g.roads) for (const s of g.roads.stops) if (!s.owner && s.links) for (const id of s.links.towns || []) set.add(id);
     return [...set].map((id) => g.towns.byId(id)).filter(Boolean);
   }

@@ -41,9 +41,9 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then tier=release; fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then tier=integration; fi
           case "$tier" in
-            integration) shards='[1,2]'; cases=400; suites='qa bench perf' ;;
-            release) shards='[1,2,3,4]'; cases=1000; suites='qa bench perf prodsave fuzz gallery' ;;
-            *) shards='[1,2,3,4,5,6]'; cases=3000; suites='qa bench perf prodsave gallery' ;;
+            integration) shards='[1,2]'; cases=400; suites='qa bench perf ai' ;;
+            release) shards='[1,2,3,4]'; cases=1000; suites='qa bench perf prodsave fuzz gallery ai aidecades' ;;
+            *) shards='[1,2,3,4,5,6]'; cases=3000; suites='qa bench perf prodsave gallery ai aidecades' ;;
           esac
           echo "tier=$tier" >> "$GITHUB_OUTPUT"; echo "shards=$shards" >> "$GITHUB_OUTPUT"
           echo "cases=$cases" >> "$GITHUB_OUTPUT"; echo "suites=$suites" >> "$GITHUB_OUTPUT"

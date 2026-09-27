@@ -266,7 +266,7 @@ export class CargoFlows {
     let n = 0, u = 0;
     const m = (lots) => { for (const p of lots || []) if (p.lg && p.lg.some((l) => l[0] === ref.type && l[1] === ref.id)) { n++; u += p.n; } };
     for (const s of this.nodes()) m(s.pk);
-    for (const t of this.game.trains.trains) m(t.cargo);
+    for (const t of this.game.trains.mine()) m(t.cargo);
     if (this.game.roads) for (const v of this.game.roads.vehicles) m(v.cargo);
     return { lots: n, units: u };
   }

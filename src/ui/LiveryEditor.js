@@ -51,7 +51,7 @@ export const LiveryEditorMixin = {
       ${auto ? `<label class="tog small"><input type="checkbox" ${C[auto] ? 'checked' : ''} data-change="livAuto" data-k="${auto}"/><i></i><small>${this.tr('liv_auto')}</small></label>` : ''}
       <input type="color" value="${cssHex(C[k] ?? (k === 'accent' ? C.trim : C.body))}" data-change="livColor" data-k="${k}" ${auto && C[auto] ? 'disabled' : ''} aria-label="${this.tr('liv_' + k)}"/></label>`;
     const stripes = STRIPES.map((s) => `<button class="${C.stripe === s ? 'on' : ''}" data-act="livStripe" data-arg="${s}">${this.tr('stripe_' + s)}</button>`).join('');
-    const same = g.trains.trains.filter((o) => o !== t && o.model === t.model).length;
+    const same = g.trains.mine().filter((o) => o !== t && o.model === t.model).length;
     return `${this.previewBlock(t.veh, t.livery, t.cargo, t.liveryScope, E.target === 'veh' ? E.sel : -1, E.target === 'veh' ? 'livPick' : null)}
       <div class="seg" role="group" aria-label="${this.tr('liv_apply_to')}">${targets}</div>
       ${strip}

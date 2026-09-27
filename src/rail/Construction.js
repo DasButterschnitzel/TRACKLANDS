@@ -557,7 +557,7 @@ export class Construction {
       if (net.special.has(end)) continue;
       for (const d of [0, 2, 4, 6, 1, 3, 5, 7]) {
         const j = step(end, d);
-        if (j < 0 || !net.special.has(j) || net.conn[j] || g.trains.tileReserved(end)) continue;
+        if (j < 0 || !net.special.has(j) || net.conn[j] || net.foreign(j) || g.trains.tileReserved(end)) continue;
         prev.push({ t: j, conn: 0, tier: net.tier[j], single: 0 });
         net.connect(end, d);
         net.tier[j] = net.tier[end];
@@ -568,16 +568,19 @@ export class Construction {
     const wooded = plan.tiles.filter((t) => g.world.view.hasTrees(t));
     g.world.view.clearTreesMany(plan.tiles);
     g.world.view.clearCorridorMany(plan.tiles);
-    if (wooded.length) g.authority.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length);
+    // a rival's construction: its own books and town relations, never the player's
+    const actor = g.actor;
+    if (wooded.length) { if (actor) actor.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length); else g.authority.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length); }
     net.bumpVersion();
-    g.stats.inc('trackBuilt', plan.newTiles);
-    g.stats.inc('bridgesBuilt', plan.bridges);
-    g.stats.inc('tunnelsBuilt', plan.tunnels);
+    if (!actor) {
+      g.stats.inc('trackBuilt', plan.newTiles);
+      g.stats.inc('bridgesBuilt', plan.bridges);
+      g.stats.inc('tunnelsBuilt', plan.tunnels);
+    }
     g.railView.animateBuild(plan.tiles);
     for (const t of plan.tiles) if (net.special.has(t)) g.stations.refreshOrientation(t);
     g.trains.onNetworkChanged(false);
-    this.pushUndo({ type: 'track', prev, cost: plan.cost, newTiles: plan.newTiles });
-    g.audio.play('rail');
+    if (!actor) { this.pushUndo({ type: 'track', prev, cost: plan.cost, newTiles: plan.newTiles }); g.audio.play('rail'); }
     const mid = plan.tiles[Math.floor(plan.tiles.length / 2)];
     for (let k = 0; k < plan.tiles.length; k += 2) { const t = plan.tiles[k]; g.particles.emit('dust', tileCX(t), net.railH(t) + 0.2, tileCZ(t), 2); }
     g.events.emit('trackBuilt', plan);
@@ -812,6 +815,7 @@ export class Construction {
   }
 
   waypointError(tile) {
+    if (this.game.net.foreign(tile)) return 'err_not_yours';
     const g = this.game, net = g.net;
     if (tile < 0 || !net.conn[tile]) return 'err_waypoint_track';
     if (net.degree(tile) !== 2 || net.special.has(tile)) return 'err_waypoint_track';
@@ -841,6 +845,8 @@ export class Construction {
     const g = this.game;
     if (tile < 0 || !g.progression.regionUnlocked(g.world.region[tile])) return null;
     if (g.decor.at(tile)) return 'decor';
+    // another company's track, signals and stations are not the player's to remove
+    if (g.net.foreign(tile)) return null;
     if (g.net.waypoints.has(tile)) return 'waypoint';
     for (let d = 0; d < 8; d++) if (g.net.signals.has(tile * 8 + d)) return 'signal';
     const sp = g.net.special.get(tile);
@@ -917,7 +923,7 @@ export class Construction {
     const refund = Math.round(g.economy.costs.trackTile(net.tier[tile], net.kind(tile)) * COSTS.bulldozeRefund);
     net.disconnectTile(tile);
     g.economy.earn(refund, 'refund', false);
-    g.stats.inc('trackRemoved');
+    if (!g.actor) g.stats.inc('trackRemoved');
     this.afterTrackChange(tile);
     return { ok: true, cost: 0 };
   }

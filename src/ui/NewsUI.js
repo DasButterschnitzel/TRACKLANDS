@@ -71,7 +71,7 @@ export const NewsUIMixin = {
         return `<button class="fin-row" data-act="jump" data-arg="industry:${i.id}"><span>${icon('factory', 'mini')} ${esc(g.industries.displayName(i))}</span><small>${outs} ${this.tr('ilvl_' + i.level)} · ${this.tr('transported_share', { n: Math.round(g.industries.transportShare(i) * 100) })}${i.stake ? ' · ' + Math.round(i.stake * 100) + ' %' : ''}</small></button>`;
       });
     } else {
-      const sts = g.stations.list.filter((s) => hit(s.name)).map((s) => ({ s, kind: 'station', ic: 'station', n: (s.delivered || 0) + (s.picked || 0) }));
+      const sts = g.stations.mine().filter((s) => hit(s.name)).map((s) => ({ s, kind: 'station', ic: 'station', n: (s.delivered || 0) + (s.picked || 0) }));
       const stops = (g.roads ? g.roads.stops : []).filter((s) => hit(s.name)).map((s) => ({ s, kind: 'roadstop', ic: s.kind, n: (s.delivered || 0) + (s.picked || 0) }));
       rows = [...sts, ...stops].sort((a, b) => b.n - a.n).map(({ s, kind, ic, n }) => {
         const f = g.ledger.objFin(s);

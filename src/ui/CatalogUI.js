@@ -32,7 +32,7 @@ export const CatalogUIMixin = {
   catItems() {
     const g = this.game, P = g.progression, R = P.research, mul = g.economy.costs.mul();
     const inTrains = new Set();
-    for (const t of g.trains.trains) for (const v of t.veh) inTrains.add(v.k + ':' + v.id);
+    for (const t of g.trains.mine()) for (const v of t.veh) inTrains.add(v.k + ':' + v.id);
     const out = [];
     for (const m of LOCOS) {
       const carries = m.mu ? m.mu.carries : m.role === 'passenger' ? ['PASSENGERS', 'MAIL'] : m.role === 'freight' ? CARGO_IDS.filter((c) => !PAX.has(c)) : CARGO_IDS;

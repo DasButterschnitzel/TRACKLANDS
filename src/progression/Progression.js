@@ -160,7 +160,7 @@ export class Progression {
     const g = this.game;
     const comp = g.net.components();
     const byComp = new Map();
-    for (const s of g.stations.list) {
+    for (const s of g.stations.mine()) {
       if (!s.links || !s.links.towns.length || comp[s.tile] < 0) continue;
       const k = comp[s.tile];
       if (!byComp.has(k)) byComp.set(k, new Set());
@@ -218,7 +218,7 @@ export class Progression {
   syncFleetStats() {
     const g = this.game;
     g.stats.set('modelsOwned', this.owned.size);
-    g.stats.set('trainsOwned', g.trains.trains.length);
+    g.stats.set('trainsOwned', g.trains.mine().length);
     g.stats.set('electricTrains', g.trains.electricCount());
     // the other modes and the company (Phase 8 achievements)
     const R = g.roads;

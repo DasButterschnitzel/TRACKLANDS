@@ -6,6 +6,7 @@
 // Pending works are saved with the game.
 import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
+import { validOwner } from '../world/Owners.js';
 
 const KINDS = ['track', 'bulldoze', 'station', 'addTrack'];
 const MAX_WORKS = 12;
@@ -62,18 +63,21 @@ export class Works {
     return [...ids].map((id) => T.byId(id)).filter(Boolean);
   }
 
+  // (a rival company's works are its own: its money, at most two at a time,
+  // run later as that company; never in the player's undo or messages)
   add(kind, a) {
-    const g = this.game;
+    const g = this.game, owner = g.actor ? g.actor.id : undefined;
     if (!KINDS.includes(kind)) return { error: 'err_unknown' };
-    if (this.list.length >= MAX_WORKS) return { error: 'err_works_max' };
+    const mine = this.list.filter((w) => w.owner === owner).length;
+    if (mine >= (owner ? 2 : MAX_WORKS)) return { error: 'err_works_max' };
     const p = this.probe(kind, a);
     if (p.error) return p;
     if (!g.economy.canAfford(p.cost)) return { error: 'err_no_money' };
     if (p.cost) g.economy.spend(p.cost, 'deposit', { type: 'tile', id: p.tiles[0] ?? p.zone[0] });
-    const w = { id: this.nextId++, kind, a, cost: p.cost, zone: p.zone, tiles: p.tiles, t0: g.time };
+    const w = { id: this.nextId++, kind, a, cost: p.cost, zone: p.zone, tiles: p.tiles, t0: g.time, owner };
     this.list.push(w);
     this.rebuild();
-    g.construction.pushUndo({ type: 'works', id: w.id });
+    if (!owner) g.construction.pushUndo({ type: 'works', id: w.id });
     g.events.emit('worksChanged', w);
     return { ok: true, works: w };
   }
@@ -84,7 +88,8 @@ export class Works {
     const g = this.game, w = this.byId(id);
     if (!w) return false;
     this.list.splice(this.list.indexOf(w), 1);
-    if (refund && w.cost) g.economy.earn(w.cost, 'deposit_back', false);
+    const rival = w.owner && g.rivals ? g.rivals.byId(w.owner) : null;
+    if (refund && w.cost) { if (rival) rival.earn(w.cost); else if (!w.owner) g.economy.earn(w.cost, 'deposit_back', false); }
     this.rebuild();
     g.events.emit('worksChanged', null);
     return true;
@@ -97,7 +102,17 @@ export class Works {
     this.t = 0;
     const g = this.game;
     for (const w of [...this.list]) {
-      if (this.exec(w.kind, w.a, true).error === 'err_train_on_track') continue;
+      const rival = w.owner && g.rivals ? g.rivals.byId(w.owner) : null;
+      if (w.owner && !rival) { this.list.splice(this.list.indexOf(w), 1); this.rebuild(); continue; }
+      const prev = g.actor;
+      g.actor = rival;
+      try { this.runOne(w); } finally { g.actor = prev; }
+    }
+  }
+  runOne(w) {
+    const g = this.game, player = !w.owner;
+    {
+      if (this.exec(w.kind, w.a, true).error === 'err_train_on_track') return;
       // clear (or impossible now): hand the reserved money back, then build
       this.list.splice(this.list.indexOf(w), 1);
       this.rebuild();
@@ -107,10 +122,12 @@ export class Works {
         // (a train slipped in after all: keep waiting)
         if (w.cost) g.economy.spend(w.cost, 'deposit');
         this.list.push(w); this.rebuild();
-        continue;
+        return;
       }
-      if (r.error) g.ui && g.ui.toast(g.ui.tr('works_failed', { why: g.ui.tr(r.error) }), 'warn', 'track');
-      else g.ui && g.ui.toast(g.ui.tr('works_done'), 'good', 'track');
+      if (player) {
+        if (r.error) g.ui && g.ui.toast(g.ui.tr('works_failed', { why: g.ui.tr(r.error) }), 'warn', 'track');
+        else g.ui && g.ui.toast(g.ui.tr('works_done'), 'good', 'track');
+      }
       g.events.emit('worksChanged', null);
     }
   }
@@ -138,7 +155,7 @@ export class Works {
   }
 
   serialize() {
-    return { nextId: this.nextId, list: this.list.map((w) => ({ id: w.id, kind: w.kind, a: w.a, cost: w.cost, zone: w.zone, tiles: w.tiles, t0: w.t0 })) };
+    return { nextId: this.nextId, list: this.list.map((w) => ({ id: w.id, kind: w.kind, a: w.a, cost: w.cost, zone: w.zone, tiles: w.tiles, t0: w.t0, owner: w.owner || undefined })) };
   }
   deserialize(s) {
     this.list = [];
@@ -148,7 +165,7 @@ export class Works {
       if (!w || typeof w !== 'object' || !KINDS.includes(w.kind) || !w.a || typeof w.a !== 'object') continue;
       const zone = (Array.isArray(w.zone) ? w.zone : []).filter(okTile);
       if (!zone.length) continue;
-      this.list.push({ id: w.id | 0 || this.nextId++, kind: w.kind, a: w.a, cost: Math.max(0, +w.cost || 0), zone, tiles: (Array.isArray(w.tiles) ? w.tiles : []).filter(okTile), t0: +w.t0 || 0 });
+      this.list.push({ id: w.id | 0 || this.nextId++, kind: w.kind, a: w.a, cost: Math.max(0, +w.cost || 0), zone, tiles: (Array.isArray(w.tiles) ? w.tiles : []).filter(okTile), t0: +w.t0 || 0, owner: validOwner(w.owner) ? w.owner : undefined });
       if (this.list.length >= MAX_WORKS) break;
     }
     this.nextId = Math.max(s.nextId | 0, 1, ...this.list.map((w) => w.id + 1));

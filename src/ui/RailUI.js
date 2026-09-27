@@ -121,7 +121,7 @@ export const RailUIMixin = {
       b.trainId = t.id; b.veh = cloneConsist(t.pendingVeh || t.veh); b.name = t.name; b.livery = t.livery; b.liveryScope = t.liveryScope || 'train';
       for (const c in t._st.caps) b.cargos.add(c);
     } else {
-      const deps = g.stations.depots;
+      const deps = g.stations.myDepots();
       const dep = g.stations.depotById(opts.depotId) || deps.find((d) => g.net.conn[d.tile]) || deps[0];
       b.depotId = dep ? dep.id : null;
       const m = opts.model || LOCOS.filter((x) => g.progression.locoUnlocked(x) && !x.mu && x.duty !== 'shunter').pop()?.id || 'pioneer';
@@ -136,7 +136,7 @@ export const RailUIMixin = {
     const g = this.game;
     const L = computeStats(vs, null, g.progression.fx).length;
     const b = this.bld;
-    let stations = g.stations.list;
+    let stations = g.stations.mine();
     const t = b.trainId != null ? g.trains.byId(b.trainId) : null;
     if (t && t.mode === 'manual' && t.route.length) stations = t.route.map((r) => g.stations.byId(r.st)).filter(Boolean);
     let shortest = Infinity;
@@ -212,7 +212,7 @@ export const RailUIMixin = {
     const cargoChips = CARGO_IDS.map((c) => `<button class="chip mini ${b.cargos.has(c) ? 'on' : ''}" data-act="bldCargo" data-arg="${c}" data-tip="${this.cargoName(c)}">${cargoIcon(c)}</button>`).join('');
     // templates
     const tpls = (P.templates || []).map((tp, i) => `<div class="tpl"><button class="tag link" data-act="bldTpl" data-arg="${i}">${esc(tp.name)}</button><button class="icon-btn small" data-act="bldTplDel" data-arg="${i}" aria-label="${this.tr('remove')}">${icon('close')}</button></div>`).join('');
-    const depots = g.stations.depots;
+    const depots = g.stations.myDepots();
     const lm0 = locoModel((vs.find((v) => v.k === 'L') || { id: 'pioneer' }).id);
     const liv = P.liveries().map((l) => this.swatch(l.id, lm0, b.livery === l.id, 'bldLiv', l.id, this.tr('liv_' + l.id))).join('') + (parseCustom(b.livery) ? this.swatch(b.livery, lm0, true, 'bldLiv', b.livery, this.tr('liv_custom')) : '');
     const buyErr = !t ? (err || g.trains.canBuy(vs, g.stations.depotById(b.depotId))) : err;
@@ -261,7 +261,7 @@ export const RailUIMixin = {
     };
     // train groups: one block per group, ungrouped trains last
     const groups = new Map();
-    for (const t of g.trains.trains) { const k = t.group || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    for (const t of g.trains.mine()) { const k = t.group || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
     const keys = [...groups.keys()].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
     const rows = keys.map((k) => {
       const ts = groups.get(k);
@@ -276,7 +276,7 @@ export const RailUIMixin = {
     }).join('') : `<p class="muted small">${this.tr('adv_none')}</p>`;
     return `${head}
       <h3>${icon('advisor', 'mini')} ${this.tr('advisor')} ${this.helpBtn('single')}</h3>${advH}
-      <h3>${this.tr('trains')} (${g.trains.trains.length})</h3><div class="tlist">${rows || `<p class="muted">${this.tr('no_trains')}</p>`}</div>`;
+      <h3>${this.tr('trains')} (${g.trains.mine().length})</h3><div class="tlist">${rows || `<p class="muted">${this.tr('no_trains')}</p>`}</div>`;
   },
 
   // lines: timetabled trains that share their stops
@@ -318,7 +318,7 @@ export const RailUIMixin = {
   pFleet() {
     const g = this.game, P = g.progression;
     const use = new Map();
-    for (const t of g.trains.trains) for (const v of t.pendingVeh || t.veh) if (v.k === 'L') { if (!use.has(v.id)) use.set(v.id, new Set()); use.get(v.id).add(t); }
+    for (const t of g.trains.mine()) for (const v of t.pendingVeh || t.veh) if (v.k === 'L') { if (!use.has(v.id)) use.set(v.id, new Set()); use.get(v.id).add(t); }
     if (!use.size) return `<p class="muted">${this.tr('no_trains')}</p>`;
     this.fleetPick = this.fleetPick || {};
     const unlocked = LOCOS.filter((m) => P.locoUnlocked(m));
@@ -350,7 +350,7 @@ export const RailUIMixin = {
       ${l ? this.serviceBlock(g.lines.metrics(l), { rail: true, key: l.key }) : ''}`;
   },
   groupSelect(t) {
-    const names = [...new Set(this.game.trains.trains.map((x) => x.group).filter(Boolean))].sort();
+    const names = [...new Set(this.game.trains.mine().map((x) => x.group).filter(Boolean))].sort();
     return `<label class="set"><span>${this.tr('group')}</span><select data-change="trainGroup" data-id="${t.id}"><option value="">${this.tr('group_none')}</option>${names.map((n) => `<option value="${esc(n)}" ${t.group === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}<option value="__new">${this.tr('group_new')}</option></select></label>`;
   },
 
@@ -415,7 +415,7 @@ export const RailUIMixin = {
     let depot;
     if (t.state === 'stored') depot = b('depotRelease', t.id, 'play', this.tr('depot_release'), 'hl');
     else if (t.depotOrder || t.tgtKind === 'depot') depot = b('depotCancel', t.id, 'close', this.tr('depot_cancel'));
-    else depot = b('depotSend', t.id, 'depot', this.tr('depot_send'), '', !g.stations.depots.length && false);
+    else depot = b('depotSend', t.id, 'depot', this.tr('depot_send'), '', !g.stations.myDepots().length && false);
     return `<div class="tactions" role="toolbar" aria-label="${this.tr('train_actions')}">
       ${b('builder', t.id, 'builder', this.tr('act_edit_train'))}
       ${b('scrollTo', '#tr-route', 'route', this.tr('act_route'))}
@@ -423,7 +423,7 @@ export const RailUIMixin = {
       ${b('livery', t.id, 'palette', this.tr('livery'))}
       ${b('follow', t.id, 'focus', this.tr('follow'), '', t.state === 'stored')}
       ${b('scrollTo', '#tr-upg', 'up', this.tr('act_upgrade'))}
-    </div>${t.state !== 'stored' && !t.depotOrder && g.stations.depots.length > 1 ? `<button class="btn ghost small link" data-act="depotChoose" data-arg="${t.id}">${this.tr('depot_choose')}</button>` : ''}`;
+    </div>${t.state !== 'stored' && !t.depotOrder && g.stations.myDepots().length > 1 ? `<button class="btn ghost small link" data-act="depotChoose" data-arg="${t.id}">${this.tr('depot_choose')}</button>` : ''}`;
   },
   depotResult(t, r) {
     if (r.ok) { this.toast(this.tr('depot_sent', { name: t.name, depot: r.depot ? r.depot.name : '' }), 'info', 'depot'); this.renderInspector(); return; }
@@ -433,7 +433,7 @@ export const RailUIMixin = {
     w.querySelector('[data-mbtn=no]').onclick = () => w.remove();
     w.querySelector('[data-mbtn=build]').onclick = () => { w.remove(); g.select(null); g.construction.setTool('depot'); };
     // show where the nearest depot is, if there is one
-    const d = g.stations.depots[0];
+    const d = g.stations.myDepots()[0];
     if (d && r.reason === 'no_depot_route') g.camera.focus(tileCX(d.tile), tileCZ(d.tile));
   },
   // Building where a train is: offer a pending construction that starts as
@@ -463,7 +463,7 @@ export const RailUIMixin = {
   depotChooser(t) {
     const g = this.game;
     const ch = g.trains.depotChoices(t);
-    if (!ch.length) { this.depotResult(t, { ok: false, reason: g.stations.depots.length ? 'no_depot_route' : 'no_depot' }); return; }
+    if (!ch.length) { this.depotResult(t, { ok: false, reason: g.stations.myDepots().length ? 'no_depot_route' : 'no_depot' }); return; }
     const tps = Math.max(0.1, t._st.speed / KMH_PER_TILE_S) * 0.7;
     const rows = ch.map((c, i) => `<button class="btn ${i ? 'ghost' : 'primary'} wide" data-mbtn="${c.dep.id}">${icon('depot', 'mini')} ${esc(c.dep.name)} <small>${Math.round(c.cost)} ${this.tr('tiles')} · ~${Math.max(5, Math.round(c.cost / tps))} s${i === 0 ? ' · ' + this.tr('nearest') : ''}</small></button>`).join('');
     const w = this.modal(`<h3>${this.tr('depot_choose')}</h3><div class="col">${rows}</div><div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button></div>`, { onCancel: () => {} });
@@ -472,7 +472,7 @@ export const RailUIMixin = {
 
   scheduleEditor(t) {
     const g = this.game;
-    const stations = g.stations.list;
+    const stations = g.stations.mine();
     const wps = [...g.net.waypoints].map(([tile, w]) => ({ tile, name: w.name }));
     const carry = CARGO_IDS.filter((c) => t._st.caps[c]);
     this.openStop = this.openStop || {};
@@ -682,7 +682,7 @@ export const RailUIMixin = {
       bldDuplicate: () => {
         const B = b(), G = g();
         const t = G.trains.byId(B.trainId);
-        const dep = G.stations.depotById(t.homeDepot) || G.stations.depots.find((d) => G.net.conn[d.tile]);
+        const dep = G.stations.depotById(t.homeDepot) || G.stations.myDepots().find((d) => G.net.conn[d.tile]);
         const r = G.trains.buy(t.pendingVeh || t.veh, dep, null);
         if (r.error) { this.error(r.error); return; }
         r.train.livery = t.livery; r.train.liveryScope = t.liveryScope; r.train.mode = t.mode; r.train.route = JSON.parse(JSON.stringify(t.route)); r.train.filter = t.filter ? [...t.filter] : null;
@@ -721,7 +721,7 @@ export const RailUIMixin = {
       lineAdd: (a) => {
         const G = g(), t = G.trains.byId(+a);
         if (!t) return;
-        const dep = G.stations.depotById(t.homeDepot) || G.stations.depots.find((d) => G.net.conn[d.tile]);
+        const dep = G.stations.depotById(t.homeDepot) || G.stations.myDepots().find((d) => G.net.conn[d.tile]);
         const r = G.trains.buy(t.pendingVeh || t.veh, dep, null);
         if (r.error) { this.error(r.error); return; }
         Object.assign(r.train, { livery: t.livery, liveryScope: t.liveryScope, mode: t.mode, route: JSON.parse(JSON.stringify(t.route)), filter: t.filter ? [...t.filter] : null, spacing: t.spacing, group: t.group });
@@ -732,7 +732,7 @@ export const RailUIMixin = {
       fleetReplace: async (a) => {
         const G = g(), to = (this.fleetPick || {})[a];
         if (!to) return;
-        const ts = G.trains.trains.filter((t) => (t.pendingVeh || t.veh).some((v) => v.k === 'L' && v.id === a));
+        const ts = G.trains.mine().filter((t) => (t.pendingVeh || t.veh).some((v) => v.k === 'L' && v.id === a));
         if (!(await this.confirm(this.tr('fleet_confirm', { n: ts.length, from: locoModel(a).name, to: locoModel(to).name }), this.tr('fleet_replace_btn')))) return;
         let ok = 0, kept = 0, err = null;
         for (const t of ts) { const e = G.trains.replaceLoco(t, a, to); if (e) { kept++; err = err || e; } else ok++; }

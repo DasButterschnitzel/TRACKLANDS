@@ -68,6 +68,7 @@ export class Game {
     this.scene = new THREE.Scene();
     this.time = 0; this.clock = 0; this.speed = 1; this.running = false;
     this.selection = null;
+    this.actor = null;          // the rival company building right now (src/world/RailAI.js), else the player
     this.cleared = new Set();
     this.autosaveT = 30;
     this.perf = new PerfStats();
@@ -159,7 +160,7 @@ export class Game {
     if (opts && ['off', 'relaxed', 'tycoon'].includes(opts.reliability)) this.maint.mode = opts.reliability;
     this.economy.coins = this.difficulty.money + (this.progression.legacy.count * 2500);
     // rival companies (test games have none unless asked)
-    this.rivals.start(opts && opts.rivals != null ? opts.rivals : opts && opts.test ? 0 : 1);
+    this.rivals.start(opts && opts.rivals != null ? opts.rivals : opts && opts.test ? 0 : 1, { mix: opts && opts.rivalMix, timing: opts && opts.rivalTiming, aiLevel: opts && opts.aiLevel });
     // a scenario: its own start money and goals
     const sc = opts && opts.scenario ? cleanScenario(opts.scenario) : null;
     if (sc) { if (!opts.scenario.custom) sc.custom = false; if (sc.money > 0) this.economy.coins = sc.money; this.scenario = new ScenarioRun(this, sc); }
@@ -193,6 +194,7 @@ export class Game {
     this.trains.deserialize(s.trains);
     this.works.deserialize(s.works);
     this.rivals.deserialize(s.rivals);
+    this.rivals.orphans();
     this.roads.deserialize(s.road);
     this.roads.afterLoad();
     if (s.news) this.news.deserialize(s.news); else this.news.seedFromWorld();
@@ -232,7 +234,7 @@ export class Game {
   // ---------- offline progress ----------
   computeOffline(s) {
     const away = clamp((Date.now() - (s.savedAt || Date.now())) / 1000, 0, OFFLINE.maxSeconds);
-    if (away < 60 || !this.trains.trains.length) return null;
+    if (away < 60 || !this.trains.mine().length) return null;
     const min = away / 60, eff = OFFLINE.efficiency;
     const coins = Math.round(this.economy.avgIncomePerMin() * min * eff);
     const deliveries = Math.round(this.economy.avgDeliveriesPerMin() * min * eff);
@@ -314,7 +316,7 @@ export class Game {
   // Network-wide bottleneck advisor: stations, single-track sections, deadlocks.
   advisor() {
     const out = [];
-    for (const s of this.stations.list) for (const a of this.stations.advise(s)) out.push({ ...a, station: s.id, name: s.name });
+    for (const s of this.stations.mine()) for (const a of this.stations.advise(s)) out.push({ ...a, station: s.id, name: s.name });
     const net = this.net;
     net.computeRuns();
     const runHeat = new Map();
@@ -336,9 +338,9 @@ export class Game {
       const waiting = l.stops.reduce((a, id) => { const s = this.stations.byId(id); return a + (s ? s.stock.PASSENGERS || 0 : 0); }, 0);
       if (waiting < cap * 0.25) out.push({ key: 'adv_line_saturated', train: l.trains[0].id, p: { name: this.lines.name(l), n: l.trains.length } });
     }
-    for (const t of this.trains.trains) if (t.slowT > 40) { const o = this.trains.byId(t.slowAhead); if (o) out.push({ key: 'adv_slow_ahead', train: t.id, p: { name: t.name, other: o.name } }); }
+    for (const t of this.trains.mine()) if (t.slowT > 40) { const o = this.trains.byId(t.slowAhead); if (o) out.push({ key: 'adv_slow_ahead', train: t.id, p: { name: t.name, other: o.name } }); }
     for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, p: { n: inc.trains.length } });
-    for (const t of this.trains.trains) if (t._st.rating === 'overloaded') out.push({ key: 'adv_overloaded', train: t.id, p: { name: t.name } });
+    for (const t of this.trains.mine()) if (t._st.rating === 'overloaded') out.push({ key: 'adv_overloaded', train: t.id, p: { name: t.name } });
     return out;
   }
 
@@ -388,6 +390,7 @@ export class Game {
       const x = tileCX(depot.tile), z = tileCZ(depot.tile), y = this.net.railH(depot.tile);
       P.burst(x, y + 0.5, z, false);
       P.emit('steam', x, y + 1, z, 12);
+      if (t.owner) return;          // (a rival's new train: no whistle, the camera stays)
       A.play('whistle', { kind: locoModel(t.model).kind });
       this.camera.focus(x, z);
     });
@@ -463,13 +466,13 @@ export class Game {
     });
     E.on('legend', () => { A.play('legend'); ui.legend(); P.burst(this.camera.target.x, 3, this.camera.target.z, true); });
     E.on('weather', (w) => this.ui.weatherChanged(w));
-    E.on('stationUpgraded', (s) => { A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.camera.shake(0.2); });
-    E.on('trainRecovered', (t) => ui.toast(ui.tr('toast_train_recovered', { name: t.name }), 'info', 'train'));
-    E.on('trainInDepot', (t, dep, stay) => { if (stay) ui.toast(ui.tr('toast_in_depot', { name: t.name, depot: dep ? dep.name : '' }), 'info', 'depot'); });
-    E.on('trainBrokeDown', (t) => ui.toast(ui.tr('toast_broke_down', { name: t.name }), 'warn', 'train'));
-    E.on('trainReplaced', (t) => ui.toast(ui.tr('toast_replaced', { name: t.name, model: locoModel(t.model).name }), 'good', 'train'));
+    E.on('stationUpgraded', (s) => { if (s.owner) return; A.play('construct'); P.burst(tileCX(s.tile), this.net.railH(s.tile) + 1, tileCZ(s.tile)); this.camera.shake(0.2); });
+    E.on('trainRecovered', (t) => !t.owner && ui.toast(ui.tr('toast_train_recovered', { name: t.name }), 'info', 'train'));
+    E.on('trainInDepot', (t, dep, stay) => { if (stay && !t.owner) ui.toast(ui.tr('toast_in_depot', { name: t.name, depot: dep ? dep.name : '' }), 'info', 'depot'); });
+    E.on('trainBrokeDown', (t) => !t.owner && ui.toast(ui.tr('toast_broke_down', { name: t.name }), 'warn', 'train'));
+    E.on('trainReplaced', (t) => !t.owner && ui.toast(ui.tr('toast_replaced', { name: t.name, model: locoModel(t.model).name }), 'good', 'train'));
     E.on('depotUnreachable', (t) => ui.toast(ui.tr('toast_depot_unreachable', { name: t.name }), 'warn', 'depot'));
-    E.on('deadlockResolved', (t, how) => ui.toast(ui.tr('toast_deadlock_' + how, { name: t.name }), 'info', 'train'));
+    E.on('deadlockResolved', (t, how) => t && !t.owner && ui.toast(ui.tr('toast_deadlock_' + how, { name: t.name }), 'info', 'train'));
     E.on('trainRunaround', (t) => {
       const loco = t.visual && t.visual.cars[0] && t.visual.cars[0].mesh;
       if (!loco) return;

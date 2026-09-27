@@ -107,7 +107,7 @@ export const FinanceUIMixin = {
   // most and least profitable trains last month
   finTopTrains() {
     const g = this.game, L = g.ledger;
-    const rows = g.trains.trains.map((t) => { const f = L.objFin(t); return { t, p: f.lastRev - f.lastCost, cur: f.rev - f.cost }; });
+    const rows = g.trains.mine().map((t) => { const f = L.objFin(t); return { t, p: f.lastRev - f.lastCost, cur: f.rev - f.cost }; });
     if (!rows.length) return '';
     rows.sort((a, b) => b.p - a.p);
     const pick = rows.length > 6 ? [...rows.slice(0, 3), ...rows.slice(-3)] : rows;

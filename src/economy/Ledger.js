@@ -195,12 +195,12 @@ export class Ledger {
   companyValue() {
     const g = this.game, net = g.net, E = g.economy;
     let vehicles = 0;
-    for (const t of g.trains.trains) vehicles += this.vehicleValue(t);
+    for (const t of g.trains.mine()) vehicles += this.vehicleValue(t);
     let track = 0;
     for (let i = 0; i < net.conn.length; i++) if (net.conn[i]) track += E.costs.trackTile(net.tier[i] | 0, net.kind(i)) * 0.5;
     let stations = 0;
-    for (const s of g.stations.list) stations += E.costs.station() * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
-    stations += g.stations.depots.length * E.costs.depot() * 0.5;
+    for (const s of g.stations.mine()) stations += E.costs.station() * 0.5 * (1 + (s.level | 0) * 0.5) * Math.max(1, s.tracks ? s.tracks.length : 1);
+    stations += g.stations.myDepots().length * E.costs.depot() * 0.5;
     if (g.company) stations += g.company.value();
     const shares = g.industries ? g.industries.stakeValue() : 0;
     const recent = this.months.slice(-6);

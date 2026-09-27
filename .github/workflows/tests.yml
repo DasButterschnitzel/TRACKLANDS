@@ -47,7 +47,7 @@ jobs:
             quick: ''
           - name: fuzz-fast
             suites: savefuzz --cases=150 --corpus
-            quick: qa bench
+            quick: qa bench ai
     name: suites (${{ matrix.group.name }})
     steps:
       - uses: actions/checkout@v4

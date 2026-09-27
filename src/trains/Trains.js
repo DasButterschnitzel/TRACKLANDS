@@ -21,6 +21,7 @@ import { SPACING_CHOICES } from './Lines.js';
 import { log } from '../core/Log.js';
 import { CargoFlows } from '../economy/Flows.js';
 import { heritageFare, HERITAGE_OP } from '../economy/Fleet.js';
+import { validOwner, NO_FX } from '../world/Owners.js';
 
 // deterministic 0..1 hash (keeps the simulation reproducible for tests)
 const jitter = (n) => { let x = Math.imul(n | 0, 0x9e3779b1) ^ 0x5bd1e995; x = Math.imul(x ^ (x >>> 15), 0x85ebca6b); x ^= x >>> 13; return (x >>> 0) / 4294967296; };
@@ -63,7 +64,8 @@ export class TrainSystem {
   byId(id) { return this.trains.find((t) => t.id === id); }
 
   // ---------- stats ----------
-  stats(t) { return computeStats(t.veh, t.upg, this.game.progression.fx); }
+  // (the player's upgrades and research bonuses apply to the player's trains only)
+  stats(t) { return computeStats(t.veh, t.upg, t.owner ? NO_FX : this.game.progression.fx); }
   trainLength(t) { return t._st.length; }
   refreshStats(t) { t._st = this.stats(t); t.model = t._st.model.id; t.visualSig = null; }
 
@@ -73,12 +75,15 @@ export class TrainSystem {
     if (typeof vs === 'string') vs = this.defaultConsist(vs, depot);
     const lead = vs.find((v) => v.k === 'L');
     if (!lead) return 'err_need_loco';
-    for (const v of vs) if (v.k === 'L' && !g.progression.locoUnlocked(locoModel(v.id))) return 'err_train_locked';
-    const verr = validateConsist(vs, g.progression.research);
+    // a rival company has its own technology (by era, chosen by its planner)
+    // and none of the player's upgrades
+    const actor = g.actor;
+    if (!actor) for (const v of vs) if (v.k === 'L' && !g.progression.locoUnlocked(locoModel(v.id))) return 'err_train_locked';
+    const verr = validateConsist(vs, actor ? actor.research() : g.progression.research);
     if (verr) return verr;
     if (!depot) return 'err_no_depot';
     if (!this.net.conn[depot.tile]) return 'err_depot_unconnected';
-    const st = computeStats(vs, null, g.progression.fx);
+    const st = computeStats(vs, null, actor ? NO_FX : g.progression.fx);
     if (this.net.tier[depot.tile] < st.minTier) return st.minTier === 3 ? 'err_needs_hsr' : 'err_needs_electric';
     if (!g.economy.canAfford(consistCost(vs, g.economy.costs))) return 'err_no_money';
     return null;
@@ -106,23 +111,30 @@ export class TrainSystem {
     return autoBuild(modelId, list.slice(0, 2), { research: g.progression.research, fx: g.progression.fx });
   }
 
+  // the player's own trains (rival companies' trains share the simulation)
+  mine() { return this.trains.filter((t) => !t.owner); }
   buy(consistOrModel, depot, name) {
     const g = this.game;
     const vs = typeof consistOrModel === 'string' ? this.defaultConsist(consistOrModel, depot) : cloneConsist(consistOrModel);
     const err = this.canBuy(vs, depot);
     if (err) return { error: err };
+    // a company buys only in its own depots
+    if ((depot.owner || null) !== (g.actor ? g.actor.id : null)) return { error: 'err_not_yours' };
     const cost = consistCost(vs, g.economy.costs);
     const lead = vs.find((v) => v.k === 'L');
     const m = locoModel(lead.id);
     // unique default name: models of one family share the first word (Arrowline 200/300)
     const base = m.name.split(' ')[0];
     let count = 1;
-    while (this.trains.some((x) => x.name === `${base} ${count}`)) count++;
-    const t = this.makeTrain({ id: this.nextId++, veh: vs, name: name || `${base} ${count}`, livery: g.progression.defaultLivery, depotId: depot.id });
+    const pre = g.actor ? `${g.actor.short} ` : '';
+    while (this.trains.some((x) => x.name === `${pre}${base} ${count}`)) count++;
+    const t = this.makeTrain({ id: this.nextId++, veh: vs, name: name || `${pre}${base} ${count}`, livery: g.actor ? g.actor.livery : g.progression.defaultLivery, depotId: depot.id });
+    if (g.actor) { t.owner = g.actor.id; this.refreshStats(t); }
     this.trains.push(t);
     if (!this.spawnAtDepot(t, depot)) t.state = 'spawnwait';
     g.economy.spend(cost, 'trains', { type: 'train', id: t.id }, t.name);
     t.bought = g.time;
+    if (t.owner) return { train: t };
     g.stats.inc('trainsBought');
     for (const v of vs) if (v.k === 'L') g.progression.ownModel(v.id);
     g.events.emit('trainBought', t);
@@ -1051,7 +1063,7 @@ export class TrainSystem {
   // reachable depots with the cost of the best way there, nearest first
   depotChoices(t) {
     const out = [];
-    for (const dep of this.game.stations.depots) {
+    for (const dep of this.game.stations.depots.filter((d) => (d.owner || null) === (t.owner || null))) {
       const tgt = this.depotTarget(dep);
       if (!tgt || !this.net.conn[dep.tile]) continue;
       if (t.steps.length) {
@@ -1408,7 +1420,7 @@ export class TrainSystem {
       case 'spawnwait': {
         if (t.stateT > 1) {
           t.stateT = 0;
-          const dep = g.stations.depotById(t.homeDepot) || g.stations.depots[0];
+          const dep = g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => (d.owner || null) === (t.owner || null));
           if (dep && this.spawnAtDepot(t, dep)) return;
           // a train parked without work on the depot track: send it inside to make room
           if (dep) {
@@ -1951,7 +1963,7 @@ export class TrainSystem {
     const g = this.game;
     // (a train already ordered to a depot is recovered into that one)
     const ordered = t.depotOrder ? g.stations.depotById(t.depotOrder.id) : null;
-    const dep = (ordered && this.net.conn[ordered.tile] ? ordered : null) || g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => this.net.conn[d.tile] && this.net.connected(d.tile, t.steps[0] ? t.steps[0].tile : d.tile));
+    const dep = (ordered && this.net.conn[ordered.tile] ? ordered : null) || g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => (d.owner || null) === (t.owner || null) && this.net.conn[d.tile] && this.net.connected(d.tile, t.steps[0] ? t.steps[0].tile : d.tile));
     if (!dep || !this.net.conn[dep.tile]) return false;
     this.releaseClaim(t);
     g.stations.unclaimPlatform(t.id);
@@ -1991,7 +2003,7 @@ export class TrainSystem {
         }
       }
     }
-    const dep = g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => net.conn[d.tile]);
+    const dep = g.stations.depotById(t.homeDepot) || g.stations.depots.find((d) => (d.owner || null) === (t.owner || null) && net.conn[d.tile]);
     if (dep && this.spawnAtDepot(t, dep)) { t.fade = 0; return; }
     t.state = 'spawnwait'; t.stateT = 0;
   }
@@ -2082,6 +2094,8 @@ export class TrainSystem {
     this.disposeVisual(t);
     this.trains = this.trains.filter((x) => x !== t);
     const refund = Math.round(consistCost(t.veh, g.economy.costs) * 0.5);
+    const rival = t.owner && g.rivals ? g.rivals.byId(t.owner) : null;
+    if (rival) { rival.earn(refund, 'sale'); return refund; }
     g.economy.earn(refund, 'sale', false, null, t.name);
     g.events.emit('trainSold', t, refund);
     return refund;
@@ -2288,7 +2302,7 @@ export class TrainSystem {
     return this.trains.map((t) => {
       const hs = t.steps.length ? t.steps[this.stepAt(t, t.s)] : null;
       return {
-        id: t.id, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, liveryScope: t.liveryScope === 'loco' ? 'loco' : undefined, upg: t.upg, mode: t.mode,
+        id: t.id, owner: t.owner || undefined, model: t.model, consist: serializeConsist(t.pendingVeh || t.veh), name: t.name, livery: t.livery, liveryScope: t.liveryScope === 'loco' ? 'loco' : undefined, upg: t.upg, mode: t.mode,
         route: t.route, routeIdx: t.routeIdx, filter: t.filter, cargo: t.cargo, earned: t.earned, trips: t.trips, target: t.target, depotId: t.homeDepot,
         head: hs ? { tile: hs.tile, inH: hs.inH } : null, state: t.state, created: t.created,
         spacing: t.spacing || undefined, group: t.group || undefined, express: t.express || undefined, heritage: t.heritage || undefined, refurb: t.refurb || undefined,
@@ -2331,6 +2345,7 @@ export class TrainSystem {
           veh = inferLegacy(d.model, this.legacyHints(d), g.progression.research);
         }
         const t = this.makeTrain({ ...d, veh });
+        if (validOwner(d.owner)) { t.owner = d.owner; this.refreshStats(t); }
         this.nextId = Math.max(this.nextId, t.id + 1);
         t.cargo = t.cargo.filter((l) => g.stations.byId(l.from));
         for (const l of t.cargo) if (l.to != null && !g.stations.byId(l.to)) { delete l.to; delete l.via; } else if (l.via != null && !g.stations.byId(l.via)) delete l.via;

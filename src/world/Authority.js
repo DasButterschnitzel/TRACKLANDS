@@ -164,7 +164,7 @@ export class Authority {
     const g = this.game;
     for (const town of g.towns.list) {
       const A = this.ensure(town);
-      const sts = g.stations.list.filter((s) => s.links && s.links.towns.includes(town.id));
+      const sts = g.stations.mine().filter((s) => s.links && s.links.towns.includes(town.id));
       if (!sts.length) { if (A.rating > 50) this.change(town, -0.5, 'auth_drift'); else if (A.rating < 50) this.change(town, 0.5, 'auth_drift'); continue; }
       // trains that called at the town's stations this month
       let calls = 0, abandoned = 0;

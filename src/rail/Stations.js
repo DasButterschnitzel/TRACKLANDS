@@ -13,6 +13,7 @@ import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL } from './RailNetwork.js';
 import { t as tr } from '../i18n.js';
 import { stationComplexModel, depotModel, stationModel } from './StationModels.js';
+import { ownerIdx, validOwner } from '../world/Owners.js';
 
 export const STATION_SERVICES = ['mixed', 'passenger', 'freight'];
 const SERVICE_LOAD_MUL = 1.25;
@@ -41,13 +42,17 @@ export class StationSystem {
   }
 
   byId(id) { return this.list.find((s) => s.id === id); }
+  // the player's own stations (rival companies' stations share the world)
+  mine() { return this.list.filter((s) => !s.owner); }
+  myDepots() { return this.depots.filter((d) => !d.owner); }
   depotById(id) { return this.depots.find((d) => d.id === id); }
   depotAt(tile) { return this.depots.find((d) => d.tile === tile); }
   stationAt(tile) { const sp = this.game.net.special.get(tile); return sp && sp.type === 'station' ? this.byId(sp.id) : null; }
   trackAt(tile) { const sp = this.game.net.special.get(tile); return sp && sp.type === 'station' ? sp.track | 0 : -1; }
   allTiles(stn) { const out = []; for (const tk of stn.tracks) for (const t of tk.tiles) out.push(t); return out; }
 
-  radius(stn) { return STATION.radius[stn.level] + this.game.progression.fx.stationRadius; }
+  // (the player's research widens the player's stations only)
+  radius(stn) { return STATION.radius[stn.level] + (stn.owner ? 0 : this.game.progression.fx.stationRadius); }
   // the station level's storage (the base room of every storage class)
   storage(stn) { return Math.round(STATION.storage[stn.level | 0] * (1 + this.game.progression.fx.storage) * (stn.road && this.game.roads ? this.game.roads.stopProps(stn).storageMul : 1)); }
   // storage class of a cargo here: container cargo goes to the container
@@ -117,8 +122,8 @@ export class StationSystem {
   }
   // re-index special tiles for a station (track indices and roles)
   markTiles(stn) {
-    const net = this.game.net;
-    stn.tracks.forEach((tk, k) => { for (const t of tk.tiles) net.special.set(t, { type: 'station', id: stn.id, track: k, role: tk.role }); });
+    const net = this.game.net, oi = ownerIdx(stn.owner);
+    stn.tracks.forEach((tk, k) => { for (const t of tk.tiles) { net.special.set(t, { type: 'station', id: stn.id, track: k, role: tk.role }); net.own[t] = oi; } });
   }
 
   // Routing targets for the dispatcher: each track can be entered from either
@@ -204,7 +209,7 @@ export class StationSystem {
   previewLinks(tiles, level = 0) {
     const g = this.game;
     if (!Array.isArray(tiles)) tiles = [tiles];
-    const r = STATION.radius[level] + g.progression.fx.stationRadius;
+    const r = STATION.radius[level] + (g.actor ? 0 : g.progression.fx.stationRadius);
     const dist = (t) => { let m = 1e9; for (const s of tiles) m = Math.min(m, cheb(s, t)); return m; };
     const towns = g.towns.list.filter((t) => dist(idx(t.x, t.z)) <= r + g.towns.radius(t));
     const inds = g.industries.list.filter((ind) => {
@@ -296,7 +301,7 @@ export class StationSystem {
       id: this.nextId++, tile, level: 0, style: this.game.progression.defaultStationStyle, name: '', stock: {}, claimed: {}, links: null, accepts: null, supplies: null,
       delivered: 0, picked: 0, created: this.game.time, warn: false, tracks: [{ tiles: [tile], role: 'any', dir: 'both', off: 0 }], facilities: [],
       claims: new Map(), stats: freshStats(), build: 0,
-    }, extra || {});
+    }, this.game.actor ? { owner: this.game.actor.id } : null, extra || {});
   }
 
   // ---------- drag construction ----------
@@ -513,8 +518,9 @@ export class StationSystem {
     stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station();
     g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
-    if (g.authority) g.authority.onStationBuilt(stn);
+    if (g.authority && !stn.owner) g.authority.onStationBuilt(stn);
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
+    net.own[tile] = net.actorIdx();
     for (let d = 0; d < 8; d++) net.signals.delete(tile * 8 + d);
     const auto = this.autoConnect(tile, 2);
     this.list.push(stn);
@@ -525,7 +531,7 @@ export class StationSystem {
     this.buildVisual(stn);
     g.railView.markDirty(tile);
     for (const t of auto) g.railView.markDirty(t);
-    g.stats.inc('stationsBuilt');
+    if (!stn.owner) g.stats.inc('stationsBuilt');
     g.events.emit('stationBuilt', stn);
     g.trains.onNetworkChanged(false);
     return { station: stn, cost, auto };
@@ -538,7 +544,7 @@ export class StationSystem {
     const cands = [];
     for (const d of [0, 2, 4, 6]) {
       const j = step(tile, d);
-      if (j < 0 || !net.conn[j]) continue;
+      if (j < 0 || !net.conn[j] || net.foreign(j)) continue;     // (never into another company's track)
       const sp = net.special.get(j);
       if (sp && sp.type === 'depot') continue;
       if (net.degree(j) >= 3) continue;
@@ -571,7 +577,9 @@ export class StationSystem {
     const cost = g.economy.costs.depot();
     g.economy.spend(cost, 'construction', { type: 'tile', id: tile }, '~fin_n_depot:1');
     const dep = { id: this.nextId++, tile, name: tr('depot') + ' ' + (this.depots.length + 1) };
+    if (g.actor) { dep.owner = g.actor.id; dep.name = `${g.actor.short} ${tr('depot')}`; }
     net.special.set(tile, { type: 'depot', id: dep.id });
+    net.own[tile] = net.actorIdx();
     if (net.degree(tile) > 1) net.disconnectTile(tile);
     const auto = this.autoConnect(tile, 1);
     this.depots.push(dep);
@@ -698,7 +706,7 @@ export class StationSystem {
       const path = [];
       for (let i = 1; ok && i <= k; i++) {
         const mi = step(m, dOut);
-        if (mi < 0 || !net.conn[mi] || net.special.has(mi) || !net.hasDir(mi, (dOut + 4) & 7)) { ok = false; break; }
+        if (mi < 0 || !net.conn[mi] || net.special.has(mi) || net.foreign(mi) || !net.hasDir(mi, (dOut + 4) & 7)) { ok = false; break; }
         if (i < k && !net.hasDir(mi, dOut)) { ok = false; break; }
         m = mi;
       }
@@ -993,6 +1001,14 @@ export class StationSystem {
     const info = this.stationKind(stn, tracks);
     stn.kind = info.kind;
     stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1, info);
+    // a competitor's station: a pole with a flag in its company colour at the
+    // platform end (the building itself stays the town's style)
+    const rival = stn.owner && this.game.rivals ? this.game.rivals.byId(stn.owner) : null;
+    if (rival && tracks.length) {
+      const t0 = tracks[0], x = t0.x0 + 0.25, z = t0.z - TILE * 0.42, y = t0.y;
+      mb.cyl(0.05, 0.05, 1.9, 5, 0x3a3a3a, { x, y, z });
+      mb.box(0.62, 0.36, 0.04, rival.color, { x: x + 0.33, y: y + 1.45, z });
+    }
     const mesh = meshFrom(mb.build());
     mesh.position.set(F.ox, F.oy + 0.02, F.oz);
     mesh.rotation.y = F.yaw;
@@ -1130,9 +1146,9 @@ export class StationSystem {
         id: s.id, tile: s.tile, level: s.level, style: s.style, name: s.name, stock: s.stock, delivered: s.delivered, picked: s.picked,
         tracks: s.tracks.map((t) => ({ tiles: t.tiles, role: t.role, dir: t.dir, off: t.off || 0, ladder: t.ladder || [] })), facilities: s.facilities, service: s.service || undefined,
         stats: { arrivals: s.stats.arrivals, transfers: s.stats.transfers }, fin: cleanFin(s.fin), ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined,
-        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined,
+        pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, owner: s.owner || undefined, built: s.built || undefined,
       })),
-      depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name })),
+      depots: this.depots.map((d) => ({ id: d.id, tile: d.tile, name: d.name, owner: d.owner || undefined })),
     };
   }
   deserialize(d) {
@@ -1179,6 +1195,8 @@ export class StationSystem {
       stn.facilities = Array.isArray(s.facilities) ? s.facilities.filter((f, i, a) => FACILITIES[f] && a.indexOf(f) === i).slice(0, facilitySlots(5)) : [];
       if (s.service === 'passenger' || s.service === 'freight') stn.service = s.service;
       if (s.stats) { stn.stats.arrivals = s.stats.arrivals | 0; stn.stats.transfers = s.stats.transfers | 0; }
+      if (validOwner(s.owner)) stn.owner = s.owner;
+      if (Number.isFinite(+s.built) && s.built > 0) stn.built = Math.round(+s.built);
       this.list.push(stn);
       this.markTiles(stn);
     }
@@ -1186,7 +1204,9 @@ export class StationSystem {
     for (const dd of d.depots || []) {
       if (typeof dd.tile !== 'number' || net.special.has(dd.tile)) continue;
       const dep = { id: dd.id, tile: dd.tile, name: String(dd.name || 'Depot') };
+      if (validOwner(dd.owner)) dep.owner = dd.owner;
       net.special.set(dep.tile, { type: 'depot', id: dep.id });
+      net.own[dep.tile] = ownerIdx(dep.owner);
       this.depots.push(dep);
       if (okId(dep.id)) this.nextId = Math.max(this.nextId, dep.id + 1);
     }

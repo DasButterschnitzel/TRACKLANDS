@@ -204,7 +204,7 @@ export class TransportNetwork {
   // there, irregularly (freight may route through them)
   addAuto() {
     const g = this.game, S = g.stations;
-    const auto = g.trains.trains.filter((t) => t.mode !== 'manual' && t.state !== 'stored' && !t.depotIn);
+    const auto = g.trains.mine().filter((t) => t.mode !== 'manual' && t.state !== 'stored' && !t.depotIn);
     if (!auto.length) return;
     const comp = g.net.components();
     const groups = new Map();

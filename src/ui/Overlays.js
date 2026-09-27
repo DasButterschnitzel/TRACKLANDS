@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit', 'owners'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
@@ -95,6 +95,13 @@ export class Overlays {
         }
         break;
       }
+      // who owns what: the player's track in the company colour, each rival's in its own
+      case 'owners': {
+        const col = [g.company.color, ...Array.from({ length: 8 }, (_, i) => { const r = g.rivals && g.rivals.list.find((x) => x.idx === i + 1); return r ? r.color : 0x888888; })];
+        for (let i = 0; i < N * N; i++) if (net.conn[i] || net.special.has(i)) this.quad(k++, i, col[net.own[i]] ?? 0x888888);
+        if (g.roads) for (const s of g.roads.stops) { const r = s.owner && g.rivals ? g.rivals.byId(s.owner) : null; this.quad(k++, s.tile, r ? r.color : g.company.color); }
+        break;
+      }
       case 'electrification': {
         const cols = [0x8a7a6a, 0x7a8aa0, 0x3a8af0, 0xd060f0];
         for (let i = 0; i < N * N; i++) if (net.conn[i]) this.quad(k++, i, cols[net.tier[i]]);
@@ -102,8 +109,8 @@ export class Overlays {
       }
       case 'station': {
         const roleCol = { any: 0x4ad07a, passenger: 0x4a9af0, freight: 0xd08a3a, express: 0xe04a6a, through: 0x9a9aa0 };
-        for (const s of g.stations.list) for (const tk of s.tracks) for (const t of tk.tiles) this.quad(k++, t, roleCol[tk.role] || 0xffffff);
-        for (const d of g.stations.depots) this.quad(k++, d.tile, 0xe0a33a);
+        for (const s of g.stations.mine()) for (const tk of s.tracks) for (const t of tk.tiles) this.quad(k++, t, roleCol[tk.role] || 0xffffff);
+        for (const d of g.stations.myDepots()) this.quad(k++, d.tile, 0xe0a33a);
         for (const [t] of net.waypoints) this.quad(k++, t, 0xffffff);
         break;
       }
@@ -208,7 +215,7 @@ export class Overlays {
       }
       case 'cargo': {
         let n = 0;
-        for (const s of g.stations.list) {
+        for (const s of g.stations.mine()) {
           const cap = g.stations.storage(s);
           const cs = Object.keys(s.stock).filter((c) => s.stock[c] >= 1);
           cs.forEach((c, j) => {

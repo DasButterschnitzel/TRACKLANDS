@@ -37,7 +37,7 @@ export class Lines {
     const g = this.game;
     if (this._c && this._v === this.version && g.time >= this._t && g.time - this._t < 1) return this._c;
     const map = new Map();
-    for (const t of g.trains.trains) {
+    for (const t of g.trains.mine()) {
       if (t.mode !== 'manual') continue;
       const st = this.stops(t);
       const key = this.keyOf(st);

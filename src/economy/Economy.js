@@ -5,6 +5,7 @@ import {
   CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit, CARGO_CLASS } from '../config.js';
 import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
 import { heritageFare } from './Fleet.js';
+import { NO_FX } from '../world/Owners.js';
 
 export const CYCLE_MUL = { boom: 1.12, normal: 1, slump: 0.88 };
 
@@ -51,11 +52,24 @@ export class Economy {
 
   newBucket() { return { income: 0, deliveries: 0, towns: {} }; }
 
-  canAfford(n) { return this.coins >= n - 1e-6; }
+  canAfford(n) { return this.game.actor ? this.game.actor.canSpend(n) : this.coins >= n - 1e-6; }
+  // who pays or is paid (Phase 9): the rival company acting right now (its
+  // planner is building), or the rival that owns the booked object (its
+  // train, station or depot). null: the player. A rival's money never
+  // touches the player's coins, ledger, statistics or experience.
+  payer(ref) {
+    const g = this.game;
+    if (g.actor) return g.actor;
+    if (!ref || !g.rivals || !g.rivals.list.length) return null;
+    const o = ref.type === 'train' ? g.trains.byId(ref.id) : ref.type === 'station' ? g.stations.byId(ref.id) : ref.type === 'depot' ? g.stations.depotById(ref.id) : null;
+    return o && o.owner ? g.rivals.byId(o.owner) : null;
+  }
   // every coin in or out is booked once in the company ledger (ref: the
   // object it belongs to, {type, id}; note: short text for the log)
   spend(n, cat, ref = null, note = null) {
     n = Math.max(0, Math.round(n));
+    const r = this.payer(ref);
+    if (r) { r.pay(n, cat); return; }
     this.coins = Math.max(0, this.coins - n);
     if (n && this.game.ledger) this.game.ledger.book(-n, cat, ref, note);
     this.game.stats.inc('coinsSpent', n);
@@ -64,6 +78,8 @@ export class Economy {
   earn(n, cat, xp = true, ref = null, note = null) {
     n = Math.max(0, Math.round(n));
     if (!n) return;
+    const r = this.payer(ref);
+    if (r) { r.earn(n, cat); return; }
     this.coins += n;
     if (this.game.ledger) this.game.ledger.book(n, cat, ref, note);
     if (cat !== 'refund' && cat !== 'sale' && cat !== 'share_sale') this.game.stats.inc('coinsEarned', n);
@@ -75,7 +91,8 @@ export class Economy {
   distTiles(from, to) { if (!from || !to) return 6; return cheb(from.tile, to.tile); }
 
   revenue(c, n, dist, train, needed, transit = 0) {
-    const g = this.game, fx = g.progression.fx, ev = this.eventFx;
+    // (the player's research bonuses never apply to a rival's train)
+    const g = this.game, fx = train && train.owner ? NO_FX : g.progression.fx, ev = this.eventFx;
     const cfg = CARGO[c];
     let f = Math.min(REVENUE.distCap, REVENUE.distBase + REVENUE.distPerTile * dist);
     if (dist < REVENUE.minTiles) f *= 0.2;
@@ -114,6 +131,14 @@ export class Economy {
   // the vehicles that carried it (CargoFlows.settle).
   deliver(train, stn, lot) {
     const g = this.game;
+    // a rival's train: its company is paid, the player's books and stats never see it
+    const rival = train.owner && g.rivals ? g.rivals.byId(train.owner) : null;
+    if (rival) {
+      const rr = g.flows.settle(lot, stn, { train, ref: { type: 'train', id: train.id }, fromObj: g.stations.byId(lot.from), mode: 'rail', fare: 1, rival });
+      rival.carried(lot.c, lot.n);
+      train.earned = (train.earned || 0) + rr.rev;
+      return rr.rev;
+    }
     const r = g.flows.settle(lot, stn, { train, ref: { type: 'train', id: train.id }, fromObj: g.stations.byId(lot.from), mode: 'rail', fare: heritageFare(train, lot) });
     g.events.emit('delivery', { train, station: stn, cargo: lot.c, amount: lot.n, revenue: r.rev, town: r.res.town, industry: r.res.industry, dist: r.dist, legs: r.legs });
     return r.rev;
@@ -150,6 +175,8 @@ export class Economy {
 
   operatingCost(amount, ref = null) {
     if (amount <= 0) return;
+    const r = this.payer(ref);
+    if (r) { r.pay(amount, 'op'); return; }
     this.coins = Math.max(0, this.coins - amount);
     if (this.game.ledger) this.game.ledger.bookRunning(amount, ref && ref.type === 'road' ? 'op_road' : 'op_trains', ref);
     this.totalOpCost += amount;
@@ -169,13 +196,13 @@ export class Economy {
   makeContract(rng) {
     const g = this.game, lvl = g.progression.level;
     const towns = g.towns.list.filter((t) => g.progression.regionUnlocked(t.region));
-    const served = towns.filter((t) => g.stations.list.some((s) => s.links && s.links.towns.includes(t.id)));
+    const served = towns.filter((t) => g.stations.mine().some((s) => s.links && s.links.towns.includes(t.id)));
     const cargo = this.producibleCargo().filter((c) => c !== 'PASSENGERS');
     const townCargo = cargo.filter((c) => ['WOOD', 'FOOD', 'LUMBER', 'GOODS', 'STEEL', 'FUEL', 'MACHINERY', 'MAIL'].includes(c));
     const types = ['passengers', 'freight_income', 'deliveries'];
     if (served.length && townCargo.length) types.push('deliver_town', 'deliver_town');
     if (cargo.length) types.push('timed_deliver');
-    if (g.trains.trains.length >= 2) types.push('trains_running');
+    if (g.trains.mine().length >= 2) types.push('trains_running');
     // network play: lines, changes between lines, town-to-town journeys
     const lines = g.lines ? g.lines.list() : [];
     if (lines.length >= 2) types.push('pax_transfers');
@@ -218,7 +245,7 @@ export class Economy {
         k.coins = Math.round(250 * scale * 1.4);
         break;
       case 'trains_running':
-        k.count = Math.min(g.trains.trains.length, 2 + Math.floor(lvl / 6));
+        k.count = Math.min(g.trains.mine().length, 2 + Math.floor(lvl / 6));
         k.amount = 90;
         k.coins = Math.round(300 * scale * 1.3);
         break;
@@ -350,7 +377,7 @@ export class Economy {
     if (this.event) {
       this.event.t += dt;
       if (this.event.t >= this.event.dur) { g.events.emit('eventEnd', this.event); this.event = null; this.eventFx = {}; this.nextEvent = 240 + Math.random() * 240; }
-    } else if (g.trains.trains.length) {
+    } else if (g.trains.mine().length) {
       this.nextEvent -= dt;
       if (this.nextEvent <= 0) this.startEvent();
     }
@@ -364,7 +391,7 @@ export class Economy {
         if (k.left <= 0) { k.claimed = true; changed = true; if (g.standing) g.standing.onFailed(k); g.events.emit('contractExpired', k); }
       }
       if (k.type === 'trains_running') {
-        const running = g.trains.trains.filter((t) => t.state === 'run' || t.state === 'load').length;
+        const running = g.trains.mine().filter((t) => t.state === 'run' || t.state === 'load').length;
         if (running >= k.count) { k.progress += dt; if (k.progress >= k.amount) this.completeContract(k); }
       }
       if (k.type === 'timetable' && g.lines) {
@@ -385,7 +412,7 @@ export class Economy {
     this.grantCooldown = Math.max(0, this.grantCooldown - dt);
     const cheapest = this.costs.train(LOCOS[0]) + this.costs.station();
     const noIncome = this.incomeLog.slice(-3).every((b) => b.income === 0) && this.bucket.income === 0;
-    const avail = this.coins < cheapest && this.grantCooldown <= 0 && (g.trains.trains.length === 0 || noIncome) && g.stats.data.playTime > 60;
+    const avail = this.coins < cheapest && this.grantCooldown <= 0 && (g.trains.mine().length === 0 || noIncome) && g.stats.data.playTime > 60;
     if (avail !== this.grantAvailable) { this.grantAvailable = avail; g.events.emit('grant', avail); }
   }
 

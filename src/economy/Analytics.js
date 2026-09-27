@@ -32,7 +32,7 @@ export class Analytics {
   divisions() {
     const g = this.game, out = {};
     for (const d of DIVISIONS) out[d] = this.blank({ id: d });
-    for (const t of g.trains.trains) {
+    for (const t of g.trains.mine()) {
       if (t.owner) continue;
       const a = out.rail; this.add(a, this.figs(t)); a.n++;
       if (t.state === 'run' || t.state === 'load') a.active++;
@@ -74,7 +74,7 @@ export class Analytics {
   // serving two towns is split between them)
   towns() {
     const g = this.game, by = new Map();
-    const all = [...g.stations.list, ...(g.roads ? g.roads.stops.filter((s) => !s.owner) : [])];
+    const all = [...g.stations.mine(), ...(g.roads ? g.roads.stops.filter((s) => !s.owner) : [])];
     for (const s of all) {
       const ids = s.links && s.links.towns ? s.links.towns : [];
       if (!ids.length) continue;
@@ -109,7 +109,7 @@ export class Analytics {
   // lifetime profit against the price paid: return and months to pay back
   returns(max = 8) {
     const g = this.game, out = [];
-    for (const t of g.trains.trains) {
+    for (const t of g.trains.mine()) {
       if (t.owner) continue;
       let price = 0; try { price = consistCost(t.veh, g.economy.costs); } catch (e) { price = 0; }
       out.push(this.ret(t, price, 'train'));
@@ -128,7 +128,7 @@ export class Analytics {
   // the profit overlay: each station's and stop's revenue last month, 0..1
   stopGrades() {
     const g = this.game;
-    const all = [...g.stations.list, ...(g.roads ? g.roads.stops.filter((s) => !s.owner && s.kind !== 'garage') : [])];
+    const all = [...g.stations.mine(), ...(g.roads ? g.roads.stops.filter((s) => !s.owner && s.kind !== 'garage') : [])];
     const vals = all.map((s) => { const f = this.fin(s); return Math.max(f.lastRev, f.rev); });
     const top = Math.max(1, ...vals);
     return all.map((s, i) => ({ s, v: vals[i] / top, rev: vals[i] }));
