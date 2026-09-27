@@ -12,6 +12,7 @@ import { locoGeometry, wagonGeometry, liveryColors } from '../trains/TrainModels
 import { wagonUnlocked } from '../trains/Consist.js';
 import { roadVehicleGeometry } from '../road/RoadModels.js';
 import { MATS } from '../core/ModelBuilder.js';
+import { MAKERS, makerOf, generations } from '../content/Makers.js';
 
 const KIND_MODE = { bus: 'bus', truck: 'truck', tram: 'tram', dock: 'ship', airport: 'air' };
 export const CAT_MODES = ['all', 'rail', 'wagon', 'bus', 'truck', 'tram', 'ship', 'air'];
@@ -23,7 +24,7 @@ const cargosOfGroups = (groups) => CARGO_IDS.filter((c) => groups.includes(CARGO
 
 export const CatalogUIMixin = {
   catState() {
-    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, sort: 'level', cmp: [], tab: 'vehicles', n: PAGE };
+    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, sort: 'level', cmp: [], tab: 'vehicles', n: PAGE };
     return this._cat;
   },
 
@@ -60,6 +61,9 @@ export const CatalogUIMixin = {
         unlocked: P.level >= m.level, owned: g.roads.vehicles.some((v) => !v.owner && v.model === m.id), unlock: this.tr('unlock_level', { n: m.level }),
       });
     }
+    // manufacturer and generation (src/content/Makers.js)
+    const gen = generations(out);
+    for (const it of out) { const mk = makerOf(it); it.maker = mk ? mk.id : ''; it.makerName = mk ? mk.name : ''; it.gen = gen(it); }
     return out;
   },
 
@@ -67,7 +71,8 @@ export const CatalogUIMixin = {
     const c = this.catState(), P = this.game.progression;
     const q = c.q.trim().toLowerCase();
     let list = this.catItems().filter((it) => (c.mode === 'all' || it.mode === c.mode)
-      && (!q || it.name.toLowerCase().includes(q) || this.tr(it.role).toLowerCase().includes(q))
+      && (!q || it.name.toLowerCase().includes(q) || this.tr(it.role).toLowerCase().includes(q) || it.makerName.toLowerCase().includes(q))
+      && (!c.maker || it.maker === c.maker)
       && (!c.era || it.era === +c.era) && (!c.role || it.role === c.role)
       && (!c.cargo || it.carries.includes(c.cargo))
       && (!c.power || it.power >= c.power) && (!c.speed || it.speed >= c.speed)
@@ -181,6 +186,7 @@ export const CatalogUIMixin = {
       <div class="cat-top"><img alt="" src="${this.vehPreview(it.key, !it.unlocked)}" loading="lazy"/>
         <button class="icon-btn small cat-fav ${fav ? 'on' : ''}" data-act="catFav" data-arg="${it.key}" aria-pressed="${fav}" aria-label="${this.tr('cat_fav')}" data-tip="${this.tr(fav ? 'cat_unfav' : 'cat_fav')}">${icon('star')}</button></div>
       <div class="lc-head"><b>${esc(it.name)}</b></div>
+      <div class="lc-maker small muted">${esc(it.makerName)}${it.gen ? ` · ${this.tr('cat_gen', { g: it.gen })}` : ''}</div>
       <div class="lc-sub">${tags}</div>${carries}
       <div class="cat-stats">${stats}</div>
       ${trait}
@@ -203,6 +209,7 @@ export const CatalogUIMixin = {
     const filters = `<div class="cat-filters">
       <input class="inp" type="search" placeholder="${this.tr('cat_search')}" value="${esc(c.q)}" data-input="catQuery" aria-label="${this.tr('cat_search')}"/>
       <select data-change="catEra" aria-label="${this.tr('cat_era')}">${opt('', c.era, this.tr('cat_era') + ': ' + this.tr('cat_all'))}${[1, 2, 3, 4, 5, 6].map((e) => opt(e, c.era, this.tr('era_' + e))).join('')}</select>
+      <select data-change="catMaker" aria-label="${this.tr('cat_maker')}">${opt('', c.maker, this.tr('cat_maker') + ': ' + this.tr('cat_all'))}${MAKERS.filter((m) => all.some((it) => it.maker === m.id && (c.mode === 'all' || it.mode === c.mode))).map((m) => opt(m.id, c.maker, m.name)).join('')}</select>
       <select data-change="catRole" aria-label="${this.tr('cat_role')}">${opt('', c.role, this.tr('cat_role') + ': ' + this.tr('cat_all'))}${roles.map((r) => opt(r, c.role, this.tr(r))).join('')}</select>
       <select data-change="catCargo" aria-label="${this.tr('cat_cargo')}">${opt('', c.cargo, this.tr('cat_cargo') + ': ' + this.tr('cat_all'))}${CARGO_IDS.map((x) => opt(x, c.cargo, this.cargoName(x))).join('')}</select>
       <select data-change="catPower" aria-label="${this.tr('cat_k_power')}">${[0, 1000, 3000, 6000, 10000].map((v) => opt(v, c.power, v ? '≥ ' + fmt(v) + ' kW' : this.tr('cat_k_power') + ': ' + this.tr('cat_all'))).join('')}</select>
@@ -272,6 +279,7 @@ export const CatalogUIMixin = {
       },
       catEra: (el) => { c().era = el.value; c().n = PAGE; re(); },
       catRole: (el) => { c().role = el.value; c().n = PAGE; re(); },
+      catMaker: (el) => { c().maker = el.value; c().n = PAGE; re(); },
       catCargo: (el) => { c().cargo = el.value; c().n = PAGE; re(); },
       catPower: (el) => { c().power = +el.value || 0; c().n = PAGE; re(); },
       catSpeed: (el) => { c().speed = +el.value || 0; c().n = PAGE; re(); },

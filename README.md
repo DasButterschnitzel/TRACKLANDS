@@ -76,6 +76,7 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 - **Content packs:** vehicles and scenarios as JSON in `assets/packs` (see its README). Every entry is checked against a schema; bad entries are left out and listed in Settings → Content packs.
 - **Help and controls:** FIND doubles as a command palette (`Ctrl+K`), km/h or mph, a haptics switch, and handbook pages for roads, ports and airports, reputation, fleet care, saves and shortcuts.
 - **Branding:** a company logo (shape, symbol or initials, second colour, "surprise me") in the company panel and on a sign at the headquarters; three more station styles (harbour, art deco, steel and glass).
+- **Manufacturers:** every vehicle belongs to one of twelve invented makers (Hollin & Ruck, Northvale Motive, Voltaris, Citymotor, Skyhaven Aero …); within a maker its models form generations by era. The catalogue shows maker and generation, filters by maker and finds models by maker name.
 - **New games:** quick start from the title, game mode presets (relaxed builder, classic, tycoon challenge) and a map preview of the chosen seed and size. Terrain presets and an advanced generator are not offered: the generator has no terrain parameters besides an imported height map, and the game shows no options it cannot honour.
 
 ## Tests
@@ -105,6 +106,13 @@ node tests/run.mjs fuzz --from=1 --to=60         # fuzzer seed range
 | `monkey` | Deterministic random UI input on desktop, phone (touch, German) and tablet |
 | `ui` | Screenshots of the main screens from 1366×768 to 3440×1440, plus tablet and phone; layout checks for overflow, clipping, touch targets and missing strings |
 | `perf` | Tick cost with 8, 24 and 50 trains; a 60-minute session checked for leaks |
+| `savesafety` | Rolling backups, restore, the health check, crash snapshots and autosave settings |
+| `music` | Playlist, shuffle, repeat modes, mood/era preference and the now-playing note |
+| `campaign` | Campaign order, medals by finishing time, locked chapters |
+| `helpui` | Command palette, units, haptics switch, handbook topics, shortcuts |
+| `packs` | Content-pack schema: good entries load, bad ones are listed and left out |
+| `branding` | Company logo editor, headquarters sign, logo in the save, station styles |
+| `makers` | Every vehicle has a maker and a generation; catalogue maker filter and search |
 
 Screenshots and other output go to `tests/output/`. GitHub Actions runs the suites on every push (`.github/workflows/tests.yml`).
 

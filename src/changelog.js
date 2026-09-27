@@ -12,6 +12,7 @@ export const CHANGELOG = [
       'Finance analysis tab and profit overlay; rival strategies (coaches, town buses, truck freight) and takeovers',
       'Speeds up to 8×, day length, extreme weather, eras; FIND (F), bookmarks and sandbox tools',
       'Save safety: rolling backups, a save health check, crash snapshots and autosave settings',
+      'Manufacturers and generations in the vehicle catalogue, with a maker filter',
     ],
     de: [
       'Reisen: Fahrgäste und Fracht reisen durchgehend mit Zweck, steigen um und zahlen einmal bei Ankunft',
@@ -22,6 +23,7 @@ export const CHANGELOG = [
       'Finanzanalyse und Gewinn-Karte; Konkurrenzstrategien (Fernbusse, Stadtbusse, Lkw-Fracht) und Übernahmen',
       'Bis 8× Geschwindigkeit, Tageslänge, Extremwetter, Epochen; SUCHEN (F), Lesezeichen und Sandbox',
       'Speichersicherheit: rollierende Backups, Spielstand-Check, Absturz-Sicherung und Autosave-Einstellungen',
+      'Hersteller und Generationen im Fahrzeugkatalog, mit Herstellerfilter',
     ],
   },
   {
