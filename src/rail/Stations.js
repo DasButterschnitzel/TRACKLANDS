@@ -7,12 +7,14 @@
 import { cleanFin } from '../economy/Ledger.js';
 import { CargoFlows } from '../economy/Flows.js';
 import * as THREE from 'three';
-import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ } from '../util.js';
+import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ , layerOf, baseTile, LAYERS} from '../util.js';
 import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen, STORE_CLASSES, STORE_BASE, CARGO_STORE, CONTAINER_CARGO, facilitySlots } from '../config.js';
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
-import { K_NORMAL } from './RailNetwork.js';
+import { K_NORMAL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
+// ground a station can stand on: open land, a metro box underground, a viaduct
+const STATION_KINDS_OK = new Set([K_NORMAL, K_UNDER, K_DEEP, K_ELEV]);
 import { t as tr } from '../i18n.js';
-import { stationComplexModel, depotModel, stationModel } from './StationModels.js';
+import { stationComplexModel, depotModel, stationModel, metroEntrance } from './StationModels.js';
 import { ownerIdx, validOwner } from '../world/Owners.js';
 import { bandOf } from '../world/Eras.js';
 
@@ -197,12 +199,13 @@ export class StationSystem {
     if (tile < 0) return 'err_out_of_map';
     const r = net.tileBlockedReason(tile);
     if (r && !(acq && r === 'err_town_building' && acq(tile))) return r;
-    if (net.kind(tile) !== K_NORMAL) return 'err_bad_terrain';
+    // (a metro or viaduct station stands on its own layer; bridges and old mountain tunnels carry none)
+    if (!STATION_KINDS_OK.has(net.kind(tile))) return 'err_bad_terrain';
     if (net.special.has(tile) || net.waypoints.has(tile)) return 'err_occupied';
     if (kind === 'depot' && net.degree(tile) > 1) return 'err_depot_on_line';
     if (net.degree(tile) >= 3 && kind === 'station') return 'err_station_junction';
     if (net.conn[tile] && g.trains.tileReserved(tile)) return 'err_train_on_track';
-    const cost = kind === 'depot' ? g.economy.costs.depot() : g.economy.costs.station();
+    const cost = kind === 'depot' ? g.economy.costs.depot() : g.economy.costs.station(tile);
     if (!g.economy.canAfford(cost)) return 'err_no_money';
     return null;
   }
@@ -360,7 +363,7 @@ export class StationSystem {
       if (net.special.has(t) || net.waypoints.has(t)) return 'err_occupied';
       const r = net.tileBlockedReason(t);
       if (r && !(r === 'err_town_building' && acq(t))) return r === 'err_town_building' && permitBad === t ? 'err_permit_denied' : r;
-      if (net.kind(t) !== K_NORMAL) return 'err_bad_terrain';
+      if (!STATION_KINDS_OK.has(net.kind(t))) return 'err_bad_terrain';
       if (g.decor.at(t)) return 'err_occupied';
       if (net.conn[t]) {
         for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (d & 3)) return 'err_extend_blocked';
@@ -399,7 +402,7 @@ export class StationSystem {
       if (net.conn[t]) for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (dir & 3)) { error = 'err_extend_blocked'; bad = t; }
       if (error) break;
       tiles.push(t);
-      cost += i === 0 ? g.economy.costs.station() : Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
+      cost += i === 0 ? g.economy.costs.station(t) : Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
       p = t;
     }
     // extra platform tracks alongside (+1, -1, +2 ...), within the research limit
@@ -517,7 +520,7 @@ export class StationSystem {
     const links = this.previewLinks([tile], 0);
     const stn = this.newStation(tile, axis != null ? { axis } : null);
     stn.name = this.makeName(tile, links);
-    const cost = g.economy.costs.station();
+    const cost = g.economy.costs.station(tile);
     g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
     if (g.authority && !stn.owner) g.authority.onStationBuilt(stn);
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
@@ -544,7 +547,7 @@ export class StationSystem {
     if (net.conn[tile]) return done;
     const cands = [];
     for (const d of [0, 2, 4, 6]) {
-      const j = step(tile, d);
+      const j = net.nb(tile, d);
       if (j < 0 || !net.conn[j] || net.foreign(j)) continue;     // (never into another company's track)
       const sp = net.special.get(j);
       if (sp && sp.type === 'depot') continue;
@@ -606,7 +609,9 @@ export class StationSystem {
     this.list = this.list.filter((s) => s !== stn);
     for (const t of tiles) net.special.delete(t);
     // extra platform tracks (beyond the original tile) stay as plain track
-    if (stn.mesh) { this.group.remove(stn.mesh); stn.mesh.geometry.dispose(); }
+    if (stn.mesh) { stn.mesh.parent && stn.mesh.parent.remove(stn.mesh); stn.mesh.geometry.dispose(); }
+    if (stn.entMesh) { this.group.remove(stn.entMesh); stn.entMesh.geometry.dispose(); stn.entMesh = null; }
+    if (stn.entrance >= 0 && this.game.occupancy.owner[stn.entrance] === -stn.id) { this.game.occupancy.blocked[stn.entrance] = 0; this.game.occupancy.owner[stn.entrance] = 0; }
     let affected = 0;
     for (const t of g.trains.trains) {
       const before = t.route.length;
@@ -621,7 +626,7 @@ export class StationSystem {
     g.pax.invalidate();
     net.bumpVersion();
     for (const t of tiles) g.railView.markDirty(t);
-    const refund = Math.round(g.economy.costs.station() * COSTS.bulldozeRefund);
+    const refund = Math.round(g.economy.costs.station(stn.tile) * COSTS.bulldozeRefund);
     g.economy.earn(refund, 'refund', false);
     g.trains.onNetworkChanged(false);
     g.events.emit('stationRemoved', stn);
@@ -1017,8 +1022,29 @@ export class StationSystem {
     return null;
   }
 
+  // the scene group a station's mesh lives in: underground boxes are drawn
+  // with the underground railways (seen in the underground view)
+  meshGroup(stn) { const L = layerOf(stn.tile); return (L === 1 || L === 2) && this.game.railView ? this.game.railView.ugGroup : this.group; }
+  isUnderground(stn) { const L = layerOf(stn.tile); return L === 1 || L === 2; }
+  // a surface tile for an underground station's entrance: over the platform
+  // where the ground is free, else beside it (Phase 11)
+  entranceTile(stn) {
+    const g = this.game, occ = g.occupancy, W = g.world;
+    const free = (b) => b >= 0 && W.type[b] === 0 && (!occ.blocked[b] || occ.owner[b] === -stn.id) && !g.net.conn[b] && !g.net.special.has(b) && !(g.roads && g.roads.hasRoad && g.roads.hasRoad(b));
+    const tiles = this.allTiles(stn).map((t) => baseTile(t));
+    for (const b of tiles) if (free(b)) return b;
+    for (const b of tiles) for (let d = 0; d < 8; d++) { const n = step(b, d); if (free(n)) return n; }
+    return -1;
+  }
+  placeEntrance(stn) {
+    const occ = this.game.occupancy;
+    if (stn.entrance >= 0 && occ.owner[stn.entrance] === -stn.id) { occ.blocked[stn.entrance] = 0; occ.owner[stn.entrance] = 0; }
+    stn.entrance = this.isUnderground(stn) ? this.entranceTile(stn) : -1;
+    if (stn.entrance >= 0) { occ.blocked[stn.entrance] = 3; occ.owner[stn.entrance] = -stn.id; }
+  }
   buildVisual(stn) {
-    if (stn.mesh) { this.group.remove(stn.mesh); stn.mesh.geometry.dispose(); }
+    if (stn.mesh) { stn.mesh.parent && stn.mesh.parent.remove(stn.mesh); stn.mesh.geometry.dispose(); }
+    if (stn.entMesh) { this.group.remove(stn.entMesh); stn.entMesh.geometry.dispose(); stn.entMesh = null; }
     const style = STATION_STYLES.find((s) => s.id === stn.style) || STATION_STYLES[0];
     const F = this.frameOf(stn);
     const net = this.game.net;
@@ -1034,6 +1060,7 @@ export class StationSystem {
     const info = this.stationKind(stn, tracks);
     stn.kind = info.kind;
     info.era = bandOf(this.lookYear(stn));
+    if (this.isUnderground(stn)) { info.underground = true; info.deep = layerOf(stn.tile) === 2; }
     stationComplexModel(mb, stn.level, style, tracks, stn.facilities, stn.tracks.length > 1 && F.a % 2 === 1, info);
     // a competitor's station: a pole with a flag in its company colour at the
     // platform end (the building itself stays the town's style)
@@ -1051,8 +1078,23 @@ export class StationSystem {
     stn.layout = tracks;
     mesh.userData.station = stn.id;
     stn.mesh = mesh;
-    this.group.add(mesh);
+    this.meshGroup(stn).add(mesh);
     stn.pulse = 1;
+    // an underground station shows its entrance on the surface
+    if (this.isUnderground(stn)) {
+      if (stn.entrance == null || stn.entrance < 0 || this.game.occupancy.owner[stn.entrance] !== -stn.id) this.placeEntrance(stn);
+      if (stn.entrance >= 0) {
+        const em = new ModelBuilder();
+        metroEntrance(em, info.era, 0x2f6fa8);
+        const e = meshFrom(em.build());
+        const b = stn.entrance, W = this.game.world;
+        e.position.set(tileCX(b), W.tileH[b] + 0.02, tileCZ(b));
+        e.rotation.y = F.yaw;
+        e.userData.station = stn.id;
+        stn.entMesh = e;
+        this.group.add(e);
+      }
+    }
   }
 
   // Station type from what it is used for: goods stations by track roles /
@@ -1193,7 +1235,7 @@ export class StationSystem {
     this.nextId = okId(d.nextId) ? d.nextId : 1;
     const seen = new Set();
     for (const s of d.stations || []) {
-      if (typeof s.tile !== 'number' || s.tile < 0 || s.tile >= N * N || net.special.has(s.tile)) continue;
+      if (typeof s.tile !== 'number' || s.tile < 0 || s.tile >= N * N * LAYERS || net.special.has(s.tile)) continue;
       const id = okId(s.id) && !seen.has(s.id) ? s.id : undefined;
       if (id == null) for (const o of d.stations) if (o && okId(o.id)) this.nextId = Math.max(this.nextId, o.id + 1);
       const stn = id != null ? this.newStation(s.tile, { id }) : this.newStation(s.tile);
@@ -1218,7 +1260,7 @@ export class StationSystem {
       const used = new Set([s.tile]);
       if (Array.isArray(s.tracks)) s.tracks.forEach((tk, k) => {
         if (!tk || !Array.isArray(tk.tiles)) return;
-        const tiles = tk.tiles.filter((t) => typeof t === 'number' && t >= 0 && t < N * N && (!net.special.has(t)) && (k === 0 || !used.has(t)));
+        const tiles = tk.tiles.filter((t) => typeof t === 'number' && t >= 0 && t < N * N * LAYERS && (!net.special.has(t)) && (k === 0 || !used.has(t)));
         if (k === 0 && !tiles.includes(s.tile)) return;
         if (!tiles.length) return;
         for (const t of tiles) used.add(t);

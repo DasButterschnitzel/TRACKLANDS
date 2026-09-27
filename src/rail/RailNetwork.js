@@ -1,10 +1,13 @@
 // Rail network data model: per-tile 8-direction connections, track tiers,
 // construction planning (A*), train routing (Dijkstra over tile+heading states),
 // automatic block reservation (per tile lane) and step geometry sampling.
-import { N, TILE, DX, DZ, DLEN, opp, turnOf, idx, tx, tz, step, inMap, tileCX, tileCZ, clamp } from '../util.js';
+import { N, TILE, DX, DZ, DLEN, opp, turnOf, idx, tx, tz, step, inMap, tileCX, tileCZ, clamp, LAYERS, layerOf, baseTile, onLayer, L_SURFACE, L_SHALLOW, L_DEEP, L_ELEVATED } from '../util.js';
 import { TRACK_TIERS } from '../config.js';
 
-export const K_NORMAL = 0, K_BRIDGE = 1, K_TUNNEL = 2;
+export const K_NORMAL = 0, K_BRIDGE = 1, K_TUNNEL = 2, K_UNDER = 3, K_ELEV = 4, K_DEEP = 5;
+// how deep each layer runs below the ground (rail height), and how high a viaduct
+export const LAYER_DEPTH = [0, 1.7, 3.6, 0];
+export const ELEV_HEIGHT = 1.7;
 
 class Heap {
   constructor(cap) { this.k = new Float64Array(cap); this.v = new Int32Array(cap); this.n = 0; }
@@ -35,41 +38,54 @@ export class RailNetwork {
   constructor(game) {
     this.game = game;
     this.world = game.world;
-    this.conn = new Uint8Array(N * N);
-    this.tier = new Uint8Array(N * N);
+    this.conn = new Uint8Array(N * N * LAYERS);
+    this.tier = new Uint8Array(N * N * LAYERS);
     this.special = new Map(); // tile -> {type:'station'|'depot', id}
     this.version = 1;
-    this.resv = new Int32Array(N * N * 2);
-    this.single = new Uint8Array(N * N);        // 1 = single track (one shared lane)
+    this.resv = new Int32Array(N * N * LAYERS * 2);
+    this.single = new Uint8Array(N * N * LAYERS);        // 1 = single track (one shared lane)
     // who owns a track or station tile: 0 the player, k the k-th rival company
     // (src/world/RailRivals.js). Companies never build on, through or into each
     // other's tiles, so their networks never touch and share no signals.
-    this.own = new Uint8Array(N * N);
+    this.own = new Uint8Array(N * N * LAYERS);
     this.signals = new Map();                   // tile*8+dir -> {type:'block'|'path', oneway}
     this.waypoints = new Map();                 // tile -> {id, name}
     this.jres = new Map();                      // junction tile -> Map(trainId -> [a, b])
     this.switches = new Map();                  // junction tile -> {a, b, pa, pb, t}
-    this.runId = new Int32Array(N * N).fill(-1);
-    this.runDir = new Int8Array(N * N).fill(-1);
+    this.runId = new Int32Array(N * N * LAYERS).fill(-1);
+    this.runDir = new Int8Array(N * N * LAYERS).fill(-1);
     this.runLocks = new Map();                  // runId -> {sense, ids:Set}
     this._runsVersion = -1;
     this.nextWp = 1;
-    this.traffic = new Float32Array(N * N);
-    this.waitHeat = new Float32Array(N * N);
+    this.traffic = new Float32Array(N * N * LAYERS);
+    this.waitHeat = new Float32Array(N * N * LAYERS);
     this.routeCache = new Map();
     this.cacheVersion = 0;
     this._comp = null; this._compVersion = -1;
-    const S = N * N * 9;
+    const S = N * N * LAYERS * 9;
     this._g = new Float64Array(S); this._prev = new Int32Array(S); this._seen = new Uint32Array(S); this._stamp = 0;
     this._heap = new Heap(4096);
-    this._rg = new Float64Array(N * N * 8); this._rprev = new Int32Array(N * N * 8); this._rseen = new Uint32Array(N * N * 8); this._rstamp = 0;
+    this._rg = new Float64Array(N * N * LAYERS * 8); this._rprev = new Int32Array(N * N * LAYERS * 8); this._rseen = new Uint32Array(N * N * LAYERS * 8); this._rstamp = 0;
+    // links between layers: tile*8+dir -> the tile on the other layer
+    // (portals into a tunnel, ramps onto a viaduct), both ways
+    this.links = new Map();
+    this.hasLink = new Uint8Array(N * N * LAYERS);
+    this.NN = N * N;
     this.precomputeHeights();
   }
 
+  // the next tile of the railway from i in direction d: across a portal or
+  // ramp to another layer, else the neighbour on the same layer
+  nb(i, d) {
+    if (this.hasLink[i]) { const l = this.links.get(i * 8 + d); if (l !== undefined) return l; }
+    return step(i, d);
+  }
+  layer(i) { return layerOf(i); }
+
   precomputeHeights() {
     const W = this.world;
-    this.kindArr = new Uint8Array(N * N);
-    this.hArr = new Float32Array(N * N);
+    this.kindArr = new Uint8Array(N * N * LAYERS);
+    this.hArr = new Float32Array(N * N * LAYERS);
     for (let i = 0; i < N * N; i++) {
       const t = W.type[i];
       this.kindArr[i] = t === 1 ? K_BRIDGE : t === 2 ? K_TUNNEL : K_NORMAL;
@@ -92,6 +108,30 @@ export class RailNetwork {
       for (let d = 0; d < 8; d += 2) { const j = step(i, d); if (j >= 0) { s += this.hArr[j]; c++; } }
       if (c) this.hArr[i] = Math.min(this.hArr[i] * 0.5 + (s / c) * 0.5, 3.5);
     }
+    this.layerHeights();
+  }
+  // underground layers run a fixed depth below the ground (below the water on
+  // rivers and lakes), viaducts a fixed height above the surface railway
+  layerHeights() {
+    const W = this.world, NN = N * N;
+    for (let i = 0; i < NN; i++) {
+      const ground = Math.min(W.tileH[i], this.hArr[i], W.type[i] === 1 ? -0.8 : 9);
+      const g0 = W.type[i] === 2 ? Math.min(this.hArr[i], W.tileH[i]) : ground;
+      this.hArr[NN + i] = g0 - LAYER_DEPTH[L_SHALLOW];
+      this.hArr[2 * NN + i] = Math.min(g0, 0.4) - LAYER_DEPTH[L_DEEP];
+      this.kindArr[NN + i] = K_UNDER; this.kindArr[2 * NN + i] = K_DEEP;
+      this.hArr[3 * NN + i] = Math.max(this.hArr[i], W.tileH[i], 0.22) + ELEV_HEIGHT;
+      this.kindArr[3 * NN + i] = K_ELEV;
+    }
+    // smooth the shallow layer along the ground so tunnels do not jump
+    for (let pass = 0; pass < 3; pass++) for (let i = NN; i < 2 * NN; i++) {
+      let s = 0, c = 0;
+      for (let d = 0; d < 8; d += 2) { const j = step(i, d); if (j >= 0) { s += this.hArr[j]; c++; } }
+      if (c) this.hArr[i] = Math.min(this.hArr[i], this.hArr[i] * 0.5 + (s / c) * 0.5);
+    }
+    // the deep layer stays below the shallow one everywhere
+    for (let i = 0; i < NN; i++) this.hArr[2 * NN + i] = Math.min(this.hArr[2 * NN + i], this.hArr[NN + i] - 1.4);
+    this.h0 = this.hArr.slice();
   }
 
   kind(i) { return this.kindArr[i]; }
@@ -103,7 +143,7 @@ export class RailNetwork {
 
   // ---------- geometry ----------
   edgePoint(i, d, out) {
-    const j = step(i, d);
+    const j = this.nb(i, d);
     const h = j >= 0 ? (this.hArr[i] + this.hArr[j]) / 2 : this.hArr[i];
     out.x = tileCX(i) + DX[d] * TILE / 2; out.y = h; out.z = tileCZ(i) + DZ[d] * TILE / 2;
     return out;
@@ -159,16 +199,20 @@ export class RailNetwork {
   validateGraph(max = 50, notes = false) {
     const out = [];
     const add = (kind, tile, dir = null) => { if (out.length < max) out.push({ kind, tile, dir }); };
-    for (let i = 0; i < N * N; i++) {
+    for (let i = 0; i < N * N * LAYERS; i++) {
       const m = this.conn[i];
       if (!m) continue;
       let n = 0;
       for (let d = 0; d < 8; d++) {
         if (!((m >> d) & 1)) continue;
         n++;
-        const j = step(i, d);
+        const j = this.nb(i, d);
         if (j < 0) { add('outside', i, d); continue; }
         if (!((this.conn[j] >> opp(d)) & 1)) add('oneway', i, d);
+        // a link must be answered by its partner, and never joins a layer to itself
+        if (this.hasLink[i] && this.links.has(i * 8 + d) && (layerOf(j) === layerOf(i) || this.links.get(j * 8 + opp(d)) !== i)) add('bad_link', i, d);
+        // two layers only ever meet through a link
+        if (layerOf(j) !== layerOf(i) && !(this.hasLink[i] && this.links.has(i * 8 + d))) add('layer_leak', i, d);
       }
       // (a station or depot tile may end tracks at an angle: trains stop there and reverse)
       if (notes && n >= 2 && !this.special.has(i)) { const { stubs } = this.tilePairs(i); for (const d of stubs) add('sharp', i, d); }
@@ -181,7 +225,7 @@ export class RailNetwork {
   }
 
   // ---------- buildability ----------
-  isUnlocked(i) { return this.game.progression.regionUnlocked(this.world.region[i]); }
+  isUnlocked(i) { return this.game.progression.regionUnlocked(this.world.region[baseTile(i)]); }
   // the company acting now (a rival while its planner builds), as an owner index
   actorIdx() { const a = this.game.actor; return a ? a.idx : 0; }
   // a track/station tile that belongs to another company
@@ -190,7 +234,19 @@ export class RailNetwork {
     if (i < 0) return 'err_out_of_map';
     if (!this.isUnlocked(i)) return 'err_locked_region';
     if (this.foreign(i)) return 'err_not_yours';
-    const b = this.game.occupancy.blocked[i];
+    const L = layerOf(i);
+    // underground: nothing on the surface is in the way; the shallow layer
+    // cannot pass under the sea or a lake (only the deep one can), and never
+    // under a station's box on the other underground layer
+    if (L === L_SHALLOW || L === L_DEEP) {
+      const b0 = baseTile(i);
+      if (L === L_SHALLOW && this.world.type[b0] === 1) return 'err_tunnel_water';
+      const other = onLayer(b0, L === L_SHALLOW ? L_DEEP : L_SHALLOW), so = this.special.get(other);
+      if (so && so.type === 'station') return 'err_under_station';
+      return null;
+    }
+    // viaducts pass over roads, track and water but not over buildings or works
+    const b = this.game.occupancy.blocked[baseTile(i)];
     if (b === 1) return 'err_town_building';
     if (b === 2) return 'err_industry';
     if (b === 3) return 'err_occupied';   // docks and airports
@@ -235,6 +291,53 @@ export class RailNetwork {
     return res;
   }
 
+  // A drag on another layer (Phase 11): the surface tiles aS -> bS are
+  // mapped onto layer L and routed there. Where the tile above (or below)
+  // an end already carries a track end, the new line joins it through a
+  // portal or ramp: that end's own tile is replaced by the upper tile,
+  // linked to the second tile of the route. Returns a plan like
+  // planConstruction with plan.links = [{i, d, L}].
+  planLayered(aS, bS, tierId, L) {
+    const res = { ok: false, tiles: [], dirs: [], cost: 0, bridges: 0, tunnels: 0, newTiles: 0, reason: null, invalid: [], links: [], layer: L };
+    if (aS < 0 || bS < 0) { res.reason = 'err_out_of_map'; return res; }
+    if (L === L_SURFACE) return this.planConstruction(aS, bS, tierId);
+    const up = L === L_DEEP ? L_SHALLOW : L_SURFACE;
+    const A = onLayer(aS, L), B = onLayer(bS, L);
+    // a track end on the level above (below for a viaduct) joins through a portal
+    const joins = (t) => { const u = onLayer(t, up); return this.conn[u] && this.degree(u) === 1 && !this.special.has(u) && !this.hasLink[u] ? u : -1; };
+    const ua = joins(aS), ub = joins(bS);
+    const base = this.planConstruction(A, B, tierId);
+    if (!base.ok) return Object.assign(res, base, { links: [], layer: L });
+    let tiles = base.tiles.slice(), dirs = base.dirs.slice();
+    const links = [];
+    if (ua >= 0 && tiles.length >= 3) {
+      const d0 = dirs[0];
+      // the portal leaves the upper track end straight on (its existing leg is behind it)
+      if (!this.hasDir(ua, opp(d0))) { res.reason = 'err_portal_angle'; res.invalid.push(aS); res.tiles = tiles; return res; }
+      const err = this.canLink(ua, d0, L);
+      if (err) { res.reason = err; res.invalid.push(aS); res.tiles = tiles; return res; }
+      tiles = [ua, ...tiles.slice(1)]; links.push({ i: ua, d: d0, L });
+    }
+    if (ub >= 0 && tiles.length >= 3) {
+      const n = tiles.length, dl = dirs[dirs.length - 1];
+      if (!this.hasDir(ub, dl)) { res.reason = 'err_portal_angle'; res.invalid.push(bS); res.tiles = tiles; return res; }
+      const err = this.canLink(ub, opp(dl), L);
+      if (err) { res.reason = err; res.invalid.push(bS); res.tiles = tiles; return res; }
+      tiles = [...tiles.slice(0, n - 1), ub]; links.push({ i: ub, d: opp(dl), L });
+    }
+    // cost: the layer's track, plus each portal
+    const cost = this.game.economy.costs;
+    let total = 0, newTiles = 0;
+    for (const t of tiles) {
+      if (layerOf(t) !== L) continue;
+      if (!this.conn[t]) { newTiles++; total += cost.trackTile(tierId, this.kindArr[t]); }
+      else if (this.tier[t] < tierId) total += cost.trackTile(tierId, K_NORMAL) - cost.trackTile(this.tier[t], K_NORMAL);
+    }
+    total += links.length * cost.portal(L);
+    Object.assign(res, { ok: true, tiles, dirs, links, cost: Math.round(total), newTiles, tunnels: L === L_ELEVATED ? 0 : 1, bridges: L === L_ELEVATED ? 1 : 0 });
+    return res;
+  }
+
   passable(i, isEnd) {
     if (i < 0) return false;
     if (this.tileBlockedReason(i)) return false;
@@ -276,7 +379,7 @@ export class RailNetwork {
       for (let d = 0; d < 8; d++) {
         if (h !== 8 && turnOf(h, d) > 2) continue;
         if (isDepot && this.conn[i] && !this.hasDir(i, d)) continue;
-        const j = step(i, d);
+        const j = this.nb(i, d);
         if (j < 0) continue;
         const isEnd = j === b;
         if (!this.passable(j, isEnd)) continue;
@@ -285,7 +388,8 @@ export class RailNetwork {
         // diagonal crossing check
         if (d & 1) {
           const x = tx(i), z = tz(i);
-          const i1 = idx(x + DX[d], z), i2 = idx(x, z + DZ[d]);
+          const L0 = i - baseTile(i);
+          const i1 = L0 + idx(x + DX[d], z), i2 = L0 + idx(x, z + DZ[d]);
           const cross = dirOf(-DX[d], DZ[d]);
           if (this.hasDir(i1, cross) && !(this.hasDir(i, d))) continue;
           void i2;
@@ -320,7 +424,7 @@ export class RailNetwork {
 
   // ---------- mutations ----------
   connect(i, d) {
-    const j = step(i, d);
+    const j = this.nb(i, d);
     if (j < 0) return;
     const a = this.actorIdx();
     if (!this.conn[i] && !this.special.has(i)) this.own[i] = a;
@@ -330,15 +434,74 @@ export class RailNetwork {
   }
   disconnectTile(i) {
     const m = this.conn[i];
-    for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const j = step(i, d); if (j >= 0) { this.conn[j] &= ~(1 << opp(d)); this.signals.delete(j * 8 + opp(d)); if (!this.conn[j]) { this.tier[j] = 0; this.single[j] = 0; this.waypoints.delete(j); } } }
+    for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const j = this.nb(i, d); if (j >= 0) { this.conn[j] &= ~(1 << opp(d)); this.signals.delete(j * 8 + opp(d)); if (!this.conn[j]) { this.tier[j] = 0; this.single[j] = 0; this.waypoints.delete(j); } } }
     this.conn[i] = 0;
     this.tier[i] = 0;
     this.single[i] = 0;
     if (!this.special.has(i)) this.own[i] = 0;
-    for (let d = 0; d < 8; d++) { const j = step(i, d); if (j >= 0 && !this.conn[j] && !this.special.has(j)) this.own[j] = 0; }
+    for (let d = 0; d < 8; d++) { const j = this.nb(i, d); if (j >= 0 && !this.conn[j] && !this.special.has(j)) this.own[j] = 0; }
     for (let d = 0; d < 8; d++) this.signals.delete(i * 8 + d);
     this.waypoints.delete(i);
+    // a portal or ramp goes with its track
+    if (this.hasLink[i]) for (let d = 0; d < 8; d++) { const l = this.links.get(i * 8 + d); if (l !== undefined) this.unlink(i, d); }
   }
+
+  // ---------- layers: portals and ramps ----------
+  // A link joins tile i (direction d) to the tile over or under its neighbour
+  // on another layer: a tunnel portal (surface -> shallow), a shaft ramp
+  // (shallow -> deep) or a viaduct ramp (surface -> elevated). The tile on
+  // the upper side becomes a ramp: its rail height is halfway, so no train
+  // ever jumps a level on one tile.
+  linkTarget(i, d, L) { const j = step(i, d); return j < 0 ? -1 : onLayer(j, L); }
+  // which layers a link may join: surface-tunnel, tunnel-deep tunnel, surface-viaduct
+  canLinkLayers(a, b) {
+    const k = a < b ? `${a}${b}` : `${b}${a}`;
+    return k === `${L_SURFACE}${L_SHALLOW}` || k === `${L_SHALLOW}${L_DEEP}` || k === `${L_SURFACE}${L_ELEVATED}`;
+  }
+  canLink(i, d, L) {
+    const Li = layerOf(i);
+    if (L === Li || L < 0 || L >= LAYERS || !this.canLinkLayers(Li, L)) return 'err_bad_layer';
+    const j = this.linkTarget(i, d, L);
+    if (j < 0) return 'err_out_of_map';
+    // a ramp tile carries one straight track only (no junction, no station)
+    if (this.special.has(i) || this.degree(i) > 1 || (this.conn[i] && !this.hasDir(i, opp(d)))) return 'err_ramp_tile';
+    if (this.special.has(j) || this.degree(j) > 1 || (this.conn[j] && !this.hasDir(j, d))) return 'err_ramp_tile';
+    if (this.hasLink[i] || this.hasLink[j]) return 'err_ramp_tile';
+    // a portal needs open ground on the surface side (no water)
+    if (Li === L_SURFACE && this.world.type[baseTile(i)] === 1) return 'err_tunnel_water';
+    return this.tileBlockedReason(i) || this.tileBlockedReason(j);
+  }
+  link(i, d, L) {
+    const j = this.linkTarget(i, d, L);
+    if (j < 0) return false;
+    this.links.set(i * 8 + d, j); this.links.set(j * 8 + opp(d), i);
+    this.hasLink[i] = 1; this.hasLink[j] = 1;
+    const a = this.actorIdx();
+    if (!this.conn[i] && !this.special.has(i)) this.own[i] = a;
+    if (!this.conn[j] && !this.special.has(j)) this.own[j] = a;
+    this.conn[i] |= 1 << d; this.conn[j] |= 1 << opp(d);
+    this.rampHeights(i, j);
+    return true;
+  }
+  // the upper tile of a link sits halfway between the two levels
+  rampHeights(i, j) {
+    const up = this.h0[i] >= this.h0[j] ? i : j, dn = up === i ? j : i;
+    if (layerOf(up) === L_ELEVATED || layerOf(dn) === L_ELEVATED) { const lo = layerOf(up) === L_ELEVATED ? dn : up; this.hArr[lo] = (this.h0[lo] + this.h0[lo === up ? dn : up]) / 2; return; }
+    this.hArr[up] = (this.h0[up] + this.h0[dn]) / 2;
+  }
+  unlink(i, d) {
+    const j = this.links.get(i * 8 + d);
+    if (j === undefined) return;
+    this.links.delete(i * 8 + d); this.links.delete(j * 8 + opp(d));
+    this.conn[i] &= ~(1 << d); this.conn[j] &= ~(1 << opp(d));
+    for (const t of [i, j]) {
+      let any = false;
+      for (let e = 0; e < 8; e++) if (this.links.has(t * 8 + e)) any = true;
+      if (!any) { this.hasLink[t] = 0; this.hArr[t] = this.h0[t]; }
+    }
+  }
+  // the link a tile carries: {d, to} or null
+  linkOf(i) { if (!this.hasLink[i]) return null; for (let d = 0; d < 8; d++) { const l = this.links.get(i * 8 + d); if (l !== undefined) return { d, to: l }; } return null; }
 
   // ---------- routing ----------
   // start: {tile, heading, fromCenter}. fromCenter: head at the tile center with `heading` (may be null)
@@ -404,7 +567,7 @@ export class RailNetwork {
         if (!this.hasDir(si, d)) continue;
         if (start.heading != null && turnOf(start.heading, d) > 3) continue;
         if (!this.exitAllowed(si, d)) continue;
-        const j = step(si, d);
+        const j = this.nb(si, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, stepCost(si, start.heading, d) * 0.5, -2 - d);
       }
@@ -424,7 +587,7 @@ export class RailNetwork {
         if (!((m >> d) & 1)) continue;
         if (turnOf(h, d) > 3) continue;
         if (!this.exitAllowed(i, d)) continue;
-        const j = step(i, d);
+        const j = this.nb(i, d);
         if (j < 0 || !this._enterOk(j, minTier, target)) continue;
         push(j * 8 + d, gs + stepCost(i, h, d), s);
       }
@@ -466,15 +629,15 @@ export class RailNetwork {
 
   components() {
     if (this._compVersion === this.version && this._comp) return this._comp;
-    const comp = new Int32Array(N * N).fill(-1);
+    const comp = new Int32Array(N * N * LAYERS).fill(-1);
     let c = 0;
-    const q = new Int32Array(N * N);
-    for (let i = 0; i < N * N; i++) {
+    const q = new Int32Array(N * N * LAYERS);
+    for (let i = 0; i < N * N * LAYERS; i++) {
       if (!this.conn[i] || comp[i] >= 0) continue;
       let qh = 0, qt = 0; q[qt++] = i; comp[i] = c;
       while (qh < qt) {
         const u = q[qh++], m = this.conn[u];
-        for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const v = step(u, d); if (v >= 0 && comp[v] < 0 && this.conn[v]) { comp[v] = c; q[qt++] = v; } }
+        for (let d = 0; d < 8; d++) if ((m >> d) & 1) { const v = this.nb(u, d); if (v >= 0 && comp[v] < 0 && this.conn[v]) { comp[v] = c; q[qt++] = v; } }
       }
       c++;
     }
@@ -635,30 +798,30 @@ export class RailNetwork {
     this.runId.fill(-1); this.runDir.fill(-1);
     const isRun = (i) => i >= 0 && this.conn[i] && this.single[i] && !this.isJunction(i) && !this.special.has(i);
     let rid = 0;
-    for (let i = 0; i < N * N; i++) {
+    for (let i = 0; i < N * N * LAYERS; i++) {
       if (!isRun(i) || this.runId[i] >= 0) continue;
       // walk to one end of the chain
       let start = i, prevT = -1, guard = 0;
       for (;;) {
         let nxt = -1;
-        for (let d = 0; d < 8; d++) if (this.hasDir(start, d)) { const j = step(start, d); if (j !== prevT && isRun(j) && j !== i) { nxt = j; break; } }
-        if (nxt < 0 || guard++ > N * N) break;
+        for (let d = 0; d < 8; d++) if (this.hasDir(start, d)) { const j = this.nb(start, d); if (j !== prevT && isRun(j) && j !== i) { nxt = j; break; } }
+        if (nxt < 0 || guard++ > N * N * LAYERS) break;
         prevT = start; start = nxt;
         if (start === i) break;
       }
       // walk forward assigning ids and forward direction
       let cur = start, prev = -1; guard = 0;
-      while (cur >= 0 && this.runId[cur] < 0 && guard++ < N * N) {
+      while (cur >= 0 && this.runId[cur] < 0 && guard++ < N * N * LAYERS) {
         this.runId[cur] = rid;
         let fwd = -1, nextT = -1;
         // continue along the chain (unassigned run neighbour first), else any exit away from prev
         for (let d = 0; d < 8; d++) {
           if (!this.hasDir(cur, d)) continue;
-          const j = step(cur, d);
+          const j = this.nb(cur, d);
           if (j !== prev && isRun(j) && this.runId[j] < 0) { fwd = d; nextT = j; break; }
         }
-        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && step(cur, d) !== prev) { fwd = d; break; }
-        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && step(cur, d) === prev) fwd = opp(d);
+        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && this.nb(cur, d) !== prev) { fwd = d; break; }
+        if (fwd < 0) for (let d = 0; d < 8; d++) if (this.hasDir(cur, d) && this.nb(cur, d) === prev) fwd = opp(d);
         this.runDir[cur] = fwd;
         prev = cur; cur = nextT;
       }
@@ -669,10 +832,10 @@ export class RailNetwork {
   // tiles of a single-track run in order along the track
   runTiles(rid) {
     const set = [];
-    for (let i = 0; i < N * N; i++) if (this.runId[i] === rid) set.push(i);
+    for (let i = 0; i < N * N * LAYERS; i++) if (this.runId[i] === rid) set.push(i);
     if (set.length < 2) return set;
     const inRun = new Set(set);
-    const nb = (i) => { const o = []; for (let d = 0; d < 8; d++) if (this.hasDir(i, d)) { const j = step(i, d); if (inRun.has(j)) o.push(j); } return o; };
+    const nb = (i) => { const o = []; for (let d = 0; d < 8; d++) if (this.hasDir(i, d)) { const j = this.nb(i, d); if (inRun.has(j)) o.push(j); } return o; };
     let start = set.find((i) => nb(i).length <= 1);
     if (start == null) start = set[0];
     const out = [], seen = new Set();
@@ -708,23 +871,23 @@ export class RailNetwork {
   // section id per tile, -2 junction, -3 station, -1 no track.
   sections() {
     if (this._secVersion === this.version && this._sec) return this._sec;
-    const sec = new Int32Array(N * N).fill(-1);
-    const parent = new Int32Array(N * N);
-    for (let i = 0; i < N * N; i++) parent[i] = i;
+    const sec = new Int32Array(N * N * LAYERS).fill(-1);
+    const parent = new Int32Array(N * N * LAYERS);
+    for (let i = 0; i < N * N * LAYERS; i++) parent[i] = i;
     const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
     const plain = (i) => this.conn[i] && !this.isJunction(i) && !this.special.has(i);
-    for (let i = 0; i < N * N; i++) {
+    for (let i = 0; i < N * N * LAYERS; i++) {
       if (!plain(i)) continue;
       for (let d = 0; d < 4; d++) {
         if (!this.hasDir(i, d)) continue;
-        const j = step(i, d);
+        const j = this.nb(i, d);
         if (j < 0 || !plain(j)) continue;
         if (this.signals.has(i * 8 + d) || this.signals.has(j * 8 + opp(d))) continue;
         const a = find(i), b = find(j);
         if (a !== b) parent[a] = b;
       }
     }
-    for (let i = 0; i < N * N; i++) {
+    for (let i = 0; i < N * N * LAYERS; i++) {
       if (!this.conn[i]) continue;
       sec[i] = this.special.has(i) ? -3 : this.isJunction(i) ? -2 : find(i);
     }
@@ -744,29 +907,53 @@ export class RailNetwork {
 
   // ---------- serialization ----------
   serialize() {
+    const NN = N * N, sub = (a) => a.subarray(0, NN);
+    // the other layers (tunnels, viaducts) only when something was built there
+    const up = this.conn.subarray(NN).some((x) => x);
+    const ly = up ? { conn: b64(this.conn.subarray(NN)), tier: b64(this.tier.subarray(NN)), single: b64(this.single.subarray(NN)), own: b64(this.own.subarray(NN)) } : undefined;
+    const links = [];
+    for (const [k, j] of this.links) { const i = k >> 3; if (i < j) links.push([i, k & 7, j]); }
     return {
-      conn: b64(this.conn), tier: b64(this.tier), single: b64(this.single), own: this.own.some((x) => x) ? b64(this.own) : undefined,
+      conn: b64(sub(this.conn)), tier: b64(sub(this.tier)), single: b64(sub(this.single)), own: sub(this.own).some((x) => x) ? b64(sub(this.own)) : undefined,
+      ly, links: links.length ? links : undefined,
       signals: [...this.signals].map(([k, v]) => (v.y ? [k, v.type, v.oneway ? 1 : 0, v.y] : [k, v.type, v.oneway ? 1 : 0])),
       waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
     };
   }
   deserialize(d) {
     if (!d) return;
+    const NN = N * N, ALL = NN * LAYERS;
     const c = unb64(d.conn), t = unb64(d.tier);
-    if (c.length === N * N) this.conn.set(c);
-    if (t.length === N * N) this.tier.set(t);
-    // sanitize: connections must be reciprocal and in-map
-    for (let i = 0; i < N * N; i++) {
+    if (c.length === NN) this.conn.set(c);
+    if (t.length === NN) this.tier.set(t);
+    this.own.fill(0);
+    if (typeof d.single === 'string' && d.single) { const sg = unb64(d.single); if (sg.length === NN) this.single.set(sg); }
+    if (typeof d.own === 'string' && d.own) { const ow = unb64(d.own); if (ow.length === NN) for (let i = 0; i < NN; i++) this.own[i] = ow[i] <= 8 ? ow[i] : 0; }
+    // the other layers (Phase 11; older saves have none: everything on the surface)
+    const L = d.ly && typeof d.ly === 'object' ? d.ly : null;
+    if (L) {
+      const set = (arr, str, clampTo) => { if (typeof str !== 'string') return; const u = unb64(str); if (u.length !== ALL - NN) return; for (let k = 0; k < u.length; k++) arr[NN + k] = clampTo != null && u[k] > clampTo ? 0 : u[k]; };
+      set(this.conn, L.conn); set(this.tier, L.tier, 3); set(this.single, L.single, 1); set(this.own, L.own, 8);
+    }
+    if (Array.isArray(d.links)) for (const e of d.links) {
+      if (!Array.isArray(e)) continue;
+      const [i, dd, j] = e;
+      if (!Number.isInteger(i) || !Number.isInteger(j) || !Number.isInteger(dd) || dd < 0 || dd > 7 || i < 0 || j < 0 || i >= ALL || j >= ALL) continue;
+      const Lj = layerOf(j);
+      if (Lj === layerOf(i) || this.linkTarget(i, dd, Lj) !== j || this.links.has(i * 8 + dd) || this.links.has(j * 8 + opp(dd))) continue;
+      if (this.canLinkLayers(layerOf(i), Lj)) this.link(i, dd, Lj);
+    }
+    // sanitize: connections must be reciprocal, in the map, and cross layers only at links
+    for (let i = 0; i < ALL; i++) {
+      if (!this.conn[i]) continue;
       for (let dd = 0; dd < 8; dd++) if (this.hasDir(i, dd)) {
-        const j = step(i, dd);
+        const j = this.nb(i, dd);
         if (j < 0 || !this.hasDir(j, opp(dd))) this.conn[i] &= ~(1 << dd);
       }
       if (this.tier[i] > 3) this.tier[i] = 0;
     }
-    if (typeof d.single === 'string' && d.single) { const sg = unb64(d.single); if (sg.length === N * N) this.single.set(sg); }
-    this.own.fill(0);
-    if (typeof d.own === 'string' && d.own) { const ow = unb64(d.own); if (ow.length === N * N) for (let i = 0; i < N * N; i++) this.own[i] = ow[i] <= 8 ? ow[i] : 0; }
-    for (let i = 0; i < N * N; i++) if (!this.conn[i]) this.single[i] = 0; else if (this.single[i] > 1) this.single[i] = 1;
+    for (const [k, j] of [...this.links]) { const i = k >> 3, dd = k & 7; if (!this.hasDir(i, dd) || !this.hasDir(j, opp(dd))) this.unlink(i, dd); }
+    for (let i = 0; i < ALL; i++) if (!this.conn[i]) this.single[i] = 0; else if (this.single[i] > 1) this.single[i] = 1;
     if (Array.isArray(d.signals)) for (const e of d.signals) {
       if (!Array.isArray(e)) continue;
       const [k, type, ow, y] = e;

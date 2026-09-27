@@ -253,7 +253,21 @@ export function stationComplexModel(mb, level, style, tracks, facilities, crampe
   const y0 = Math.max(...tracks.map((t) => t.y));
   const B = { midX, bz: zMax + 1.55, y0, x0, x1, zMin, zMax };
   const goods = kind === 'freight' || kind === 'yard' || kind === 'intermodal';
-  platforms(mb, tracks, kind, level, style.roof, !!(E && E.modern));
+  platforms(mb, tracks, kind, level, style.roof, !!(E && E.modern) || !!info.underground);
+  // a metro station box (Phase 11): tiled walls, a ceiling with light strips,
+  // a mezzanine bridge; the entrance stands on the surface (metroEntrance)
+  if (info.underground) {
+    const w = zMax - zMin + 2.4, zc = (zMax + zMin) / 2, L = x1 - x0 + 0.4;
+    const wall = info.deep ? 0xc8ccd2 : 0xe2d8c4, band = info.lineColor || 0x2f6fa8;
+    for (const sg of [1, -1]) {
+      mb.box(L, 1.7, 0.08, wall, { x: midX, y: y0 - 0.1, z: zc + sg * w / 2 });
+      mb.box(L, 0.14, 0.09, band, { x: midX, y: y0 + 0.9, z: zc + sg * w / 2 - sg * 0.01 });
+    }
+    mb.box(L, 0.08, w, 0x6a6e74, { x: midX, y: y0 + 1.6, z: zc });
+    for (let x = x0 + 0.6; x < x1 - 0.3; x += 1.4) mb.box(0.9, 0.03, 0.12, 0xfff4d8, { x, y: y0 + 1.56, z: zc, glow: true });
+    if (tracks.length) mb.box(0.8, 0.08, w - 0.2, 0x9aa0a6, { x: x1 - 0.8, y: y0 + 1.1, z: zc });
+    return;
+  }
   if (kind === 'halt' && tracks.length === 1) {
     const tk = tracks[0], cx = (tk.x0 + tk.x1) / 2;
     for (const x of [-0.35, 0.35]) mb.cyl(0.025, 0.025, 0.5, 5, POST, { x: cx + x, y: tk.y + 0.24, z: tk.z + 0.92 });
@@ -305,6 +319,26 @@ export function stationComplexModel(mb, level, style, tracks, facilities, crampe
     if (level >= 2) mb.box(0.56, 0.05, w, kind === 'hs' ? GLASS_MODERN : style.roof, { x: bx, y: y0 + h + 0.46, z: zc, glow: kind === 'hs' });
   }
   facilityModels(mb, facilities, B);
+}
+
+// the surface entrance of an underground station: a canopy over stairs and
+// a pylon with the metro sign, in the station's era (Phase 11)
+export function metroEntrance(mb, era = 3, color = 0x2f6fa8) {
+  const old = era <= 1;
+  mb.box(0.9, 0.05, 0.62, 0x8a8680, { y: 0 });
+  mb.box(0.62, 0.04, 0.4, 0x2a2c30, { y: 0.04 });                       // the stair opening
+  for (const x of [-0.42, 0.42]) mb.box(0.04, 0.34, 0.6, old ? 0x3a4a3a : 0xd8dde2, { x, y: 0.02 });   // balustrades
+  if (old) {
+    for (const x of [-0.42, 0.42]) mb.cyl(0.025, 0.025, 0.8, 6, 0x2a3a2a, { x, y: 0.02, z: -0.3 });
+    mb.box(0.96, 0.08, 0.2, 0x2a3a2a, { y: 0.82, z: -0.3 });
+    mb.sphere(0.07, 0, 0xfff0c0, { x: 0.46, y: 0.95, z: -0.3, glow: true });
+  } else {
+    mb.box(0.98, 0.04, 0.7, era >= 4 ? 0xbcd8e8 : 0x6a7078, { y: 0.7 });            // canopy
+    for (const x of [-0.46, 0.46]) mb.box(0.04, 0.7, 0.04, 0x9aa0a6, { x, y: 0, z: -0.32 });
+  }
+  mb.box(0.08, 1.2, 0.08, 0x3a3d42, { x: 0.62, y: 0, z: -0.34 });
+  mb.box(0.26, 0.26, 0.05, color, { x: 0.62, y: 1.2, z: -0.34, glow: true });
+  mb.box(0.14, 0.14, 0.055, 0xffffff, { x: 0.62, y: 1.26, z: -0.34, glow: true });
 }
 
 export function depotModel(mb) {

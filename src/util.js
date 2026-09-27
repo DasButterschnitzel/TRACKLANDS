@@ -16,9 +16,19 @@ export const opp = (d) => (d + 4) & 7;
 export const turnOf = (a, b) => { const t = Math.abs(a - b); return t > 4 ? 8 - t : t; };
 export const idx = (x, z) => z * N + x;
 export const tx = (i) => i % N;
-export const tz = (i) => (i / N) | 0;
+export const tz = (i) => ((i / N) | 0) % N;
 export const inMap = (x, z) => x >= 0 && z >= 0 && x < N && z < N;
-export const step = (i, d) => { const x = tx(i) + DX[d], z = tz(i) + DZ[d]; return inMap(x, z) ? idx(x, z) : -1; };
+// Infrastructure layers (Phase 11): tile ids carry their layer, so every
+// railway structure (surface, tunnel, viaduct) is a tile of its own and two
+// tracks at different heights over the same ground never connect. Layer 0 is
+// the surface (every tile id of older saves), 1 and 2 are shallow and deep
+// underground, 3 is elevated. step() stays on the tile's layer; RailNetwork
+// links layers only through portals and ramps.
+export const LAYERS = 4, L_SURFACE = 0, L_SHALLOW = 1, L_DEEP = 2, L_ELEVATED = 3;
+export const layerOf = (i) => (i / (N * N)) | 0;
+export const baseTile = (i) => i % (N * N);
+export const onLayer = (i, L) => (i % (N * N)) + L * N * N;
+export const step = (i, d) => { const x = tx(i) + DX[d], z = tz(i) + DZ[d]; return inMap(x, z) ? i - (i % (N * N)) + idx(x, z) : -1; };
 export const cheb = (a, b) => Math.max(Math.abs(tx(a) - tx(b)), Math.abs(tz(a) - tz(b)));
 export const dirBetween = (a, b) => {
   const dx = Math.sign(tx(b) - tx(a)), dz = Math.sign(tz(b) - tz(a));

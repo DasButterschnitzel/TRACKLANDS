@@ -387,7 +387,7 @@ export class TrainSystem {
   }
   // the neighbour of tile i in direction d carries two lanes
   doubleAt(i, d) {
-    const net = this.net, j = step(i, d);
+    const net = this.net, j = this.net.nb(i, d);
     if (j < 0 || !net.conn[j]) return false;
     const sp = net.special.get(j);
     return !net.single[j] || (sp && sp.type === 'station') || net.isJunction(j);
@@ -497,7 +497,7 @@ export class TrainSystem {
     for (let k = this.stepAt(t, t.s); k < t.steps.length - 1; k++) {
       const a = t.steps[k], b = t.steps[k + 1];
       if (a.outH == null) continue;
-      if (!this.net.hasDir(a.tile, a.outH) || step(a.tile, a.outH) !== b.tile) { this.truncateAfter(t, Math.max(t.s, a.s1)); break; }
+      if (!this.net.hasDir(a.tile, a.outH) || this.net.nb(a.tile, a.outH) !== b.tile) { this.truncateAfter(t, Math.max(t.s, a.s1)); break; }
     }
     t.veh = t.veh.slice().reverse().map((v) => ({ k: v.k, id: v.id, r: !v.r, anim: v.anim, ...(v.lv ? { lv: v.lv } : {}) }));
     // lanes are relative to the direction of travel: mirrored, the body is now
@@ -554,7 +554,7 @@ export class TrainSystem {
     acc += TILE / 2;
     let guard = 0;
     while (acc < L && guard++ < 40) {
-      const prev = step(cur, opp(heading));
+      const prev = this.net.nb(cur, opp(heading));
       if (prev < 0 || !net.hasDir(cur, opp(heading))) break;
       let hp = null, best = 9;
       for (let d = 0; d < 8; d++) {
@@ -619,7 +619,7 @@ export class TrainSystem {
       const r = net.findRoute({ tile: st.tile, heading: st.inH, fromCenter: true }, tgt.tile, ro);
       if (r && (r.steps.length || st.tile === tgt.tile)) opts.push({ kind: 'center', route: r, cost: r.length });
     } else if (st.outH != null && net.hasDir(st.tile, st.outH) && t.s < st.s1 + 1e-6) {
-      const nt = step(st.tile, st.outH);
+      const nt = this.net.nb(st.tile, st.outH);
       if (nt >= 0) {
         const r = net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, tgt.tile, ro);
         if (r) opts.push({ kind: 'forward', route: r, cost: r.length + (st.s1 - t.s) / TILE });
@@ -632,7 +632,7 @@ export class TrainSystem {
       const revCost = 1.5 + L / TILE + (canLead(t.veh[t.veh.length - 1]) ? 0 : 3);
       if (ts && ts.inH != null) {
         const rh = opp(ts.inH);
-        const nt = step(ts.tile, rh);
+        const nt = this.net.nb(ts.tile, rh);
         if (nt >= 0 && net.hasDir(ts.tile, rh)) {
           const r = net.findRoute({ tile: nt, heading: rh, fromCenter: false }, tgt.tile, ro);
           if (r) opts.push({ kind: 'reverse', route: r, cost: r.length + revCost });
@@ -1213,7 +1213,7 @@ export class TrainSystem {
       const reach = last.outH != null ? last.s1 - 0.05 : last.sc;
       if (reach >= need) break;
       if (last.outH == null || !net.hasDir(last.tile, last.outH)) break;
-      const j = step(last.tile, last.outH);
+      const j = this.net.nb(last.tile, last.outH);
       const sp = j >= 0 ? net.special.get(j) : null;
       if (j < 0 || net.isJunction(j) || (sp && sp.type === 'depot')) break;
       const st = this.appendStep(t, { tile: j, inH: last.outH, outH: net.smoothExit(j, last.outH) });
@@ -1666,7 +1666,7 @@ export class TrainSystem {
         const b = k < k1 ? S[k + 1] : null;
         if (!b) break;
         if (a.outH == null || b.inH == null) continue;
-        if (a.outH !== b.inH || step(a.tile, a.outH) !== b.tile) { out.push({ train: t.id, k, kind: 'discontinuous', tile: a.tile }); break; }
+        if (a.outH !== b.inH || this.net.nb(a.tile, a.outH) !== b.tile) { out.push({ train: t.id, k, kind: 'discontinuous', tile: a.tile }); break; }
       }
     }
     return out;
@@ -1718,7 +1718,7 @@ export class TrainSystem {
       }
       if (s.station && s.station === t.target && k >= t.steps.length - 4) lim = Math.min(lim, 70);
       if (s.kind !== K_BRIDGE && s.kind !== K_TUNNEL) {
-        const dh = Math.abs(net.railH(s.tile) - (s.inH != null ? net.railH(step(s.tile, opp(s.inH))) || 0 : net.railH(s.tile)));
+        const dh = Math.abs(net.railH(s.tile) - (s.inH != null ? net.railH(this.net.nb(s.tile, opp(s.inH))) || 0 : net.railH(s.tile)));
         const slope = Math.min(0.45, dh * 0.22 * perf.slopeMul) * (st.model.trait === 'mountain_goat' ? 0.4 : 1);
         lim *= 1 - slope;
       }
@@ -1793,7 +1793,7 @@ export class TrainSystem {
       if (!tg.length) return;
       tgt = tg[0];
     }
-    const nt = step(last.tile, last.outH);
+    const nt = this.net.nb(last.tile, last.outH);
     const r = net.findRoute({ tile: nt, heading: last.outH, fromCenter: false }, tgt.tile, { minTier: t._st.minTier, allowReverse: true, targetHeading: tgt.heading });
     if (!r) { if (t.mode === 'manual' && t.route.length) t.routeIdx = (t.routeIdx - 1 + t.route.length) % t.route.length; return; }
     this.truncateAfter(t, last.s1);
@@ -1822,7 +1822,7 @@ export class TrainSystem {
       if (!this.net.canReserve(s.keys, t.id)) avoid.add(s.tile);
     }
     if (!avoid.size) return false;
-    const nt = step(st.tile, st.outH);
+    const nt = this.net.nb(st.tile, st.outH);
     // re-dispatch to another platform of the same station when possible
     const stn = t.target != null ? this.game.stations.byId(t.target) : null;
     if (stn) {
@@ -2253,6 +2253,8 @@ export class TrainSystem {
         if (sc - c.len / 2 < sMin - 0.05) visible = false;
         const tile = worldToTile(mesh.position.x, mesh.position.z);
         if (tile >= 0 && this.net.kind(tile) === K_TUNNEL && this.net.conn[tile]) visible = false;
+        // below ground (a metro or tunnel layer): only in the underground view
+        if (visible && tile >= 0 && mesh.position.y < this.game.world.tileH[tile] - 0.6 && !(this.game.layerView && this.game.layerView.showsUnderground())) visible = false;
         mesh.visible = visible;
         const sc2 = t.spawnFx > 0 ? 1 + Math.sin((1 - t.spawnFx) * Math.PI * 3) * 0.08 * t.spawnFx : 1;
         mesh.scale.setScalar(sc2 * (0.6 + 0.4 * t.fade));

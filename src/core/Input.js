@@ -429,6 +429,10 @@ export class Input {
       case '+': case '=': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) + 1); g.ui.renderToolbar(); } else g.camera.zoom(0.8); break;
       case '-': if (g.construction.tool === 'station') { g.construction.setStationTracks((g.construction.stationTracks || 1) - 1); g.ui.renderToolbar(); } else g.camera.zoom(1.25); break;
       case 'h': g.ui.toggleHeatmap(); break;
+      // layers (Phase 11): U cycles the view, [ and ] the layer the rail tools build on
+      case 'u': g.layerView.cycle(); g.ui.renderToolbar(); break;
+      case '[': g.construction.setLayer(Math.max(0, g.construction.layer - 1)); g.ui.renderToolbar(); break;
+      case ']': g.construction.setLayer(Math.min(3, g.construction.layer + 1)); g.ui.renderToolbar(); break;
       case 'p': g.ui.setPhoto(!g.ui.photoOn()); break;
       case '`': e.preventDefault(); g.ui.toggleDebug(); break;
       default: break;

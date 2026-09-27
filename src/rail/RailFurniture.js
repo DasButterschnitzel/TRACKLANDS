@@ -2,7 +2,7 @@
 // set / moving / locked), manual block & path signals with live aspects,
 // automatic signals (shown in the SIGNALS overlay) and waypoint markers.
 import * as THREE from 'three';
-import { N, TILE, DX, DZ, step, opp, tileCX, tileCZ, turnOf } from '../util.js';
+import { N, TILE, DX, DZ, step, opp, tileCX, tileCZ, turnOf , LAYERS} from '../util.js';
 import { ModelBuilder } from '../core/ModelBuilder.js';
 import { signalStyle } from '../world/Eras.js';
 
@@ -53,7 +53,7 @@ export class RailFurniture {
 
   edge(i, d) {
     const net = this.game.net;
-    const j = step(i, d);
+    const j = net.nb(i, d);
     const h = j >= 0 ? (net.railH(i) + net.railH(j)) / 2 : net.railH(i);
     return { x: tileCX(i) + DX[d] * TILE / 2, y: h, z: tileCZ(i) + DZ[d] * TILE / 2 };
   }
@@ -75,7 +75,7 @@ export class RailFurniture {
     const approaching = net.keyHolder(own[0]);
     let cur = tile, h = dir;
     for (let n = 0; n < 12; n++) {
-      const j = step(cur, h);
+      const j = net.nb(cur, h);
       if (j < 0 || !net.hasDir(cur, h)) break;
       const out = net.smoothExit(j, h);
       const keys = net.laneKeys({ tile: j, inH: h, outH: out });
@@ -167,12 +167,12 @@ export class RailFurniture {
   autoSignals() {
     const net = this.game.net, out = [];
     net.computeRuns();
-    for (let i = 0; i < N * N && out.length < 900; i++) {
+    for (let i = 0; i < N * N * LAYERS && out.length < 900; i++) {
       if (!net.conn[i]) continue;
       const sp = net.special.get(i);
       for (let d = 0; d < 8; d++) {
         if (!net.hasDir(i, d)) continue;
-        const j = step(i, d);
+        const j = net.nb(i, d);
         if (j < 0) continue;
         const spj = net.special.get(j);
         const leavingStation = sp && sp.type === 'station' && !(spj && spj.type === 'station' && spj.id === sp.id);

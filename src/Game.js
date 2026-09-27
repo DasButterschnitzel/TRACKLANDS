@@ -2,12 +2,13 @@
 // simulation separately from rendering, wires feedback (audio/VFX/UI) to
 // gameplay events, and handles saving plus offline progress.
 import * as THREE from 'three';
-import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp, setMapSize } from './util.js';
+import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp, setMapSize , LAYERS} from './util.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION } from './config.js';
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
 import { RailNetwork, b64, unb64 } from './rail/RailNetwork.js';
 import { RailRenderer } from './rail/RailRenderer.js';
+import { LayerView } from './world/LayerView.js';
 import { StationSystem } from './rail/Stations.js';
 import { PaxFlow } from './rail/PaxFlow.js';
 import { Lines } from './trains/Lines.js';
@@ -102,6 +103,7 @@ export class Game {
     this.world.view = new WorldView(this, this.world);
     this.net = new RailNetwork(this);
     this.railView = new RailRenderer(this);
+    this.layerView = new LayerView(this);
     this.stations = new StationSystem(this);
     this.industries = new IndustrySystem(this);
     this.industries.init(this.world);
@@ -328,7 +330,7 @@ export class Game {
     const net = this.net;
     net.computeRuns();
     const runHeat = new Map();
-    for (let i = 0; i < N * N; i++) if (net.runId[i] >= 0 && net.waitHeat[i] > 0) runHeat.set(net.runId[i], Math.max(runHeat.get(net.runId[i]) || 0, net.waitHeat[i]));
+    for (let i = 0; i < N * N * LAYERS; i++) if (net.runId[i] >= 0 && net.waitHeat[i] > 0) runHeat.set(net.runId[i], Math.max(runHeat.get(net.runId[i]) || 0, net.waitHeat[i]));
     // busy single track: suggest a passing loop in the middle of the run,
     // long enough for the longest train (with a highlight on hover)
     const need = Math.min(12, 1 + Math.ceil(this.trains.trains.reduce((m, t) => Math.max(m, this.trains.trainLength(t)), 0) / TILE));
@@ -548,6 +550,7 @@ export class Game {
     this.env.update(dt, gameDt, this.clock);
     this.world.view.update(dt, this.clock);
     this.railView.update(dt);
+    this.layerView.update(dt);
     this.furniture.update(dt);
     this.overlays.update(dt);
     this.trains.updateVisuals(dt);

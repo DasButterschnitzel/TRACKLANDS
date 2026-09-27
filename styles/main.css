@@ -1018,3 +1018,6 @@ ul.health li.warn { color: var(--warn, #b07a10); }
 details.card.history > summary { cursor: pointer; font-weight: 600; }
 /* file inputs have a fixed intrinsic width in WebKit: keep them inside the dialog */
 .modal input[type=file] { min-width: 0; max-width: 100%; flex: 1 1 0; font-size: 12px; }
+/* layer view button (Phase 11) */
+.tool.layerview { position: relative; }
+.tool.layerview .lv-tag { position: absolute; right: 2px; bottom: 2px; font-size: 9px; font-style: normal; font-weight: 700; line-height: 1; padding: 1px 3px; border-radius: 4px; background: var(--accent, #2fa39a); color: #fff; }

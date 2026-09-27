@@ -5,7 +5,7 @@
 // then the ordinary build runs. Cancelling (or undo) refunds the full price.
 // Pending works are saved with the game.
 import * as THREE from 'three';
-import { N, TILE, tileCX, tileCZ } from '../util.js';
+import { N, TILE, tileCX, tileCZ , LAYERS} from '../util.js';
 import { validOwner } from '../world/Owners.js';
 
 const KINDS = ['track', 'bulldoze', 'station', 'addTrack'];
@@ -160,7 +160,7 @@ export class Works {
   deserialize(s) {
     this.list = [];
     if (!s || typeof s !== 'object') { this.rebuild(); return; }
-    const okTile = (t) => Number.isInteger(t) && t >= 0 && t < N * N;
+    const okTile = (t) => Number.isInteger(t) && t >= 0 && t < N * N * LAYERS;
     for (const w of Array.isArray(s.list) ? s.list : []) {
       if (!w || typeof w !== 'object' || !KINDS.includes(w.kind) || !w.a || typeof w.a !== 'object') continue;
       const zone = (Array.isArray(w.zone) ? w.zone : []).filter(okTile);

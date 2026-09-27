@@ -148,6 +148,11 @@ export const TRACK_TIERS = [
 export const COSTS = {
   bridgeExtra: 45,
   tunnelExtra: 110,
+  subShallow: 150,      // Phase 11: per tile of shallow (cut-and-cover) tunnel
+  subDeep: 290,         // per tile of deep bored tunnel
+  viaduct: 80,          // per tile of elevated viaduct
+  portal: 900, shaft: 1400, rampElev: 600,
+  ugStation: 4.5, elevStation: 2.2,   // station cost factors underground / on a viaduct
   station: 150,
   stationUpgrade: [0, 400, 1500, 6000, 25000, 70000],
   stationUpgradeLevel: [1, 2, 6, 12, 20, 28], // company level needed for station level index
@@ -473,6 +478,12 @@ export const RESEARCH = [
   { id: 'cheap_track_2', cat: 'rail', cost: 6, req: ['tunnel_eng'], fx: { trackCost: -0.15 } },
   { id: 'electric_rail', cat: 'rail', cost: 8, req: ['reinforced_rail'], fx: {} },
   { id: 'high_speed_rail', cat: 'rail', cost: 15, req: ['electric_rail', 'improved_curves'], fx: {} },
+  // Phase 11: urban railways, tunnels and viaducts
+  { id: 'urban_rail', cat: 'rail', cost: 7, req: ['electric_rail', 'tunnel_eng'], fx: {} },
+  { id: 'deep_tunnelling', cat: 'rail', cost: 10, req: ['urban_rail'], fx: { tunnelCost: -0.15 } },
+  { id: 'high_capacity_metro', cat: 'rail', cost: 9, req: ['urban_rail'], fx: {} },
+  { id: 'auto_metro', cat: 'signals', cost: 11, req: ['high_capacity_metro'], fx: {} },
+  { id: 'large_interchanges', cat: 'stations', cost: 8, req: ['urban_rail'], fx: {} },
   { id: 'maglev_tech', cat: 'rail', cost: 25, req: ['high_speed_rail'], fx: {} },
   // SIGNALS
   { id: 'block_signals', cat: 'signals', cost: 2, req: [], fx: {} },

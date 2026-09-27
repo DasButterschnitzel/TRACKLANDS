@@ -3,7 +3,8 @@
 import { cheb, RNG, hashStr, dateKey, tx, tz } from '../util.js';
 import {
   CARGO, REVENUE, TRACK_TIERS, COSTS, HEAVY_CARGO, EVENTS, CONTRACT_SLOTS, DAILY_POOL, REGIONS, INDUSTRIES, LOCOS, trainUpgradeCost, modeFit, CARGO_CLASS } from '../config.js';
-import { K_BRIDGE, K_TUNNEL } from '../rail/RailNetwork.js';
+import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from '../rail/RailNetwork.js';
+import { layerOf } from '../util.js';
 import { heritageFare } from './Fleet.js';
 import { NO_FX } from '../world/Owners.js';
 
@@ -36,9 +37,16 @@ export class Economy {
         let c = TRACK_TIERS[tier].cost * (1 + fx.trackCost);
         if (kind === K_BRIDGE) c += COSTS.bridgeExtra * (1 + fx.bridgeCost) * (1 + tier * 0.6);
         if (kind === K_TUNNEL) c += COSTS.tunnelExtra * (1 + fx.tunnelCost) * (1 + tier * 0.6);
+        // Phase 11: bored tunnels by depth, and viaducts
+        if (kind === K_UNDER) c += COSTS.subShallow * (1 + fx.tunnelCost);
+        if (kind === K_DEEP) c += COSTS.subDeep * (1 + fx.tunnelCost);
+        if (kind === K_ELEV) c += COSTS.viaduct * (1 + fx.bridgeCost);
         return c * this.mul();
       },
-      station() { return Math.round(COSTS.station * (1 + self.game.progression.fx.buildingCost) * this.mul()); },
+      // a tunnel portal, shaft or viaduct ramp
+      portal(L) { return Math.round((L === 3 ? COSTS.rampElev : L === 2 ? COSTS.shaft : COSTS.portal) * this.mul()); },
+      // (a station box underground or on a viaduct costs more: Phase 11)
+      station(tile) { const L = tile == null || tile < 0 ? 0 : layerOf(tile); return Math.round(COSTS.station * (L === 1 || L === 2 ? COSTS.ugStation : L === 3 ? COSTS.elevStation : 1) * (1 + self.game.progression.fx.buildingCost) * this.mul()); },
       depot() { return Math.round(COSTS.depot * (1 + self.game.progression.fx.buildingCost) * this.mul()); },
       stationUpgrade(lvl) { return Math.round(COSTS.stationUpgrade[lvl] * (1 + self.game.progression.fx.buildingCost) * this.mul()); },
       train(m) { return Math.round(m.price * self.game.difficulty.costMul); },

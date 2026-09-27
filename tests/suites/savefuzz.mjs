@@ -78,6 +78,8 @@ export async function run({ browser, base, quick, args }) {
   const N = to - from, seed0 = first + from;
   const corpus = args.corpus ? JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fuzz-corpus.json'), 'utf8')).savefuzz : [];
   const prod = productionSave();
+  // a save with tunnels, a viaduct, portals, a metro station and a train (Phase 11)
+  const layersBase = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'save-layers.json'), 'utf8'));
   const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 900, height: 650 } });
   await startTestGame(page, 5 * 1013);
   const v3 = await page.evaluate(() => { const g = window.__tracklands.game; g.runRailFuzz(5, 2); return JSON.parse(JSON.stringify(g.serialize())); });
@@ -91,7 +93,7 @@ export async function run({ browser, base, quick, args }) {
     if (job.corpus) {
       const e = job.corpus;
       if (e.case != null) { job.caseNo = e.case; }
-      else { prodBase = e.base === 'prod'; base0 = JSON.parse(JSON.stringify(prodBase ? prod : v3)); applyOps(base0, e.ops); log = e.ops; label = `corpus "${e.id}"`; }
+      else { prodBase = e.base === 'prod'; base0 = JSON.parse(JSON.stringify(e.base === 'layers' ? layersBase : prodBase ? prod : v3)); applyOps(base0, e.ops); log = e.ops; label = `corpus "${e.id}"`; }
     }
     if (job.caseNo != null) {
       const caseNo = job.caseNo;
@@ -132,6 +134,9 @@ export async function run({ browser, base, quick, args }) {
         const sids = g.stations.list.map((s) => s.id);
         if (new Set(sids).size !== sids.length || sids.some((i) => !Number.isInteger(i) || i < 0 || i >= 900000)) probs.push('station ids ' + sids.slice(0, 5).join(','));
         for (const ind of g.industries.list) for (const f of ['out', 'inp']) for (const c2 in ind[f] || {}) if (!Number.isFinite(ind[f][c2])) probs.push('ind ' + ind.id);
+        // the rail graph stays sound on every layer, whatever the save held
+        const gv = g.net.validateGraph(3);
+        if (gv.length) probs.push('graph ' + gv.map((x) => x.kind + '@' + x.tile).join(','));
         let d; try { d = JSON.parse(JSON.stringify(g.serialize())); } catch (e) { probs.push('serialize ' + e.message); }
         if (d) { const m = S.migrate(d); const v = m ? S.validate(m) : 'migrate null'; if (v) probs.push('roundtrip ' + v); }
         return probs.join('; ');

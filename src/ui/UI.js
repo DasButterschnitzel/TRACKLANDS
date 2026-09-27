@@ -85,6 +85,7 @@ export class UI {
     this.bindPreviews();
     E.on('overlay', () => this.renderToolbar());
     E.on('consistChanged', () => { if (this.panel === 'builder') this.refreshPanel(); });
+    E.on('layerView', () => this.renderToolbar());
   }
 
   detach() {
@@ -220,6 +221,7 @@ export class UI {
     const menuOpen = $('#overlay-menu') && !$('#overlay-menu').hidden;
     $('#toolbar').innerHTML = `<div class="tools">${tools.map(btn).join('')}</div>
       <div class="tools2">
+        <button class="tool small layerview ${g.layerView && g.layerView.mode !== 'surface' ? 'on' : ''}" data-act="layerView" data-tip="${this.tr('layer_view')}: ${this.tr('lv_' + (g.layerView ? g.layerView.mode : 'surface'))} (U)" aria-label="${this.tr('layer_view')}">${icon('tunnel')}<i class="lv-tag">${this.tr('lv_short_' + (g.layerView ? g.layerView.mode : 'surface'))}</i></button>
         <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')} (O)${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
         <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
       </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>`;
@@ -237,8 +239,11 @@ export class UI {
     }
     // contextual sub bar
     let sub = '';
+    // the layer the rail tools build on (Phase 11): surface, tunnel, deep tunnel, viaduct
+    const layerChips = () => `<span class="sub-label">${this.tr('layer')}</span>` + [0, 1, 2, 3].map((L) => { const ok = C.layerUnlocked(L); return `<button class="chip small ${C.layer === L ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="buildLayer" data-arg="${L}" data-tip="${ok ? this.tr('layer_' + L + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + (L === 2 ? 'deep_tunnelling' : 'urban_rail'))}">${ok ? '' : icon('lock')}<b>${this.tr('layer_' + L)}</b></button>`; }).join('') + '<span class="sub-sep"></span>';
+    if (['track', 'station', 'depot', 'signal', 'bulldoze'].includes(C.tool) && (C.layer || C.layerUnlocked(1))) sub = layerChips();
     if (C.tool === 'track') {
-      sub = TRACK_TIERS.map((t, i) => {
+      sub += TRACK_TIERS.map((t, i) => {
         const locked = t.research && !g.progression.research.has(t.research);
         return `<button class="chip ${C.tier === i ? 'on' : ''} ${locked ? 'locked' : ''}" data-act="tier" data-arg="${i}" data-tip="${locked ? this.tr('requires') + ': ' + this.tr('res_' + t.research) : this.tr('tier_' + t.id + '_desc')}">${locked ? icon('lock') : ''}<b>${this.tr('tier_' + t.id)}</b><small>${fmt(g.economy.costs.trackTile(i, 0))}● · ${this.spd(t.speed)}</small></button>`;
       }).join('') + `<span class="sub-sep"></span>` + ['double', 'single'].map((m) => `<button class="chip ${C.trackMode === m ? 'on' : ''}" data-act="trackMode" data-arg="${m}" data-tip="${this.tr('track_' + m + '_desc')}"><b>${this.tr('track_' + m)}</b><small>${m === 'single' ? '−35%' : this.tr('track_double_small')}</small></button>`).join('') + `<span class="sub-hint">${this.tr('hint_drag_track')}</span>`;
@@ -249,13 +254,13 @@ export class UI {
       }).join('');
     } else if (C.tool === 'station') {
       const n = C.stationTracks || 1, mx = g.stations.maxTracks();
-      sub = `<span class="sub-label">${this.tr('st_tracks')}</span><button class="icon-btn small" data-act="stTracks" data-arg="-1" ${n <= 1 ? 'disabled' : ''} aria-label="${this.tr('st_tracks_less')}">${icon('minus')}</button><b class="sub-num" aria-live="polite">${n}</b><button class="icon-btn small" data-act="stTracks" data-arg="1" ${n >= mx ? 'disabled' : ''} aria-label="${this.tr('st_tracks_more')}" data-tip="${n >= mx ? this.tr('err_tracks_research') : ''}">${icon('plus')}</button><span class="sub-sep"></span><span class="sub-hint">${icon('station')} ${this.tr('hint_station_drag', { cost: fmt(g.economy.costs.station()) })}</span>${this.helpBtn('stations')}`;
+      sub += `<span class="sub-label">${this.tr('st_tracks')}</span><button class="icon-btn small" data-act="stTracks" data-arg="-1" ${n <= 1 ? 'disabled' : ''} aria-label="${this.tr('st_tracks_less')}">${icon('minus')}</button><b class="sub-num" aria-live="polite">${n}</b><button class="icon-btn small" data-act="stTracks" data-arg="1" ${n >= mx ? 'disabled' : ''} aria-label="${this.tr('st_tracks_more')}" data-tip="${n >= mx ? this.tr('err_tracks_research') : ''}">${icon('plus')}</button><span class="sub-sep"></span><span class="sub-hint">${icon('station')} ${this.tr('hint_station_drag', { cost: fmt(g.economy.costs.station()) })}</span>${this.helpBtn('stations')}`;
     } else if (C.tool === 'depot') {
-      sub = `<span class="sub-hint">${icon('depot')} ${this.tr('hint_depot', { cost: fmt(g.economy.costs.depot()) })}</span>`;
+      sub += `<span class="sub-hint">${icon('depot')} ${this.tr('hint_depot', { cost: fmt(g.economy.costs.depot()) })}</span>`;
     } else if (C.tool === 'bulldoze') {
-      sub = `<span class="sub-hint">${icon('bulldoze')} ${this.tr('hint_bulldoze')}</span>`;
+      sub += `<span class="sub-hint">${icon('bulldoze')} ${this.tr('hint_bulldoze')}</span>`;
     } else if (C.tool === 'signal') {
-      sub = ['block', 'path', 'oneway'].map((ty) => {
+      sub += ['block', 'path', 'oneway'].map((ty) => {
         const ok = C.signalUnlocked(ty);
         const res = { block: 'block_signals', path: 'path_signals', oneway: 'one_way_signals' }[ty];
         return `<button class="chip ${C.signalType === ty ? 'on' : ''} ${ok ? '' : 'locked'}" data-act="signalType" data-arg="${ty}" data-tip="${ok ? this.tr('sig_' + ty + '_desc') : this.tr('requires') + ': ' + this.tr('res_' + res)}">${ok ? '' : icon('lock')}<b>${this.tr('sig_' + ty)}</b><small>${fmt(g.economy.costs.signal())}●</small></button>`;
@@ -1440,6 +1445,8 @@ export class UI {
       speed: (a) => g().setSpeed(+a),
       tool: (a) => { if (a === 'train') { this.openBuilder({}); return; } g().construction.setTool(a); if (window.innerWidth < 760) this.closePanel(); },
       tier: (a) => g().construction.setTier(+a),
+      buildLayer: (a) => { g().construction.setLayer(+a); this.renderToolbar(); },
+      layerView: () => { g().layerView.cycle(); this.renderToolbar(); },
       musicPrev: () => { this.app.audio.musicMgr.prev(); this.refreshPanel(); },
       musicNext: () => { this.app.audio.musicMgr.next(); this.refreshPanel(); },
       musicToggle: () => { this.app.audio.musicMgr.toggle(); this.refreshPanel(); },

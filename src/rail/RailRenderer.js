@@ -2,8 +2,8 @@
 // bridges, tunnel portals, electrification and high speed details. Rebuilds only
 // dirty chunks. New track pieces animate into place.
 import * as THREE from 'three';
-import { N, TILE, DX, DZ, step, tx, tz, idx, tileCX, tileCZ, opp } from '../util.js';
-import { K_BRIDGE, K_TUNNEL } from './RailNetwork.js';
+import { N, TILE, DX, DZ, step, tx, tz, idx, tileCX, tileCZ, opp, LAYERS, layerOf, onLayer } from '../util.js';
+import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
 
 const CH = 16;
 const LANE = 0.34;
@@ -51,6 +51,11 @@ export class RailRenderer {
     this.game = game;
     this.group = new THREE.Group();
     game.scene.add(this.group);
+    // underground railways (Phase 11) draw into their own group, shown by
+    // the underground view (world/LayerView.js) and hidden on the surface
+    this.ugGroup = new THREE.Group();
+    this.ugGroup.visible = false;
+    game.scene.add(this.ugGroup);
     this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
     this.chunks = new Map();
     this.dirty = new Set();
@@ -66,8 +71,10 @@ export class RailRenderer {
     };
   }
 
-  markDirty(tile) { if (tile >= 0) this.dirty.add(((tz(tile) / CH) | 0) * 100 + ((tx(tile) / CH) | 0)); }
-  markAll() { for (let cz = 0; cz < N / CH; cz++) for (let cx = 0; cx < N / CH; cx++) this.dirty.add(cz * 100 + cx); }
+  // chunk keys carry the layer: layer * 100000 + cz * 100 + cx
+  markDirty(tile) { if (tile >= 0) this.dirty.add(layerOf(tile) * 100000 + ((tz(tile) / CH) | 0) * 100 + ((tx(tile) / CH) | 0)); }
+  markAll() { for (let L = 0; L < LAYERS; L++) for (let cz = 0; cz < N / CH; cz++) for (let cx = 0; cx < N / CH; cx++) this.dirty.add(L * 100000 + cz * 100 + cx); }
+  groupOf(L) { return L === 1 || L === 2 ? this.ugGroup : this.group; }
 
   update(dt) {
     if (this.dirty.size) {
@@ -94,29 +101,33 @@ export class RailRenderer {
   }
 
   rebuildChunk(key) {
-    const cz = Math.floor(key / 100), cx = key % 100;
+    const L = Math.floor(key / 100000), k2 = key % 100000;
+    const cz = Math.floor(k2 / 100), cx = k2 % 100;
     const old = this.chunks.get(key);
-    if (old) { this.group.remove(old); old.geometry.dispose(); this.chunks.delete(key); }
+    const grp = this.groupOf(L);
+    if (old) { grp.remove(old); old.geometry.dispose(); this.chunks.delete(key); }
     const gb = new GeoBuf();
     const net = this.game.net;
     for (let z = cz * CH; z < cz * CH + CH; z++) for (let x = cx * CH; x < cx * CH + CH; x++) {
-      const i = idx(x, z);
+      const i = onLayer(idx(x, z), L);
       if (!net.conn[i] || this.animTiles.has(i)) continue;
       this.tileGeometry(gb, i, 0);
     }
     if (!gb.p.length) return;
     const mesh = new THREE.Mesh(gb.build(), this.mat);
     mesh.receiveShadow = true;
-    mesh.castShadow = true;
+    mesh.castShadow = L !== 1 && L !== 2;
     this.chunks.set(key, mesh);
-    this.group.add(mesh);
+    grp.add(mesh);
   }
 
   animateBuild(tiles) {
     const net = this.game.net;
     const gb = new GeoBuf();
     gb.d = [];
-    const list = tiles.filter((t) => net.conn[t]);
+    // (underground pieces appear at once: nobody watches them rise)
+    const list = tiles.filter((t) => net.conn[t] && layerOf(t) !== 1 && layerOf(t) !== 2);
+    for (const t of tiles) if (net.conn[t] && (layerOf(t) === 1 || layerOf(t) === 2)) this.markDirty(t);
     list.forEach((t, k) => { this.tileGeometry(gb, t, k * 0.035); this.animTiles.add(t); });
     // neighbors of animated tiles keep their old look until done; rebuild their chunks now
     for (const t of list) this.markDirty(t);
@@ -172,15 +183,25 @@ export class RailRenderer {
     const spreads = pairList.map(([a, b], ci) => {
       const cv = curves[ci];
       if (!single) return cv.map(() => 1);
-      const dbl = (d) => { if (d == null) return 0; const j = step(i, d); return j >= 0 && net.conn[j] && (!net.single[j] || (net.special.get(j) || {}).type === 'station') ? 1 : 0; };
+      const dbl = (d) => { if (d == null) return 0; const j = net.nb(i, d); return j >= 0 && net.conn[j] && (!net.single[j] || (net.special.get(j) || {}).type === 'station') ? 1 : 0; };
       const fa = dbl(a), fb = dbl(b);
       return cv.map((_, k) => { const t = k / (cv.length - 1); return Math.max(fa * Math.max(0, 1 - t / 0.55), fb * Math.max(0, 1 - (1 - t) / 0.55)); });
     });
+    const under = kind === K_UNDER || kind === K_DEEP;
+    // a surface ramp into a tunnel: a portal where the track dips below ground
+    if (net.hasLink[i] && layerOf(i) === 0) {
+      const l = net.linkOf(i);
+      if (l && (layerOf(l.to) === 1)) {
+        const e = edge(net, i, l.d);
+        this.portal(gb, e[0] - DX[l.d] * 0.1, e[1] - 0.2, e[2] - DZ[l.d] * 0.1, Math.atan2(DZ[l.d], -DX[l.d]), delay);
+      }
+    }
+    if (under) this.tube(gb, i, kind === K_DEEP, delay);
     if (kind === K_TUNNEL) {
       // portals where the tunnel meets open ground
       for (let d = 0; d < 8; d++) {
         if (!net.hasDir(i, d)) continue;
-        const j = step(i, d);
+        const j = net.nb(i, d);
         if (j >= 0 && net.kind(j) === K_TUNNEL) continue;
         const e = edge(net, i, d);
         const yaw = Math.atan2(-DZ[d], DX[d]);
@@ -188,11 +209,11 @@ export class RailRenderer {
       }
       return;
     }
-    const bridge = kind === K_BRIDGE;
+    const bridge = kind === K_BRIDGE || kind === K_ELEV;
     if (bridge) for (let d = 0; d < 8; d++) {
       if (!net.hasDir(i, d)) continue;
-      const j = step(i, d);
-      if (j < 0 || net.kind(j) === K_BRIDGE) continue;
+      const j = net.nb(i, d);
+      if (j < 0 || net.kind(j) === K_BRIDGE || net.kind(j) === K_ELEV) continue;
       const e = edge(net, i, d);
       this.abutment(gb, e, d, e[1] - 0.24, Math.min(net.railH(j), e[1]) - 0.9, Math.atan2(-DZ[d], DX[d]), delay);
     }
@@ -284,8 +305,8 @@ export class RailRenderer {
           }
         }
       }
-      // overhead line for electric / high speed
-      if (tier >= 2) {
+      // overhead line for electric / high speed (underground: a third rail instead)
+      if (tier >= 2 && !under) {
         for (const lane of single ? [0] : [LANE, -LANE]) {
           for (let k = 0; k < cv.length - 1; k++) {
             const p = cv[k], q = cv[k + 1];
@@ -299,7 +320,7 @@ export class RailRenderer {
       }
     }
     // catenary masts
-    if (tier >= 2 && curves.length) {
+    if (tier >= 2 && !under && curves.length) {
       const cv = curves[0], m = cv[Math.floor(cv.length / 2)];
       for (const sgn of [1, -1]) {
         const x = m.x + m.nx * 0.9 * sgn, z = m.z + m.nz * 0.9 * sgn;
@@ -312,7 +333,8 @@ export class RailRenderer {
       const cv = curves[0], m = cv[Math.floor(cv.length / 2)];
       const yaw = Math.atan2(-m.tz, m.tx);
       const col = TIER_STYLE[tier].bridge;
-      const h = m.y + 0.9;
+      // (a viaduct stands on piers down to the ground below it)
+      const h = kind === K_ELEV ? Math.max(0.6, m.y - Math.max(net.railH(i - 3 * N * N), 0) + 0.3) : m.y + 0.9;
       if (tier === 0) {
         for (const sgn of [0.55, -0.55]) gb.box(m.x + m.nx * sgn, m.y - 0.25 - h / 2, m.z + m.nz * sgn, 0.06, h / 2, 0.06, yaw, 0x5a4030, delay);
         gb.box(m.x, m.y - 0.6, m.z, 0.05, 0.04, 0.6, yaw, 0x5a4030, delay);
@@ -366,6 +388,27 @@ export class RailRenderer {
       gb.box(wx, y + 0.5, wz, 0.42, 0.55, 0.08, yaw - sgn * 0.42, shadeHex(stone, 0.9), delay);
     }
   }
+  // a bored or cut-and-cover tunnel: a dark liner around the track (seen in
+  // the underground view), lighter for the shallow layer
+  tube(gb, i, deep, delay) {
+    const net = this.game.net, { pairs, stubs } = net.tilePairs(i);
+    const col = deep ? 0x3a3f4a : 0x5a5650, rib = deep ? 0x2a2e36 : 0x46423c;
+    for (const [a, b] of [...pairs, ...stubs.map((s) => [s, null])]) {
+      const cv = this.curve(i, a, b, 2);
+      for (let k = 0; k < cv.length - 1; k++) {
+        const p = cv[k], q = cv[k + 1];
+        const w = 0.95, h = 0.62;   // (low walls, no roof: the underground view looks inside)
+        for (const sg of [1, -1]) {
+          const a0 = [p.x + p.nx * w * sg, p.y - 0.12, p.z + p.nz * w * sg], a1 = [q.x + q.nx * w * sg, q.y - 0.12, q.z + q.nz * w * sg];
+          gb.quad(a0, a1, [a1[0], a1[1] + h, a1[2]], [a0[0], a0[1] + h, a0[2]], col, delay);
+          gb.quad(a1, a0, [a0[0], a0[1] + h, a0[2]], [a1[0], a1[1] + h, a1[2]], col, delay);
+        }
+        const F0 = [p.x + p.nx * w, p.y - 0.12, p.z + p.nz * w], G0 = [p.x - p.nx * w, p.y - 0.12, p.z - p.nz * w];
+        const F1 = [q.x + q.nx * w, q.y - 0.12, q.z + q.nz * w], G1 = [q.x - q.nx * w, q.y - 0.12, q.z - q.nz * w];
+        gb.quad(G0, G1, F1, F0, rib, delay);   // the tunnel floor
+      }
+    }
+  }
   // stone abutment where a bridge deck meets the bank
   abutment(gb, e, d, top, bottom, yaw, delay) {
     const h = Math.max(0.2, top - bottom);
@@ -412,7 +455,7 @@ export class RailRenderer {
 }
 
 function edge(net, i, d) {
-  const j = step(i, d);
+  const j = net.nb(i, d);
   const h = j >= 0 ? (net.railH(i) + net.railH(j)) / 2 : net.railH(i);
   return [tileCX(i) + DX[d] * TILE / 2, h, tileCZ(i) + DZ[d] * TILE / 2];
 }

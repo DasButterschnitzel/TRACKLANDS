@@ -1,11 +1,135 @@
 {
   "_comment": "Save-fuzz failures that were real bugs, replayed on every run with --corpus (fast CI gate). Either a random case number (case) or recorded mutations (base v3|prod + ops, 'op:path.to.key'). Add every newly fixed fuzz failure here.",
   "savefuzz": [
-    { "id": "upgrade-level-object", "note": "an object as a train upgrade level produced NaN locomotive geometry (fixed in 991e74e)", "base": "v3", "ops": ["obj:trains.0.upg.efficiency"] },
-    { "id": "upgrade-level-string", "note": "same bug, a string level", "base": "v3", "ops": ["str:trains.0.upg.engine"] },
-    { "id": "station-id-huge", "note": "a huge station id collided with the road-stop network key (fixed in Phase 7)", "base": "v3", "ops": ["huge:stations.stations.0.id"] },
-    { "id": "station-id-duplicate", "note": "two stations with one id after a damaged save", "base": "v3", "ops": ["dup:stations.stations"] },
-    { "id": "train-veh-empty", "note": "a train without vehicles must be dropped, not crash the renderer", "base": "v3", "ops": ["empty:trains.0.consist"] },
-    { "id": "coins-string", "note": "non-numeric money", "base": "prod", "ops": ["str:economy.coins"] }
+    {
+      "id": "upgrade-level-object",
+      "note": "an object as a train upgrade level produced NaN locomotive geometry (fixed in 991e74e)",
+      "base": "v3",
+      "ops": [
+        "obj:trains.0.upg.efficiency"
+      ]
+    },
+    {
+      "id": "upgrade-level-string",
+      "note": "same bug, a string level",
+      "base": "v3",
+      "ops": [
+        "str:trains.0.upg.engine"
+      ]
+    },
+    {
+      "id": "station-id-huge",
+      "note": "a huge station id collided with the road-stop network key (fixed in Phase 7)",
+      "base": "v3",
+      "ops": [
+        "huge:stations.stations.0.id"
+      ]
+    },
+    {
+      "id": "station-id-duplicate",
+      "note": "two stations with one id after a damaged save",
+      "base": "v3",
+      "ops": [
+        "dup:stations.stations"
+      ]
+    },
+    {
+      "id": "train-veh-empty",
+      "note": "a train without vehicles must be dropped, not crash the renderer",
+      "base": "v3",
+      "ops": [
+        "empty:trains.0.consist"
+      ]
+    },
+    {
+      "id": "coins-string",
+      "note": "non-numeric money",
+      "base": "prod",
+      "ops": [
+        "str:economy.coins"
+      ]
+    },
+    {
+      "id": "layers-missing",
+      "note": "Phase 11: layer data missing while links and a metro station remain (orphan tunnel station, broken portals)",
+      "base": "layers",
+      "ops": [
+        "delete:net.ly"
+      ]
+    },
+    {
+      "id": "layers-bad-type",
+      "note": "layer data of the wrong type",
+      "base": "layers",
+      "ops": [
+        "str:net.ly.conn",
+        "obj:net.ly.tier"
+      ]
+    },
+    {
+      "id": "layers-truncated",
+      "note": "layer data cut short",
+      "base": "layers",
+      "ops": [
+        "trunc:net.ly.conn"
+      ]
+    },
+    {
+      "id": "portal-broken-target",
+      "note": "a portal pointing far outside the map",
+      "base": "layers",
+      "ops": [
+        "huge:net.links.0.2"
+      ]
+    },
+    {
+      "id": "portal-negative",
+      "note": "a portal from a negative tile",
+      "base": "layers",
+      "ops": [
+        "neg:net.links.0.0"
+      ]
+    },
+    {
+      "id": "portal-bad-dir",
+      "note": "a portal with an impossible direction",
+      "base": "layers",
+      "ops": [
+        "huge:net.links.1.1"
+      ]
+    },
+    {
+      "id": "portal-duplicate",
+      "note": "the same portal twice",
+      "base": "layers",
+      "ops": [
+        "dup:net.links"
+      ]
+    },
+    {
+      "id": "links-not-array",
+      "note": "links of the wrong type",
+      "base": "layers",
+      "ops": [
+        "obj:net.links"
+      ]
+    },
+    {
+      "id": "metro-service-missing-stop",
+      "note": "a metro service to a station that no longer exists",
+      "base": "layers",
+      "ops": [
+        "huge:trains.0.route.1.st"
+      ]
+    },
+    {
+      "id": "metro-station-surface-mismatch",
+      "note": "an underground station whose tunnel is gone",
+      "base": "layers",
+      "ops": [
+        "delete:net.ly",
+        "delete:net.links"
+      ]
+    }
   ]
 }

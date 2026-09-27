@@ -1,11 +1,14 @@
 // Build tools: track drawing with live preview, stations, depots, bulldozer,
 // decorations, coverage visualization and a short undo window.
 import * as THREE from 'three';
-import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt } from '../util.js';
+import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt , onLayer, baseTile, layerOf} from '../util.js';
 import { COSTS, DECORATIONS, TRACK_TIERS, INDUSTRY_INVEST } from '../config.js';
-import { K_BRIDGE, K_TUNNEL } from './RailNetwork.js';
+import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
 
 const UNDO_WINDOW = 10;
+
+// tools that act on the chosen layer's tile (Phase 11)
+const LAYER_TOOLS = new Set(['track', 'station', 'depot', 'signal', 'waypoint', 'bulldoze']);
 
 export class Construction {
   constructor(game) {
@@ -35,7 +38,31 @@ export class Construction {
     game.scene.add(this.ghost, this.cover, this.line);
     this._m = new THREE.Matrix4(); this._c = new THREE.Color();
     this.hoverTile = -1;
+    // the layer the rail tools build on (Phase 11): 0 surface, 1 shallow and
+    // 2 deep underground, 3 elevated (util LAYERS)
+    this.layer = 0;
   }
+  setLayer(L) {
+    L = [0, 1, 2, 3].includes(+L) ? +L : 0;
+    if (L && !this.layerUnlocked(L)) { this.game.ui.error('err_layer_locked'); return; }
+    this.cancelDrag();
+    this.layer = L;
+    // building below ground shows what is below ground
+    const V = this.game.layerView;
+    if (V) { if ((L === 1 || L === 2) && V.mode === 'surface') V.set('underground'); else if ((L === 0 || L === 3) && V.mode === 'underground') V.set('surface'); }
+    this.game.events.emit('layerTool', L);
+    this.game.events.emit('tool', this.tool);
+    if (this.hoverTile >= 0) this.hover(this.hoverTile);
+  }
+  layerUnlocked(L) {
+    const R = this.game.progression.research;
+    if (L === 1) return R.has('urban_rail');
+    if (L === 2) return R.has('deep_tunnelling');
+    if (L === 3) return R.has('urban_rail');
+    return true;
+  }
+  // the tile a rail tool acts on: the picked ground tile, on the chosen layer
+  lt(tile) { return tile >= 0 && this.layer && LAYER_TOOLS.has(this.tool) ? onLayer(tile, this.layer) : tile; }
 
   setTool(t) {
     if (t === this.tool) t = 'select';
@@ -101,6 +128,7 @@ export class Construction {
 
   // ---------- pointer handling ----------
   hover(tile, p) {
+    tile = this.lt(tile);
     this.hoverTile = tile;
     if (p) this.hoverP = p;
     if (this.drag) return;
@@ -113,7 +141,7 @@ export class Construction {
     if (this.tool === 'station' || this.tool === 'depot') {
       const err = g.stations.placeError(tile, this.tool);
       ok = !err;
-      const cost = this.tool === 'station' ? g.economy.costs.station() : g.economy.costs.depot();
+      const cost = this.tool === 'station' ? g.economy.costs.station(tile) : g.economy.costs.depot();
       info = err ? g.ui.tr(err) : `${fmt(cost)} ●`;
       if (this.tool === 'station') this.showCoverage(tile);
     } else if (this.tool === 'decor') {
@@ -226,6 +254,7 @@ export class Construction {
   pointerDown(tile, p) {
     const g = this.game;
     if (tile < 0) return;
+    tile = this.lt(tile);
     switch (this.tool) {
       case 'track':
         this.drag = { a: tile, b: tile };
@@ -251,6 +280,7 @@ export class Construction {
   }
   pointerMove(tile) {
     if (!this.drag || tile < 0) return;
+    tile = this.lt(tile);
     if (this.tool === 'track') {
       if (tile !== this.drag.b) { this.drag.b = tile; this.previewTrack(); }
     } else if (this.tool === 'bulldoze' && !this.drag.tiles.has(tile)) {
@@ -267,6 +297,7 @@ export class Construction {
   }
   pointerUp(tile) {
     if (!this.drag) return;
+    tile = this.lt(tile);
     if (this.tool === 'road') {
       const d = this.drag;
       this.drag = null;
@@ -458,9 +489,14 @@ export class Construction {
   touchChanged() { this.game.events.emit('buildstate'); }
 
   // ---------- track ----------
+  // a track plan on the chosen layer (tunnels, viaducts: Phase 11)
+  planTrack(a, b, tier, L = this.layer) {
+    const net = this.game.net;
+    return L ? net.planLayered(baseTile(a), baseTile(b), tier, L) : net.planConstruction(a, b, tier);
+  }
   previewTrack() {
     const g = this.game;
-    const plan = g.net.planConstruction(this.drag.a, this.drag.b, this.tier);
+    const plan = this.planTrack(this.drag.a, this.drag.b, this.tier);
     this.adjustPlanForMode(plan);
     this.plan = plan;
     let k = 0;
@@ -469,7 +505,8 @@ export class Construction {
     for (const t of plan.tiles) {
       if (k >= 400) break;
       const kd = g.net.kind(t);
-      let col = !plan.ok || invalid.has(t) ? 0xd0503f : kd === K_BRIDGE ? 0x5a9ae0 : kd === K_TUNNEL ? 0x9a6ad0 : g.net.conn[t] ? 0x8fd8c0 : 0x3fc8b8;
+      let col = !plan.ok || invalid.has(t) ? 0xd0503f : kd === K_BRIDGE || kd === K_ELEV ? 0x5a9ae0 : kd === K_TUNNEL ? 0x9a6ad0 : kd === K_UNDER ? 0xb07ae0 : kd === K_DEEP ? 0x7a4ac0 : g.net.conn[t] ? 0x8fd8c0 : 0x3fc8b8;
+      if ((plan.links || []).some((l) => l.i === t)) col = 0xffb040;
       if (g.net.special.get(t)?.type === 'station') col = 0xffd870;
       this.putQuad(this.ghost, k++, t, col);
       const y = Math.max(g.world.view.heightAt(tileCX(t), tileCZ(t)), g.net.railH(t)) + 0.6;
@@ -483,7 +520,8 @@ export class Construction {
       const afford = g.economy.canAfford(plan.cost);
       let s = `${fmt(plan.cost)} ●`;
       if (plan.bridges) s += ` · ${ui.tr('bridge')} ×${plan.bridges}`;
-      if (plan.tunnels) s += ` · ${ui.tr('tunnel')} ×${plan.tunnels}`;
+      if (plan.tunnels && !plan.layer) s += ` · ${ui.tr('tunnel')} ×${plan.tunnels}`;
+      if (plan.layer) s += ` · ${ui.tr('layer_' + plan.layer)}${plan.links && plan.links.length ? ' · ' + ui.tr('portals_n', { n: plan.links.length }) : ''}`;
       if (!afford) s += ` · ${ui.tr('err_no_money')}`;
       if (this.trackCheck(plan)) s += ` · ${ui.tr('works_will_wait')}`;
       ui.cursorInfo(s, afford);
@@ -507,7 +545,7 @@ export class Construction {
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
     if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
     const err = this.trackCheck(plan);
-    if (err === 'err_train_on_track') { g.ui.offerWorks('track', { a: this.drag.a, b: this.drag.b, tier: this.tier, mode: this.trackMode }); return; }
+    if (err === 'err_train_on_track') { if (plan.layer) { g.ui.error(err); return; } g.ui.offerWorks('track', { a: this.drag.a, b: this.drag.b, tier: this.tier, mode: this.trackMode }); return; }
     if (err) { g.ui.error(err); return; }
     this.applyTrack(plan, this.tier, this.trackMode);
   }
@@ -530,9 +568,9 @@ export class Construction {
     return null;
   }
   // the whole a→b drag as one call: plan, check, build (pending construction)
-  trackOp(a, b, tier, mode, dry) {
+  trackOp(a, b, tier, mode, dry, L = 0) {
     const g = this.game;
-    const plan = g.net.planConstruction(a, b, tier);
+    const plan = this.planTrack(a, b, tier, L);
     this.adjustPlanForMode(plan, mode);
     if (!plan.ok) return { error: plan.reason || 'err_no_path' };
     const err = this.trackCheck(plan);
@@ -544,7 +582,14 @@ export class Construction {
   applyTrack(plan, tier, mode) {
     const g = this.game, net = g.net;
     const prev = plan.tiles.map((t) => ({ t, conn: net.conn[t], tier: net.tier[t], single: net.single[t] }));
-    for (let k = 0; k < plan.dirs.length; k++) net.connect(plan.tiles[k], plan.dirs[k]);
+    // portals and ramps join the layers at the ends (Phase 11)
+    const links = plan.links || [], n = plan.tiles.length;
+    for (let k = 0; k < plan.dirs.length; k++) {
+      const t = plan.tiles[k];
+      if (k === 0 && links.some((l) => l.i === t)) { const l = links.find((x) => x.i === t); net.link(l.i, l.d, l.L); continue; }
+      if (k === n - 2 && links.some((l) => l.i === plan.tiles[n - 1])) { const l = links.find((x) => x.i === plan.tiles[n - 1]); net.link(l.i, l.d, l.L); continue; }
+      net.connect(t, plan.dirs[k]);
+    }
     for (const p of prev) {
       if (!p.conn && mode === 'single' && !net.special.has(p.t)) net.single[p.t] = 1;
       if (p.conn && mode === 'double' && (plan.upgrades || []).includes(p.t)) net.single[p.t] = 0;
@@ -556,7 +601,7 @@ export class Construction {
     for (const end of [plan.tiles[0], plan.tiles[plan.tiles.length - 1]]) {
       if (net.special.has(end)) continue;
       for (const d of [0, 2, 4, 6, 1, 3, 5, 7]) {
-        const j = step(end, d);
+        const j = net.nb(end, d);
         if (j < 0 || !net.special.has(j) || net.conn[j] || net.foreign(j) || g.trains.tileReserved(end)) continue;
         prev.push({ t: j, conn: 0, tier: net.tier[j], single: 0 });
         net.connect(end, d);
@@ -565,9 +610,11 @@ export class Construction {
         break;
       }
     }
-    const wooded = plan.tiles.filter((t) => g.world.view.hasTrees(t));
-    g.world.view.clearTreesMany(plan.tiles);
-    g.world.view.clearCorridorMany(plan.tiles);
+    // (only surface track clears trees and corridors; tunnels and viaducts leave the ground)
+    const ground = plan.tiles.filter((t) => layerOf(t) === 0);
+    const wooded = ground.filter((t) => g.world.view.hasTrees(t));
+    g.world.view.clearTreesMany(ground);
+    g.world.view.clearCorridorMany(ground);
     // a rival's construction: its own books and town relations, never the player's
     const actor = g.actor;
     if (wooded.length) { if (actor) actor.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length); else g.authority.onTreesCleared(wooded[Math.floor(wooded.length / 2)], wooded.length); }
@@ -580,7 +627,7 @@ export class Construction {
     g.railView.animateBuild(plan.tiles);
     for (const t of plan.tiles) if (net.special.has(t)) g.stations.refreshOrientation(t);
     g.trains.onNetworkChanged(false);
-    if (!actor) { this.pushUndo({ type: 'track', prev, cost: plan.cost, newTiles: plan.newTiles }); g.audio.play('rail'); }
+    if (!actor) { this.pushUndo({ type: 'track', prev, cost: plan.cost, newTiles: plan.newTiles, links: links.length ? links.map((l) => ({ i: l.i, d: l.d })) : undefined }); g.audio.play('rail'); }
     const mid = plan.tiles[Math.floor(plan.tiles.length / 2)];
     for (let k = 0; k < plan.tiles.length; k += 2) { const t = plan.tiles[k]; g.particles.emit('dust', tileCX(t), net.railH(t) + 0.2, tileCZ(t), 2); }
     g.events.emit('trackBuilt', plan);
@@ -958,6 +1005,7 @@ export class Construction {
     const e = this.undoStack.pop();
     if (e.type === 'track') {
       for (const p of e.prev) if (g.trains.tileOccupied(p.t) && net.conn[p.t] !== p.conn) { g.ui.error('err_train_on_track'); this.undoStack.push(e); return; }
+      for (const l of e.links || []) net.unlink(l.i, l.d);
       this.restoreConn(e.prev);
       g.stats.inc('trackBuilt', -e.newTiles);
       g.economy.earn(e.cost, 'refund', false);
@@ -1021,7 +1069,7 @@ export class Construction {
     // keep reciprocity with tiles outside the restored set
     const set = new Set(prev.map((p) => p.t));
     for (const p of prev) for (let d = 0; d < 8; d++) {
-      const j = step(p.t, d); if (j < 0 || set.has(j)) continue;
+      const j = net.nb(p.t, d); if (j < 0 || set.has(j)) continue;
       if (net.hasDir(j, (d + 4) & 7) && !net.hasDir(p.t, d)) net.conn[j] &= ~(1 << ((d + 4) & 7));
     }
     for (const p of prev) { g.railView.markDirty(p.t); if (net.special.has(p.t)) g.stations.refreshOrientation(p.t); }
