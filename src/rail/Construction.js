@@ -3,9 +3,12 @@
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt , onLayer, baseTile, layerOf} from '../util.js';
 import { COSTS, DECORATIONS, TRACK_TIERS, INDUSTRY_INVEST } from '../config.js';
-import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
+import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV, TRACK_ROLES } from './RailNetwork.js';
 
 const UNDO_WINDOW = 10;
+export const TRACK_MODES = ['double', 'single', 'pair', 'role'];
+// roles given with a new pair: [the existing line, the new pair]
+export const PAIR_ROLES = { none: [0, 0], express: [1, 2], freight: [1, 3] };
 
 // tools that act on the chosen layer's tile (Phase 11)
 const LAYER_TOOLS = new Set(['track', 'station', 'depot', 'signal', 'waypoint', 'bulldoze']);
@@ -16,6 +19,9 @@ export class Construction {
     this.tool = 'select';
     this.tier = 0;
     this.trackMode = 'double';
+    this.pairSide = 1;
+    this.pairRoles = 'express';
+    this.roleSel = 2;
     this.signalType = 'block';
     this.signalSpacing = 4;          // tiles between signals when dragging a row
     this.decor = 'oak';
@@ -79,7 +85,12 @@ export class Construction {
     this.tier = t; this.game.events.emit('tool', this.tool);
   }
 
-  setTrackMode(m) { this.trackMode = m === 'single' ? 'single' : 'double'; this.game.events.emit('tool', this.tool); }
+  // double / single track, a second pair beside a line (four tracks), or
+  // painting a track role along a line (Phase 11)
+  setTrackMode(m) { this.trackMode = TRACK_MODES.includes(m) ? m : 'double'; this.game.events.emit('tool', this.tool); }
+  setPairSide(v) { this.pairSide = v < 0 ? -1 : 1; if (this.drag && this.tool === 'track') this.previewTrack(); this.game.events.emit('tool', this.tool); }
+  setPairRoles(v) { this.pairRoles = PAIR_ROLES[v] ? v : 'none'; this.game.events.emit('tool', this.tool); }
+  setRoleSel(r) { this.roleSel = Math.max(0, Math.min(3, r | 0)); this.game.events.emit('tool', this.tool); }
   signalUnlocked(type) {
     const R = this.game.progression.research;
     if (type === 'block') return R.has('block_signals');
@@ -496,8 +507,9 @@ export class Construction {
   }
   previewTrack() {
     const g = this.game;
-    const plan = this.planTrack(this.drag.a, this.drag.b, this.tier);
-    this.adjustPlanForMode(plan);
+    const mode = this.trackMode;
+    const plan = mode === 'pair' ? this.planPair(this.drag.a, this.drag.b, this.tier) : mode === 'role' ? this.planRole(this.drag.a, this.drag.b, this.roleSel) : this.planTrack(this.drag.a, this.drag.b, this.tier);
+    if (mode !== 'pair' && mode !== 'role') this.adjustPlanForMode(plan);
     this.plan = plan;
     let k = 0;
     const pts = [];
@@ -521,6 +533,8 @@ export class Construction {
       let s = `${fmt(plan.cost)} ●`;
       if (plan.bridges) s += ` · ${ui.tr('bridge')} ×${plan.bridges}`;
       if (plan.tunnels && !plan.layer) s += ` · ${ui.tr('tunnel')} ×${plan.tunnels}`;
+      if (plan.pair) s += ` · ${ui.tr('pair_n', { n: plan.newTiles })}`;
+      if (plan.roleOnly) s = `${ui.tr('role_' + TRACK_ROLES[plan.role])} · ${ui.tr('role_n', { n: plan.tiles.length })}`;
       if (plan.layer) s += ` · ${ui.tr('layer_' + plan.layer)}${plan.links && plan.links.length ? ' · ' + ui.tr('portals_n', { n: plan.links.length }) : ''}`;
       if (!afford) s += ` · ${ui.tr('err_no_money')}`;
       if (this.trackCheck(plan)) s += ` · ${ui.tr('works_will_wait')}`;
@@ -543,6 +557,14 @@ export class Construction {
   buildTrack() {
     const g = this.game, plan = this.plan;
     if (!plan || !plan.ok) { g.ui.error(plan ? plan.reason : 'err_no_path'); return; }
+    if (plan.roleOnly) { this.applyRole(plan); return; }
+    if (plan.pair) {
+      if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
+      const e = plan.parts.map((p) => this.trackCheck(p)).find(Boolean);
+      if (e) { g.ui.error(e); return; }
+      this.applyPair(plan);
+      return;
+    }
     if (!g.economy.canAfford(plan.cost)) { g.ui.error('err_no_money'); return; }
     const err = this.trackCheck(plan);
     if (err === 'err_train_on_track') { if (plan.layer) { g.ui.error(err); return; } g.ui.offerWorks('track', { a: this.drag.a, b: this.drag.b, tier: this.tier, mode: this.trackMode }); return; }
@@ -570,6 +592,21 @@ export class Construction {
   // the whole a→b drag as one call: plan, check, build (pending construction)
   trackOp(a, b, tier, mode, dry, L = 0) {
     const g = this.game;
+    if (mode === 'role') {
+      const plan = this.planRole(a, b, tier);
+      if (!plan.ok) return { error: plan.reason };
+      if (!dry) this.applyRole(plan);
+      return { ok: true, cost: 0, tiles: plan.tiles };
+    }
+    if (mode === 'pair') {
+      const plan = this.planPair(a, b, tier, this.pairSide, this.pairRoles);
+      if (!plan.ok) return { error: plan.reason || 'err_no_path' };
+      const err = plan.parts.map((p) => this.trackCheck(p)).find(Boolean) || null;
+      if (err || dry) return { error: err, cost: plan.cost, tiles: plan.tiles };
+      if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
+      this.applyPair(plan);
+      return { ok: true, cost: plan.cost, tiles: plan.tiles };
+    }
     const plan = this.planTrack(a, b, tier, L);
     this.adjustPlanForMode(plan, mode);
     if (!plan.ok) return { error: plan.reason || 'err_no_path' };
@@ -632,6 +669,105 @@ export class Construction {
     for (let k = 0; k < plan.tiles.length; k += 2) { const t = plan.tiles[k]; g.particles.emit('dust', tileCX(t), net.railH(t) + 0.2, tileCZ(t), 2); }
     g.events.emit('trackBuilt', plan);
     void mid;
+  }
+
+  // ---------- four-track corridors (Phase 11) ----------
+  // the existing line from a to b (along its track)
+  linePath(a, b) {
+    const net = this.game.net;
+    if (a === b || !net.conn[a] || !net.conn[b] || layerOf(a) !== layerOf(b)) return null;
+    const r = net.findRoute({ tile: a, heading: null, fromCenter: true }, b, {});
+    if (!r || !r.steps.length) return null;
+    const path = [a];
+    for (const s of r.steps) if (s.tile !== path[path.length - 1]) path.push(s.tile);
+    return path[path.length - 1] === b ? path : null;
+  }
+  // a second pair of tracks beside the line from a to b, one tile over on
+  // the chosen side, leaving and rejoining the line through crossovers
+  // near both ends: planned in parts, built all together or not at all
+  planPair(a, b, tier, side = this.pairSide, roles = this.pairRoles) {
+    const g = this.game, net = g.net, fail = (reason) => ({ ok: false, reason, tiles: [], dirs: [], invalid: [], cost: 0, pair: true });
+    const path = this.linePath(a, b);
+    if (!path) return fail('err_pair_on_track');
+    const n = path.length;
+    if (n < 8) return fail('err_pair_short');
+    const L = layerOf(a);
+    const sgn = (v) => (v > 0 ? 1 : v < 0 ? -1 : 0);
+    const off = (k) => {
+      const h = path[Math.max(0, k - 1)], j = path[Math.min(n - 1, k + 1)];
+      const dx = sgn(tx(j) - tx(h)), dz = sgn(tz(j) - tz(h));
+      const x = tx(path[k]) - dz * side, z = tz(path[k]) + dx * side;
+      return inMap(x, z) ? onLayer(idx(x, z), L) : -1;
+    };
+    const dirAt = (k) => `${sgn(tx(path[k + 1]) - tx(path[k]))},${sgn(tz(path[k + 1]) - tz(path[k]))}`;
+    // key points: where the pair leaves, every bend, where it rejoins
+    const keys = [path[1], off(3)];
+    for (let k = 4; k < n - 4; k++) if (dirAt(k) !== dirAt(k - 1)) keys.push(off(k));
+    keys.push(off(n - 4), path[n - 2]);
+    if (keys.some((t) => t < 0)) return fail('err_out_of_map');
+    const uniq = keys.filter((t, k) => k === 0 || t !== keys[k - 1]);
+    const parts = [], prev = g.aiNewLine;
+    g.aiNewLine = true;
+    try {
+      for (let k = 0; k + 1 < uniq.length; k++) {
+        const p = this.planTrack(uniq[k], uniq[k + 1], tier, L);
+        if (!p.ok) return { ...fail(p.reason || 'err_pair_blocked'), invalid: p.invalid || [], tiles: p.tiles || [] };
+        this.adjustPlanForMode(p, 'double');
+        parts.push(p);
+      }
+    } finally { g.aiNewLine = prev; }
+    // the parts must not cross each other or the line (only their joints meet)
+    const seen = new Map();
+    for (let k = 0; k < parts.length; k++) for (const t of parts[k].tiles) {
+      if (seen.has(t) && !(seen.get(t) === k - 1 && t === uniq[k])) return fail('err_pair_blocked');
+      seen.set(t, k);
+    }
+    const onLine = new Set(path);
+    for (const t of seen.keys()) if (onLine.has(t) && t !== path[1] && t !== path[n - 2]) return fail('err_pair_blocked');
+    const tiles = [...seen.keys()];
+    return {
+      ok: true, pair: true, parts, tiles, dirs: [], invalid: [], line: path.slice(1, n - 1), roles: PAIR_ROLES[roles] || PAIR_ROLES.none,
+      cost: parts.reduce((s2, p) => s2 + p.cost, 0), newTiles: parts.reduce((s2, p) => s2 + (p.newTiles || 0), 0),
+      bridges: parts.reduce((s2, p) => s2 + (p.bridges || 0), 0), tunnels: parts.reduce((s2, p) => s2 + (p.tunnels || 0), 0), layer: L || 0,
+    };
+  }
+  applyPair(plan) {
+    const g = this.game, net = g.net;
+    this._collect = [];
+    let es;
+    try { for (const p of plan.parts) this.applyTrack(p, net.tier[plan.line[0]] || this.tier, 'double'); } finally { es = this._collect; this._collect = null; }
+    // one undo step for the whole pair (the earliest state of a tile wins)
+    if (!g.actor && es.length) {
+      const prev = [];
+      for (let k = es.length - 1; k >= 0; k--) prev.push(...es[k].prev);
+      this.pushUndo({ type: 'track', prev, cost: es.reduce((a, e) => a + e.cost, 0), newTiles: es.reduce((a, e) => a + e.newTiles, 0) });
+    }
+    const [rOld, rNew] = plan.roles;
+    if (rOld || rNew) {
+      const joints = new Set([plan.line[0], plan.line[plan.line.length - 1]]);
+      // (undo gives the line its old roles back)
+      const top = this.undoStack[this.undoStack.length - 1];
+      if (!g.actor && top && top.type === 'track') top.roles = plan.line.concat(plan.tiles).map((t) => [t, net.role[t]]);
+      for (const t of plan.line) if (!joints.has(t)) net.setRole(t, rOld);
+      for (const t of plan.tiles) if (!joints.has(t)) net.setRole(t, rNew);
+    }
+    g.trains.onNetworkChanged(false);
+    g.events.emit('pairBuilt', plan);
+  }
+  // a role painted along a line
+  planRole(a, b, role) {
+    const path = this.linePath(a, b);
+    if (!path) return { ok: false, reason: 'err_pair_on_track', tiles: [], dirs: [], invalid: [], cost: 0, roleOnly: true };
+    return { ok: true, roleOnly: true, role: Math.max(0, Math.min(3, role | 0)), tiles: path, dirs: [], invalid: [], cost: 0 };
+  }
+  applyRole(plan) {
+    const g = this.game, net = g.net;
+    const prev = plan.tiles.map((t) => [t, net.role[t]]);
+    let n = 0;
+    for (const t of plan.tiles) if (net.setRole(t, plan.role)) n++;
+    if (!g.actor && n) this.pushUndo({ type: 'roles', prev, cost: 0 });
+    g.trains.onNetworkChanged(false);
+    if (g.ui && g.ui.toast && !g.actor) g.ui.toast(g.ui.tr('role_set', { n, role: g.ui.tr('role_' + TRACK_ROLES[plan.role]) }), 'good', 'track');
   }
 
   // ---------- roads ----------
@@ -986,6 +1122,7 @@ export class Construction {
 
   // ---------- undo ----------
   pushUndo(e) {
+    if (this._collect) { this._collect.push(e); return; }
     e.time = this.game.clock;
     this.undoStack.push(e);
     if (this.undoStack.length > 10) this.undoStack.shift();
@@ -1007,8 +1144,13 @@ export class Construction {
       for (const p of e.prev) if (g.trains.tileOccupied(p.t) && net.conn[p.t] !== p.conn) { g.ui.error('err_train_on_track'); this.undoStack.push(e); return; }
       for (const l of e.links || []) net.unlink(l.i, l.d);
       this.restoreConn(e.prev);
+      for (const [t, r] of e.roles || []) net.role[t] = net.conn[t] ? r : 0;
+      if (e.roles) net.bumpVersion();
       g.stats.inc('trackBuilt', -e.newTiles);
       g.economy.earn(e.cost, 'refund', false);
+    } else if (e.type === 'roles') {
+      for (const [t, r] of e.prev) net.setRole(t, r);
+      g.trains.onNetworkChanged(false);
     } else if (e.type === 'road') {
       g.roads.undo(e);
       g.economy.earn(e.cost, 'refund', false);

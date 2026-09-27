@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { N, TILE, tileCX, tileCZ } from '../util.js';
 import { CARGO } from '../config.js';
 
-export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit', 'owners'];
+export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit', 'owners', 'roles'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
@@ -100,6 +100,12 @@ export class Overlays {
         const col = [g.company.color, ...Array.from({ length: 8 }, (_, i) => { const r = g.rivals && g.rivals.list.find((x) => x.idx === i + 1); return r ? r.color : 0x888888; })];
         for (let i = 0; i < N * N; i++) if (net.conn[i] || net.special.has(i)) this.quad(k++, i, col[net.own[i]] ?? 0x888888);
         if (g.roads) for (const s of g.roads.stops) { const r = s.owner && g.rivals ? g.rivals.byId(s.owner) : null; this.quad(k++, s.tile, r ? r.color : g.company.color); }
+        break;
+      }
+      case 'roles': {
+        // track roles of four-track corridors (Phase 11), on every layer
+        const cols = [0x8a8f96, 0x4ad07a, 0xe04a6a, 0xd08a3a];
+        for (let i = 0; i < net.conn.length && k < N * N; i++) if (net.conn[i]) this.quad(k++, i, cols[net.roleOf(i)], net.role[i] ? 0.55 : 0.45);
         break;
       }
       case 'electrification': {

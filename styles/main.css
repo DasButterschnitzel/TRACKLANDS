@@ -1021,3 +1021,6 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 /* layer view button (Phase 11) */
 .tool.layerview { position: relative; }
 .tool.layerview .lv-tag { position: absolute; right: 2px; bottom: 2px; font-size: 9px; font-style: normal; font-weight: 700; line-height: 1; padding: 1px 3px; border-radius: 4px; background: var(--accent, #2fa39a); color: #fff; }
+/* track roles (Phase 11) */
+.role-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle;background:#8a8f96}
+.role-dot.r1{background:#4ad07a}.role-dot.r2{background:#e04a6a}.role-dot.r3{background:#d08a3a}

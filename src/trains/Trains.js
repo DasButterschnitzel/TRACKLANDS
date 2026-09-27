@@ -612,7 +612,7 @@ export class TrainSystem {
     const minTier = t._st.minTier;
     const { st } = this.headInfo(t);
     if (!st) return [];
-    const ro = { minTier, allowReverse: !tgt.noShunt, targetHeading: tgt.heading };
+    const ro = { minTier, allowReverse: !tgt.noShunt, targetHeading: tgt.heading, cls: this.roleClass(t) };
     const opts = [];
     const atCenter = Math.abs(t.s - st.sc) < 0.05;
     if (atCenter) {
@@ -757,6 +757,9 @@ export class TrainSystem {
   // steam), then departs the other way. Units with cabs at both ends change
   // ends quickly; a locomotive now at the rear propels the train, a steam
   // engine at the front runs tender first. Nothing is lifted, turned or moved.
+  // which tracks of a four-track corridor suit the train (Phase 11): express
+  // passenger trains the fast pair, freight the goods pair, the rest the local one
+  roleClass(t) { const p = t._st && t._st.priority; return p === 'express' ? 2 : p === 'freight' ? 3 : 1; }
   isMetro(t) { const L = t.veh && t.veh.find((v) => v.k === 'L'); return !!(L && locoModel(L.id).metro); }
   afterReverse(t, next) {
     t.flipped = false;
@@ -1797,7 +1800,7 @@ export class TrainSystem {
       tgt = tg[0];
     }
     const nt = this.net.nb(last.tile, last.outH);
-    const r = net.findRoute({ tile: nt, heading: last.outH, fromCenter: false }, tgt.tile, { minTier: t._st.minTier, allowReverse: true, targetHeading: tgt.heading });
+    const r = net.findRoute({ tile: nt, heading: last.outH, fromCenter: false }, tgt.tile, { minTier: t._st.minTier, allowReverse: true, targetHeading: tgt.heading, cls: this.roleClass(t) });
     if (!r) { if (t.mode === 'manual' && t.route.length) t.routeIdx = (t.routeIdx - 1 + t.route.length) % t.route.length; return; }
     this.truncateAfter(t, last.s1);
     this.completeHeadStep(t);
@@ -1830,12 +1833,12 @@ export class TrainSystem {
     const stn = t.target != null ? this.game.stations.byId(t.target) : null;
     if (stn) {
       for (const tg of this.game.stations.targetsFor(stn, t)) {
-        const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, tg.tile, { minTier: t._st.minTier, avoid, allowReverse: true, targetHeading: tg.heading });
+        const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, tg.tile, { minTier: t._st.minTier, avoid, allowReverse: true, targetHeading: tg.heading, cls: this.roleClass(t) });
         if (r && !r.steps.some((s) => avoid.has(s.tile))) { this.applyRoute(t, { kind: 'forward', route: r, tgt: tg }); this.claimPlatform(t, stn, tg); return true; }
       }
       return false;
     }
-    const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, tgt.tile, { minTier: t._st.minTier, avoid, allowReverse: true, targetHeading: tgt.heading });
+    const r = this.net.findRoute({ tile: nt, heading: st.outH, fromCenter: false }, tgt.tile, { minTier: t._st.minTier, avoid, allowReverse: true, targetHeading: tgt.heading, cls: this.roleClass(t) });
     if (r && !r.steps.some((s) => avoid.has(s.tile))) { this.applyRoute(t, { kind: 'forward', route: r, tgt }); return true; }
     return false;
   }

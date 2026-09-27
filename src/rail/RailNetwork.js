@@ -4,6 +4,10 @@
 import { N, TILE, DX, DZ, DLEN, opp, turnOf, idx, tx, tz, step, inMap, tileCX, tileCZ, clamp, LAYERS, layerOf, baseTile, onLayer, L_SURFACE, L_SHALLOW, L_DEEP, L_ELEVATED } from '../util.js';
 import { TRACK_TIERS } from '../config.js';
 
+// the extra cost per tile of a track with a role for a train of a class
+// (rows: 0 -, 1 local, 2 express, 3 freight; columns: the track's role)
+export const TRACK_ROLES = ['any', 'local', 'express', 'freight'];
+const ROLE_COST = [[0, 0, 0, 0], [0, 0, 0.45, 0.5], [0, 0.5, 0, 0.7], [0, 0.4, 0.9, 0]];
 export const K_NORMAL = 0, K_BRIDGE = 1, K_TUNNEL = 2, K_UNDER = 3, K_ELEV = 4, K_DEEP = 5;
 // how deep each layer runs below the ground (rail height), and how high a viaduct
 export const LAYER_DEPTH = [0, 1.7, 3.6, 0];
@@ -48,6 +52,10 @@ export class RailNetwork {
     // (src/world/RailRivals.js). Companies never build on, through or into each
     // other's tiles, so their networks never touch and share no signals.
     this.own = new Uint8Array(N * N * LAYERS);
+    // track roles (Phase 11, four-track corridors): 0 any, 1 local, 2 express,
+    // 3 freight. A soft preference in routing: a train takes another track
+    // when its own is missing or blocked (never a hard rule)
+    this.role = new Uint8Array(N * N * LAYERS);
     this.signals = new Map();                   // tile*8+dir -> {type:'block'|'path', oneway}
     this.waypoints = new Map();                 // tile -> {id, name}
     this.jres = new Map();                      // junction tile -> Map(trainId -> [a, b])
@@ -511,9 +519,10 @@ export class RailNetwork {
     const avoid = opts.avoid || null;
     const rev = !!opts.allowReverse;
     const th = opts.targetHeading == null ? -1 : opts.targetHeading;
-    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier},${rev ? 1 : 0},${th},${opts.stopStations ? 1 : 0}` : null;
+    const cls = opts.cls | 0;
+    const key = !avoid ? `${start.tile},${start.heading},${start.fromCenter ? 1 : 0},${target},${minTier},${rev ? 1 : 0},${th},${opts.stopStations ? 1 : 0},${cls}` : null;
     if (key && this.routeCache.has(key)) return this.routeCache.get(key);
-    const res = this._route(start, target, minTier, avoid, rev, th);
+    const res = this._route(start, target, minTier, avoid, rev, th, cls);
     if (key) { if (this.routeCache.size > 3000) this.routeCache.clear(); this.routeCache.set(key, res); }
     return res;
   }
@@ -540,7 +549,7 @@ export class RailNetwork {
     return this._ow;
   }
 
-  _route(start, target, minTier, avoid, allowRev, th = -1) {
+  _route(start, target, minTier, avoid, allowRev, th = -1, cls = 0) {
     const stamp = ++this._rstamp;
     const g = this._rg, prev = this._rprev, seen = this._rseen, heap = this._heap;
     heap.clear();
@@ -557,6 +566,7 @@ export class RailNetwork {
       const sp = this.special.get(i);
       if (sp && sp.type === 'station' && i !== target) c += sp.role === 'through' ? -0.2 : 1.2;
       if (this.single[i]) c += 0.15;
+      if (cls && this.role[i]) c += ROLE_COST[cls][this.role[i]];
       return c;
     };
     // initial expansion
@@ -905,6 +915,15 @@ export class RailNetwork {
     return null;
   }
 
+  // ---------- track roles ----------
+  roleOf(i) { return this.conn[i] ? this.role[i] : 0; }
+  setRole(i, r) { if (!this.conn[i] || r < 0 || r > 3) return false; if (this.role[i] === r) return false; this.role[i] = r; this.routeCache.clear(); this.bumpVersion(); return true; }
+  rolesB64() {
+    let any = false;
+    for (let i = 0; i < this.role.length; i++) if (this.role[i]) { if (!this.conn[i]) this.role[i] = 0; else any = true; }
+    return any ? b64(this.role) : undefined;
+  }
+
   // ---------- serialization ----------
   serialize() {
     const NN = N * N, sub = (a) => a.subarray(0, NN);
@@ -915,7 +934,7 @@ export class RailNetwork {
     for (const [k, j] of this.links) { const i = k >> 3; if (i < j) links.push([i, k & 7, j]); }
     return {
       conn: b64(sub(this.conn)), tier: b64(sub(this.tier)), single: b64(sub(this.single)), own: sub(this.own).some((x) => x) ? b64(sub(this.own)) : undefined,
-      ly, links: links.length ? links : undefined,
+      ly, links: links.length ? links : undefined, roles: this.rolesB64(),
       signals: [...this.signals].map(([k, v]) => (v.y ? [k, v.type, v.oneway ? 1 : 0, v.y] : [k, v.type, v.oneway ? 1 : 0])),
       waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
     };
@@ -935,6 +954,8 @@ export class RailNetwork {
       const set = (arr, str, clampTo) => { if (typeof str !== 'string') return; const u = unb64(str); if (u.length !== ALL - NN) return; for (let k = 0; k < u.length; k++) arr[NN + k] = clampTo != null && u[k] > clampTo ? 0 : u[k]; };
       set(this.conn, L.conn); set(this.tier, L.tier, 3); set(this.single, L.single, 1); set(this.own, L.own, 8);
     }
+    this.role.fill(0);
+    if (typeof d.roles === 'string' && d.roles) { const u = unb64(d.roles); if (u.length === ALL) for (let k = 0; k < ALL; k++) this.role[k] = u[k] <= 3 && this.conn[k] ? u[k] : 0; }
     if (Array.isArray(d.links)) for (const e of d.links) {
       if (!Array.isArray(e)) continue;
       const [i, dd, j] = e;

@@ -130,6 +130,30 @@
         "delete:net.ly",
         "delete:net.links"
       ]
+    },
+    {
+      "id": "roles-bad-string",
+      "note": "track roles that are not base64 of the right size",
+      "base": "layers",
+      "ops": [
+        "str:net.roles"
+      ]
+    },
+    {
+      "id": "roles-object",
+      "note": "track roles of the wrong type",
+      "base": "layers",
+      "ops": [
+        "obj:net.roles"
+      ]
+    },
+    {
+      "id": "roles-number",
+      "note": "track roles as a number",
+      "base": "layers",
+      "ops": [
+        "huge:net.roles"
+      ]
     }
   ]
 }
