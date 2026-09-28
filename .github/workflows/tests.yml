@@ -4,6 +4,8 @@
 #   2. suites   — the functional regression in parallel groups, plus 150 save-fuzz
 #                 cases and the failure corpus (tests/fuzz-corpus.json)
 #   3. browsers — the cross-browser smoke in Chromium, Firefox and WebKit
+#   4. i18n-review — optional semantic translation review, report only (never
+#                 blocks, never edits); NOT EXECUTED without the CI secrets
 # The deeper tiers (integration, release, nightly) are in deep.yml.
 name: tests
 
@@ -37,7 +39,7 @@ jobs:
       matrix:
         group:
           - name: core
-            suites: unit worldgen rail seeds network urban roadtypes tools helpui packs terrain eras layers metro fourtrack planning stationcomplex erainfra p12risk costquote search catalogsearch
+            suites: unit worldgen rail seeds network urban roadtypes tools helpui packs terrain eras layers metro fourtrack planning stationcomplex erainfra p12risk costquote search catalogsearch localization
             quick: monkey ui
           - name: economy
             suites: prodsave savesafety music economy standing analysis timectl persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes
@@ -95,3 +97,32 @@ jobs:
           BROWSER: ${{ matrix.engine }}
         # Firefox gets WebGL only with a display
         run: ${{ matrix.engine == 'firefox' && 'xvfb-run -a ' || '' }}node tests/run.mjs xbrowser hardening terrain eras erainfra p12risk search catalogsearch
+
+  i18n-review:
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # report only: a finding never fails the build and nothing is edited
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: .cache/i18n-review
+          key: i18n-review-${{ hashFiles('src/i18n.js', 'src/i18n_rail.js', 'tests/fixtures/i18n-calibration.json') }}
+          restore-keys: i18n-review-
+      - name: Semantic translation review (key, English, German only)
+        env:
+          # CI secrets only; absent → "NOT EXECUTED: LANGUAGE SEMANTIC REVIEW NOT CONFIGURED"
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          TYPESAFE_API_URL: ${{ secrets.TYPESAFE_API_URL }}
+        run: node tools/i18n-review.mjs --out tests/output/i18n-review.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: i18n-review
+          path: tests/output/i18n-review.json
+          if-no-files-found: ignore

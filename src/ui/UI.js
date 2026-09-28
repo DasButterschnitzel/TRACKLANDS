@@ -7,7 +7,7 @@ import { ROAD_COSTS, ROAD_VEHICLES, ROAD_TYPES, ROAD_TYPE_IDS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, locoResearch, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
-import { t as i18n, setLang, getLang, LANGS } from '../i18n.js';
+import { t as i18n, getLang, LANGS } from '../i18n.js';
 import { icon, cargoIcon } from './icons.js';
 import { networkMapSVG } from './NetworkMap.js';
 import { locoModel } from '../trains/Trains.js';
@@ -1570,7 +1570,7 @@ export class UI {
       svcAt: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.serviceAt = +el.value; this.renderInspector(); } },
       svcAuto: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (t) { t.autoService = el.checked; this.renderInspector(); } },
       replTo: (el) => { const t = this.game.trains.byId(+el.dataset.id); if (!t) return; if (el.value) this.game.maint.addRule(t.model, el.value, 25, 0.55); else { const r = this.game.maint.rules.find((x) => x.from === t.model); if (r) this.game.maint.removeRule(r.id); } this.renderInspector(); },
-      lang: (el) => { setLang(el.value); this.app.setSetting('lang', el.value); this.relocalize(); },
+      lang: (el) => { this.app.setSetting('lang', el.value); },
       shopDepot: (el) => { this.shopDepot = +el.value; this.refreshPanel(); },
       stationStyle: (el) => { const s = g().stations.byId(+el.dataset.id); g().stations.setStyle(s, el.value); },
       livery: (el) => { const t = g().trains.byId(+el.dataset.id); t.livery = el.value; t.visualSig = null; },

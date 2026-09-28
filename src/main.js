@@ -209,6 +209,8 @@ class App {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { /* storage unavailable */ }
     if (k.startsWith('vol') || k === 'music') this.audio.applyVolumes();
     if (k === 'graphics') this.applyPixelRatio();
+    // the language applies at once, wherever it is set from
+    if (k === 'lang') { setLang(v); if (this.ui && this.ui.relocalize) this.ui.relocalize(); }
     if (k === 'shadows' && this.game) this.game.env.setShadowQuality(v);
     if (k === 'uiScale' || k === 'highContrast' || k === 'reducedMotion') this.applyUiSettings();
   }

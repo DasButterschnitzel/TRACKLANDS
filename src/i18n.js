@@ -464,3 +464,6 @@ const DE = {
 Object.assign(EN, EN_RAIL);
 Object.assign(DE, DE_RAIL);
 const DICT = { en: EN, de: DE };
+// localization QA: the raw text of a key in one language, and all keys
+export function rawIn(l, key) { return DICT[l] ? DICT[l][key] : undefined; }
+export function keysOf(l) { return Object.keys(DICT[l] || {}); }

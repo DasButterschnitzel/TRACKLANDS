@@ -49,8 +49,10 @@ export async function run({ browser, base }) {
       const rows = document.querySelectorAll('#find-body .find-row').length;
       const kinds = [...document.querySelectorAll('#find-body .find-row small')].slice(0, 3).map((e) => e.textContent.trim());
       ui.closePanel();
-      return { n: corpus.length, miss, typoMiss, junk, townFirst: first && first.kind === 'town' && first.name === town.name, same, rows, kinds, panel0 };
+      return { lang: document.documentElement.lang, findTitle: ui.tr('settings'), n: corpus.length, miss, typoMiss, junk, townFirst: first && first.kind === 'town' && first.name === town.name, same, rows, kinds, panel0 };
     }, [lang, lang === 'en' ? [...EN, ...DE] : [...DE, ...EN], TYPOS]);
+    // (a bug found once: the language setting did not switch the interface)
+    check(r.lang === lang, `${lang.toUpperCase()} interface really active (html lang ${r.lang}, “settings” reads “${r.findTitle}”)`);
     check(!r.miss.length, `${lang.toUpperCase()} interface: ${r.n - r.miss.length}/${r.n} everyday queries (English and German) list the right command in the top three${r.miss.length ? ': ' + r.miss.join(' · ') : ''}`);
     check(!r.typoMiss.length, `${lang.toUpperCase()}: typos found (${TYPOS.map((t) => t[0]).join(', ')})${r.typoMiss.length ? ': ' + r.typoMiss.join(' · ') : ''}`);
     check(r.junk === 0 && r.townFirst, `${lang.toUpperCase()}: nonsense finds nothing; a town's name finds the town first`);
