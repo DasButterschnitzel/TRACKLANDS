@@ -193,8 +193,7 @@ export class RailRenderer {
     if (net.hasLink[i] && layerOf(i) === 0) {
       const l = net.linkOf(i);
       if (l && (layerOf(l.to) === 1)) {
-        const e = edge(net, i, l.d);
-        this.portal(gb, e[0] - DX[l.d] * 0.1, e[1] - 0.2, e[2] - DZ[l.d] * 0.1, Math.atan2(DZ[l.d], -DX[l.d]), delay, 'metro');
+        this.metroCut(gb, i, l.d, delay);
       }
     }
     if (under) this.tube(gb, i, kind === K_DEEP, delay);
@@ -433,6 +432,34 @@ export class RailRenderer {
       for (const f of [-0.6, 0, 0.6]) gb.box(cx + m.nx * half * f, m.y + H - 0.07, cz + m.nz * half * f, 0.012, 0.07, 0.012, beamYaw, S.beam, delay);
     }
     if (fam === 'hs') gb.box(cx, m.y + H + 0.07, cz, 0.05, 0.04, half, beamYaw, S.beam, delay);
+  }
+
+  // The surface tile of a metro ramp is a cut in the ground: the track
+  // falls to half the tunnel depth across it, below the terrain, so what is
+  // drawn is what one sees from above: retaining walls with railings along
+  // the tile, the dark opening between them and the portal lintel where the
+  // tunnel begins, all at ground level (the terrain itself is not cut).
+  metroCut(gb, i, d, delay) {
+    const W = this.game.world, e = edge(this.game.net, i, d);
+    const yaw = Math.atan2(DZ[d], -DX[d]);
+    const fx = Math.cos(yaw), fz = -Math.sin(yaw), px = Math.sin(yaw), pz = Math.cos(yaw);
+    const x = e[0] - DX[d] * 0.1, z = e[2] - DZ[d] * 0.1;
+    const o = (a, b) => [x + fx * a + px * b, z + fz * a + pz * b];
+    let gy = W.view ? Math.max(W.view.heightAt(tileCX(i), tileCZ(i)), W.view.heightAt(x, z)) : W.tileH[i];
+    gy = Math.max(gy, this.game.net.railH(i)) + 0.02;
+    const [cx, cz] = o(0.9, 0);
+    gb.box(cx, gy, cz, 0.9, 0.025, 0.92, yaw, 0x16181c, delay);                 // the opening
+    const [sx, sz] = o(1.5, 0);
+    gb.box(sx, gy + 0.004, sz, 0.3, 0.025, 0.92, yaw, 0x3a3d42, delay);         // the top of the ramp, still lit
+    for (const sgn of [1, -1]) {
+      const [wx, wz] = o(0.9, sgn * 0.98);
+      gb.box(wx, gy + 0.06, wz, 0.95, 0.08, 0.07, yaw, 0xb4b0a6, delay);        // retaining wall
+      gb.box(wx, gy + 0.36, wz, 0.95, 0.015, 0.015, yaw, 0x3a4250, delay);      // railing
+      for (const a of [0.05, 0.9, 1.75]) { const [rx, rz] = o(a, sgn * 0.98); gb.box(rx, gy + 0.22, rz, 0.015, 0.15, 0.015, yaw, 0x3a4250, delay); }
+    }
+    gb.box(x, gy + 0.09, z, 0.1, 0.1, 1.04, yaw, 0xa8a49a, delay);              // lintel over the tunnel mouth
+    this._cuts = (this._cuts || 0) + 1;
+    return gy;
   }
 
   // Tunnel portals by family: masonry (stone arch, the classic), industrial
