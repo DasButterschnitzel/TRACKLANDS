@@ -520,31 +520,47 @@ export class Game {
 
   // ---------- main loop ----------
   tick(dt) {
+    // (the simulation's cost by part, for the performance overlay and the
+    // benchmark: one clock reading per part; nothing here changes the game)
+    const S = this._sub || (this._sub = { trains: 0, road: 0, traffic: 0, towns: 0, industries: 0, passengers: 0, cargo: 0, ai: 0, weather: 0, other: 0 });
+    let t0 = performance.now(), t1;
+    const lap = (k) => { t1 = performance.now(); S[k] += t1 - t0; t0 = t1; };
     this.time += dt;
     this.stats.inc('playTime', dt);
-    this.industries.tick(dt);
+    this.industries.tick(dt); lap('industries');
     this.towns.tick(dt);
-    this.urban.tick(dt);
-    this.standing.tick(dt);
+    this.urban.tick(dt); lap('towns');
+    this.standing.tick(dt); lap('other');
     this.stations.tick(dt);
-    this.flows.tick(dt);
-    this.pax.tick(dt);
+    this.flows.tick(dt); lap('cargo');
+    this.pax.tick(dt); lap('passengers');
     this.trains.tick(dt);
-    this.maint.tick(dt);
+    this.maint.tick(dt); lap('trains');
     this.authority.tick(dt);
-    this.ratings.tick(dt);
-    this.roads.tick(dt);
+    this.ratings.tick(dt); lap('cargo');
+    const tr0 = this.traffic ? this.traffic.ms || 0 : 0;
+    this.roads.tick(dt); lap('road');
+    if (this.traffic) { const d = (this.traffic.ms || 0) - tr0; S.traffic += d; S.road -= d; }
     this.works.tick(dt);
-    this.env.tickWeather(dt);
+    this.env.tickWeather(dt); lap('weather');
     this.company.tick();
-    this.rivals.tick();
+    this.rivals.tick(); lap('ai');
     if (this.scenario) this.scenario.tick(dt);
     this.economy.tick(dt);
     this.progression.tick(dt);
     const decay = Math.exp(-dt / 90);
-    const tr = this.net.traffic, wh = this.net.waitHeat;
+    const net = this.net, tr = net.traffic, wh = net.waitHeat, on = net.heatOn, L = net.heatList;
     const wdecay = Math.exp(-dt / 240);
-    for (let i = 0; i < tr.length; i++) { if (tr[i] > 0.001) tr[i] *= decay; if (wh[i] > 0.001) wh[i] *= wdecay; }
+    // (only the tiles still fading: a value at or below 0.001 stays as it is)
+    let w = 0;
+    for (let k = 0; k < L.length; k++) {
+      const i = L[k];
+      if (tr[i] > 0.001) tr[i] *= decay;
+      if (wh[i] > 0.001) wh[i] *= wdecay;
+      if (tr[i] > 0.001 || wh[i] > 0.001) L[w++] = i; else on[i] = 0;
+    }
+    L.length = w;
+    lap('other');
   }
 
   frame(dt) {
@@ -602,6 +618,7 @@ export class Game {
     const f3 = performance.now();
     const P = this.perf;
     P.add('sim', f1 - f0); P.add('vis', f2 - f1); P.add('render', f3 - f2); P.add('frame', dt * 1000);
+    if (this._sub) { P.addSub(this._sub); for (const k in this._sub) this._sub[k] = 0; }
     this.perfHud.show(!!this.settings.perfHud);
     this.perfHud.update(dt, this);
   }

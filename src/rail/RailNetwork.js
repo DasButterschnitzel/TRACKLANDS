@@ -72,6 +72,9 @@ export class RailNetwork {
     this.nextWp = 1;
     this.traffic = new Float32Array(N * N * LAYERS);
     this.waitHeat = new Float32Array(N * N * LAYERS);
+    // tiles whose traffic or waiting heat is still fading (Game.tick decays
+    // only these; a value at or below 0.001 no longer changes)
+    this.heatOn = new Uint8Array(N * N * LAYERS); this.heatList = [];
     this.routeCache = new Map();
     this.cacheVersion = 0;
     this._comp = null; this._compVersion = -1;
@@ -148,6 +151,9 @@ export class RailNetwork {
   }
 
   kind(i) { return this.kindArr[i]; }
+  // add to a tile's traffic count or waiting heat (both fade in Game.tick)
+  addTraffic(i, n) { this.traffic[i] += n; if (!this.heatOn[i]) { this.heatOn[i] = 1; this.heatList.push(i); } }
+  addWaitHeat(i, n) { this.waitHeat[i] += n; if (!this.heatOn[i]) { this.heatOn[i] = 1; this.heatList.push(i); } }
   railH(i) { return this.hArr[i]; }
   has(i) { return this.conn[i] !== 0; }
   degree(i) { let c = 0, m = this.conn[i]; while (m) { c += m & 1; m >>= 1; } return c; }

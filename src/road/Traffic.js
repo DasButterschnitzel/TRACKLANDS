@@ -41,6 +41,7 @@ export class Traffic {
     this.lights = new Map();    // tile -> { axis (green), t (left), pri }
     this.load = new Map();      // tile -> cars on or next to it this step
     this.edges = new Map();     // directed edge -> movers on it this step
+    this._used = []; this._pool = []; // (the edge lists filled this step, reusable entries)
     this._jv = null;
     this._adj = 0;
     this.stats = { squeezed: 0, redStops: 0 };
@@ -69,9 +70,13 @@ export class Traffic {
   refreshJunctions() {
     const g = this.game, R = g.roads;
     if (!R) return;
-    const key = `${R.version}|${g.towns.list.map((t) => t.stage).join('')}`;
-    if (key === this._jv) return;
-    this._jv = key;
+    // (unchanged unless the roads or a town's stage changed: compared in
+    // place, this runs several times a frame)
+    const L = g.towns.list, st = this._jst;
+    let same = R.version === this._jrv && L === this._jl && st && st.length === L.length;
+    if (same) for (let i = 0; i < L.length; i++) if (L[i].stage !== st[i]) { same = false; break; }
+    if (same) return;
+    this._jrv = R.version; this._jl = L; this._jst = L.map((t) => t.stage);
     const old = this.lights;
     this.jn = new Map(); this.lights = new Map();
     const T = R.townRoads();
@@ -81,7 +86,7 @@ export class Traffic {
     const city = new Set();
     for (const t of g.towns.list) if (t.stage >= 4 && t.roadSet) { const r = 1 + (t.stage >= 6 ? 1 : 0); for (const i of t.roadSet) if (Math.max(Math.abs(tx(i) - t.x), Math.abs(tz(i) - t.z)) <= r) city.add(i); }
     for (const i of tiles) {
-      const d = R.neighbours(i).length;
+      const d = R.degree(i);
       if (d < 3) continue;
       const lit = d === 4 && city.has(i) && !g.crossings.at(i);
       this.jn.set(i, lit ? 2 : 1);
@@ -108,6 +113,11 @@ export class Traffic {
   tick(dt) {
     const g = this.game, R = g.roads;
     if (!R) return;
+    const t0 = performance.now();
+    this.tick1(dt, g, R);
+    this.ms = (this.ms || 0) + performance.now() - t0;     // (cumulative, read by the performance overlay)
+  }
+  tick1(dt, g, R) {
     this.refreshJunctions();
     // lights change
     for (const L of this.lights.values()) { L.t -= dt; if (L.t <= 0) { L.axis ^= 1; L.t = LIGHT_GREEN; L.pri = false; this._lightsDirty = true; } }
@@ -115,8 +125,23 @@ export class Traffic {
     this._adj -= dt;
     if (this._adj <= 0) { this._adj = 1; this.adjustCars(); }
     // who is on which stretch
-    const E = this.edges; E.clear();
-    const add = (a, b, f, o) => { if (b == null || b < 0 || a === b) return; const k = a * 131072 + b; let l = E.get(k); if (!l) E.set(k, l = []); l.push({ f, o }); };
+    // (lists and entries are reused from step to step; only the stretches
+    // used last step are emptied)
+    const E = this.edges, used = this._used, pool = this._pool;
+    for (const l of used) l.length = 0;
+    used.length = 0;
+    if (E.size > 8192) E.clear();
+    let pi = 0;
+    const add = (a, b, f, o) => {
+      if (b == null || b < 0 || a === b) return;
+      const k = a * 131072 + b;
+      let l = E.get(k);
+      if (!l) E.set(k, l = []);
+      if (!l.length) used.push(l);
+      let m = pool[pi++];
+      if (!m) pool.push(m = { f: 0, o: null });
+      m.f = f; m.o = o; l.push(m);
+    };
     for (const c of this.cars) add(c.from, c.to, c.f, c);
     for (const v of R.vehicles) if ((v.state === 'run' || v.state === 'broken') && v.path) add(v.tile, v.path[v.pi + 1], v.f, v);
     this.load.clear();
@@ -254,9 +279,15 @@ export class Traffic {
   wanted(t) {
     const g = this.game;
     if (!g.progression.regionUnlocked(t.region) || !t.roadSet || t.roadSet.size < 2) return 0;
-    let dense = 0, tot = 0;
-    for (const b of t.buildings) { tot++; dense += DENSE[b.arch] || 0; }
-    const dens = 0.75 + 0.9 * (tot ? dense / tot : 0);
+    // (the density of the town's buildings, kept until its building list
+    // changes: layouts replace the list, restores push onto it)
+    let D = t._dens;
+    if (!D || D.arr !== t.buildings || D.len !== t.buildings.length) {
+      let dense = 0, tot = 0;
+      for (const b of t.buildings) { tot++; dense += DENSE[b.arch] || 0; }
+      D = t._dens = { arr: t.buildings, len: t.buildings.length, v: 0.75 + 0.9 * (tot ? dense / tot : 0) };
+    }
+    const dens = D.v;
     const tod = this.timeFactor();
     // good public transport takes some cars off the streets (Urban accessibility)
     const pt = g.urban ? 1 - 0.25 * g.urban.town(t).score : 1;
@@ -296,7 +327,7 @@ export class Traffic {
     if (from < 0) return;
     const c = { id: this.seq++, town: t.id, from, to, f: this.rand() * 0.2, speed: 1.0 + this.rand() * 0.45, wait: 0, color: CAR_COLORS[Math.floor(this.rand() * CAR_COLORS.length)], slot: this.cars.length };
     this.cars.push(c);
-    const k = from * 131072 + to; let l = this.edges.get(k); if (!l) this.edges.set(k, l = []); l.push({ f: c.f, o: c });
+    const k = from * 131072 + to; let l = this.edges.get(k); if (!l) this.edges.set(k, l = []); if (!l.length) this._used.push(l); l.push({ f: c.f, o: c });
     this.carMesh.setColorAt(c.slot, this._c.set(c.color));
     if (this.carMesh.instanceColor) this.carMesh.instanceColor.needsUpdate = true;
   }

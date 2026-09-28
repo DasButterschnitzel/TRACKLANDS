@@ -113,6 +113,20 @@ export class Roads {
   }
   // kind: who drives (busways take buses and coaches only); one-way streets
   // are only driven with the flow
+  // how many neighbours cars reach from i (neighbours(i).length, counted
+  // without building the list: junction detection asks this for every tile)
+  degree(i) {
+    let n = 0;
+    const x = tx(i), z = tz(i);
+    for (const [dx, dz, b] of D4) {
+      const X = x + dx, Z = z + dz; if (!inMap(X, Z)) continue; const j = idx(X, Z);
+      if (!this.linked(i, j, b)) continue;
+      if (this.ow[i] & b) continue;
+      if (this.bits[j] && ROAD_TYPE_IDS[this.rtype[j]] === 'busway') continue;
+      n++;
+    }
+    return n;
+  }
   neighbours(i, tram = false, kind = null) {
     const out = [];
     const x = tx(i), z = tz(i);
@@ -373,7 +387,21 @@ export class Roads {
   }
 
   // ---------- stops ----------
-  stopAt(i) { return this.stops.find((s) => s.tile === i || (s.kind === 'airport' && cheb(s.tile, i) <= 1)) || null; }
+  // (indexed by tile, the first stop in list order as before; the list only
+  // grows by push or is replaced when a stop goes, so identity and length
+  // tell when to rebuild. The town's cars ask this for every tile ahead.)
+  stopAt(i) {
+    const S = this.stops;
+    if (this._sIdxArr !== S || this._sIdxLen !== S.length) {
+      const m = new Map();
+      for (const s of S) {
+        if (!m.has(s.tile)) m.set(s.tile, s);
+        if (s.kind === 'airport') for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const t = s.tile + dz * N + dx; if (cheb(s.tile, t) <= 1 && !m.has(t)) m.set(t, s); }
+      }
+      this._sIdx = m; this._sIdxArr = S; this._sIdxLen = S.length;
+    }
+    return this._sIdx.get(i) || null;
+  }
   // walking distance around a stop (catchment for the town's travellers)
   stopRadius(s) { return s.kind === 'airport' ? 3 + (s.size || 1) : s.kind === 'dock' ? 2 + (s.size || 1) : (this.stopProps ? this.stopProps(s).radius : 2); }
   stopTiles(s) { return s.kind === 'airport' ? around(s.tile).filter((t) => t >= 0) : [s.tile]; }

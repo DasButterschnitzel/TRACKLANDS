@@ -83,7 +83,7 @@ export class Crossings {
   at(tile) { this.fresh(); return this.map.get(tile) || null; }
   isClosed(tile) { this.fresh(); const c = this.map.get(tile); return !!c && c.closed; }
   // road traffic stops entering as soon as the warning starts
-  isBlocked(tile) { const c = this.map.get(tile); return !!c && (c.closed || c.warn || c.request > this.game.time); }
+  isBlocked(tile) { if (this.flag && !this.flag[tile]) return false; const c = this.map.get(tile); return !!c && (c.closed || c.warn || c.request > this.game.time); }
   // Interlock: a train may only reserve a crossing that is clear of road
   // traffic. Asking starts the warning (no car enters, cars on it hurry off).
   // A town car still on it after a few seconds (stuck behind the queue on
@@ -129,6 +129,10 @@ export class Crossings {
         this.map.set(i, { tile: i, axis: ax, closed: prev ? prev.closed : false, arm: prev ? prev.arm : 0, t: 0, town: t.id });
       }
     }
+    // a flag per tile: the town's cars ask about every tile they drive onto
+    const n = g.world && g.world.type ? g.world.type.length : 0;
+    if (!this.flag || this.flag.length !== n) this.flag = new Uint8Array(n); else this.flag.fill(0);
+    for (const i of this.map.keys()) if (i >= 0 && i < n) this.flag[i] = 1;
     this.version = g.net.version;
     this.update(0, true);
   }

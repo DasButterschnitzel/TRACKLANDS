@@ -1745,7 +1745,7 @@ export class TrainSystem {
     t.s = Math.min(t.s + t.v * dt, Math.max(t.s, stopAt));
     t.odo = (t.odo || 0) + (t.s - sPrev);   // distance run along the track (tests: motion invariant)
     const hk = this.stepAt(t, t.s);
-    if (hk !== t.lastStepIdx) { t.lastStepIdx = hk; const s = t.steps[hk]; if (s) net.traffic[s.tile] += 1; }
+    if (hk !== t.lastStepIdx) { t.lastStepIdx = hk; const s = t.steps[hk]; if (s) net.addTraffic(s.tile, 1); }
     const kmh = (t.v / TILE) * KMH_PER_TILE_S;
     if (kmh > g.stats.data.topSpeed) g.stats.set('topSpeed', Math.round(kmh));
     // waypoints: pass through without stopping
@@ -1776,7 +1776,7 @@ export class TrainSystem {
       // while it gives way (the work then waits for this train too)
       if (res.kind === 'works') { t.worksWait = (t.worksWait || 0) + dt; if (t.worksWait > 30) { t.worksPass = g.time + 25; t.worksWait = 0; } }
       const ws = t.steps[Math.min(t.steps.length - 1, t.resvEnd + 1)];
-      if (ws) { net.waitHeat[ws.tile] += dt; if (ws.station) g.stations.noteWait(ws.station, dt); }
+      if (ws) { net.addWaitHeat(ws.tile, dt); if (ws.station) g.stations.noteWait(ws.station, dt); }
       if (t.wait > 12 && t.reroutes === 0) { t.reroutes = 1; this.rerouteAvoiding(t); }
     } else if (t.v > 0.3) { t.wait = 0; t.reroutes = 0; t.blockedBy = 0; t.blockKind = null; t.deadT = 0; t.waitKeys = null; t.worksWait = 0; }
     if (t.steps.length > 80) this.trim(t);

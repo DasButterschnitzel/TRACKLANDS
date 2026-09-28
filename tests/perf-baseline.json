@@ -1,5 +1,7 @@
 {
   "note": "draw calls and scene objects of the benchmark worlds (tests/suites/bench.mjs)",
+  "control": "d9a0ef5",
+  "control_note": "the 6.0.0 release: tools/bench-compare.mjs measures it with the same benchmark in the same environment",
   "worlds": {
     "w64": {
       "calls": 172,

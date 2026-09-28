@@ -109,11 +109,15 @@ export class RailRenderer {
     if (old) { grp.remove(old); old.geometry.dispose(); this.chunks.delete(key); }
     const gb = new GeoBuf();
     const net = this.game.net;
+    // (what the chunk holds, for the performance overlay)
+    const cs = this._cs = { cat: 0, portal: 0, cut: 0 };
     for (let z = cz * CH; z < cz * CH + CH; z++) for (let x = cx * CH; x < cx * CH + CH; x++) {
       const i = onLayer(idx(x, z), L);
       if (!net.conn[i] || this.animTiles.has(i)) continue;
       this.tileGeometry(gb, i, 0);
     }
+    this._cs = null;
+    (this.chunkStats || (this.chunkStats = new Map())).set(key, cs);
     if (!gb.p.length) return;
     const mesh = new THREE.Mesh(gb.build(), this.mat);
     mesh.receiveShadow = true;
@@ -364,6 +368,12 @@ export class RailRenderer {
   // (stepped crown), a lighter voussoir band, a cornice and two wing walls
   // splaying out along the cutting. Local x = along the track, pointing out.
   // the portal family of a tunnel tile: its building year (high-speed lines their own)
+  // totals over the chunks (catenary tiles, tunnel portals, metro ramps, underground chunks)
+  statsTotal() {
+    const t = { cat: 0, portal: 0, cut: 0, ugChunks: this.ugGroup.children.length };
+    if (this.chunkStats) for (const c of this.chunkStats.values()) { t.cat += c.cat; t.portal += c.portal; t.cut += c.cut; }
+    return t;
+  }
   portalFamily(i) {
     const g = this.game, net = g.net;
     if (net.tier[i] === 3) return 'hs';
@@ -382,6 +392,7 @@ export class RailRenderer {
   }
   catenary(gb, i, cv, pairs, tier, delay) {
     const net = this.game.net;
+    if (this._cs) this._cs.cat++;
     const fam = this.catenaryFamily(i);
     const m = cv[Math.floor(cv.length / 2)];
     const yaw = Math.atan2(-m.tz, m.tx);
@@ -440,6 +451,7 @@ export class RailRenderer {
   // the tile, the dark opening between them and the portal lintel where the
   // tunnel begins, all at ground level (the terrain itself is not cut).
   metroCut(gb, i, d, delay) {
+    if (this._cs) this._cs.cut++;
     const W = this.game.world, e = edge(this.game.net, i, d);
     const yaw = Math.atan2(DZ[d], -DX[d]);
     const fx = Math.cos(yaw), fz = -Math.sin(yaw), px = Math.sin(yaw), pz = Math.cos(yaw);
@@ -466,6 +478,7 @@ export class RailRenderer {
   // (brick with a concrete lintel), concrete, modern, high-speed (a wide
   // clean hood) and metro (a cut-and-cover ramp between retaining walls).
   portal(gb, x, y, z, yaw, delay, fam = 'masonry') {
+    if (this._cs) this._cs.portal++;
     if (fam !== 'masonry') { this.portalOf(gb, x, y, z, yaw, delay, fam); return; }
     const stone = 0x9a9086, trim = 0xb8ae9f, dark = 0x121316;
     const fx = Math.cos(yaw), fz = -Math.sin(yaw);   // outward
