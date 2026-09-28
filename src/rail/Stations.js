@@ -410,7 +410,7 @@ export class StationSystem {
         const e = check(t, ext.dir);
         if (e) { error = e; bad = t; break; }
         tiles.push(t);
-        cost += Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
+        cost += Math.round((net.hasTrack(t) ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
         p = t;
       }
       const len = tk.tiles.length + tiles.length;
@@ -429,7 +429,7 @@ export class StationSystem {
       if (net.conn[t]) for (let q = 0; q < 8; q++) if (net.hasDir(t, q) && (q & 3) !== (dir & 3)) { error = 'err_extend_blocked'; bad = t; }
       if (error) break;
       tiles.push(t);
-      cost += i === 0 ? g.economy.costs.station(t) : Math.round((net.conn[t] ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
+      cost += i === 0 ? g.economy.costs.station(t) : Math.round((net.hasTrack(t) ? COSTS.platformExtend : COSTS.platformExtend + COSTS.stationTrackTile) * mul);
       p = t;
     }
     // extra platform tracks alongside (+1, -1, +2 ...), within the research limit
@@ -480,7 +480,7 @@ export class StationSystem {
     const g = this.game;
     if (!plan || plan.error) return { error: plan ? plan.error : 'err_unknown' };
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    let spent = 0, comp = 0;
+    let comp = 0;
     // property first: compensation is booked per building (undo refunds the
     // construction only; demolished buildings stay demolished)
     for (const a of plan.acquire || []) {
@@ -489,6 +489,22 @@ export class StationSystem {
       comp += r.info.cost;
     }
     if ((plan.acquire || []).length) g.events.emit('propertyAcquired', plan.acquire.length);
+    // one price (Phase 12): the drag is charged exactly what it was quoted
+    // (planDrag); the steps below build without charging on their own
+    this._quoted = true;
+    let r;
+    try { r = this.buildDragSteps(plan, comp); } finally { this._quoted = false; }
+    if (r.ok) {
+      const built = plan.mode === 'extend' ? r.added / Math.max(1, plan.tiles.length) : 1;
+      const cost = Math.round((plan.cost - (plan.compensation || 0)) * Math.min(1, built));
+      g.economy.spend(cost, 'construction', { type: 'station', id: r.stn.id }, plan.mode === 'extend' ? '~fin_n_platform:' + r.added : '~fin_n_station:1');
+      r.cost = cost;
+    }
+    return r;
+  }
+  buildDragSteps(plan, comp) {
+    let spent = 0;
+    void spent;
     if (plan.mode === 'extend') {
       const stn = plan.stn;
       const ax = this.axisOf(stn);
@@ -548,7 +564,7 @@ export class StationSystem {
     const stn = this.newStation(tile, axis != null ? { axis } : null);
     stn.name = this.makeName(tile, links);
     const cost = g.economy.costs.station(tile);
-    g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
+    if (!this._quoted) g.economy.spend(cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_station:1');
     if (g.authority && !stn.owner) g.authority.onStationBuilt(stn);
     net.special.set(tile, { type: 'station', id: stn.id, track: 0, role: 'any' });
     net.own[tile] = net.actorIdx();
@@ -776,7 +792,7 @@ export class StationSystem {
     if (dry) return { error: occ, cost: plan.cost, tiles: all };
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
     if (occ) return { error: occ };
-    g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_addtrack:1');
+    if (!this._quoted) g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_addtrack:1');
     const a = this.axisOf(stn);
     for (let i = 0; i < plan.tiles.length - 1; i++) net.connect(plan.tiles[i], a);
     const built = [...plan.tiles];
@@ -837,7 +853,7 @@ export class StationSystem {
     const plan = this.planExtend(stn, k, end);
     if (plan.error) return plan;
     if (!g.economy.canAfford(plan.cost)) return { error: 'err_no_money' };
-    g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_platform:1');
+    if (!this._quoted) g.economy.spend(plan.cost, 'construction', { type: 'station', id: stn.id }, '~fin_n_platform:1');
     const tk = stn.tracks[k];
     const a = this.axisOf(stn);
     const E = end ? tk.tiles[tk.tiles.length - 1] : tk.tiles[0];

@@ -176,7 +176,7 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Planning mode: drawing plans builds and charges nothing; ghosts; no land reservation | PASS | `planning` |
 | Project states, cost breakdown, revalidation when the ground is taken | PASS | `planning` |
 | BUILD PROJECT all or nothing (rollback of a step failing half way); build the valid part; duplicate; compare; saved with the game | PASS | `planning` |
-| Project estimate equals the charge | PARTIAL | a station planned over track planned in the same project is estimated as if the track were not there (860 estimated, 720 charged); being fixed in Phase 12 |
+| Project estimate equals the charge | PASS (fixed in Phase 12) | was PARTIAL: a station over planned track was estimated as if the track were not there (860 estimated, 720 charged). One price now (`costquote`, `planning`) |
 | Blueprints: capture, five built-in patterns + terminus throat, rotate, mirror, JSON import/export (numbers only; bad input refused), versioned browser library | PASS | `planning`, `stationcomplex` |
 | Station complexes (stations and stops a walk away, across levels) | PASS | `stationcomplex` |
 | Bike parking (+1 reach) and park & ride (towns 3 tiles further), charged once, saved | PASS | `stationcomplex` |

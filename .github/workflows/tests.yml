@@ -37,7 +37,7 @@ jobs:
       matrix:
         group:
           - name: core
-            suites: unit worldgen rail seeds network urban roadtypes tools helpui packs terrain eras layers metro fourtrack planning stationcomplex erainfra
+            suites: unit worldgen rail seeds network urban roadtypes tools helpui packs terrain eras layers metro fourtrack planning stationcomplex erainfra costquote
             quick: monkey ui
           - name: economy
             suites: prodsave savesafety music economy standing analysis timectl persist import pwa tutorial build finance authority towns crossings roads audio industry weather news stationtypes

@@ -21,7 +21,7 @@ export function cleanStep(s) {
   if (s.op === 'track' || s.op === 'pair') {
     if (!okTile(s.a) || !okTile(s.b) || s.a === s.b) return null;
     const out = { op: s.op, a: s.a, b: s.b, tier, L: Math.max(0, Math.min(3, s.L | 0)) };
-    if (s.op === 'track') out.mode = TRACK_MODES.includes(s.mode) && s.mode !== 'pair' ? s.mode : 'double';
+    if (s.op === 'track') { out.mode = TRACK_MODES.includes(s.mode) && s.mode !== 'pair' ? s.mode : 'double'; if (s.straight) out.straight = 1; }
     else { out.side = s.side < 0 ? -1 : 1; out.roles = ['none', 'express', 'freight'].includes(s.roles) ? s.roles : 'none'; }
     return out;
   }
@@ -89,7 +89,7 @@ export class Plans {
     const save = { side: C.pairSide, roles: C.pairRoles };
     try {
       if (s.op === 'track') {
-        const r = C.trackOp(s.a, s.b, s.tier, s.mode, true, s.L);
+        const r = C.trackOp(s.a, s.b, s.tier, s.mode, true, s.L, s.straight ? { straight: true } : null);
         return { error: r.error === 'err_train_on_track' ? null : r.error, wait: r.error === 'err_train_on_track', cost: r.cost || 0, tiles: r.tiles || [], kind: s.L ? 'structure' : 'track', bridges: 0 };
       }
       if (s.op === 'pair') {
@@ -113,10 +113,27 @@ export class Plans {
     } finally { C.pairSide = save.side; C.pairRoles = save.roles; }
     return { error: 'err_plan_step', cost: 0, tiles: [] };
   }
+  // the quote of a list of steps, priced as they will be built: each step
+  // sees the track the steps before it lay (RailNetwork.virt), through the
+  // same price functions the build uses
+  quote(steps) {
+    const net = this.game.net, prev = net.virt;
+    net.virt = new Map();
+    try {
+      return steps.map((s) => {
+        const r = this.dry(s);
+        if (!r.error && (s.op === 'track' || s.op === 'pair' || s.op === 'station')) {
+          const tier = s.op === 'station' ? 0 : s.tier | 0;
+          for (const t of r.tiles) net.virt.set(t, Math.max(net.virt.get(t) ?? -1, net.conn[t] ? net.tier[t] : -1, tier));
+        }
+        return r;
+      });
+    } finally { net.virt = prev; }
+  }
   // every step checked, the costs broken down, the state of the project
   validate(p) {
     const g = this.game;
-    const steps = p.steps.map((s) => this.dry(s));
+    const steps = this.quote(p.steps);
     // a signal on track the same project lays first is fine
     if (steps.some((r) => r.later)) {
       const laid = new Set();
@@ -149,7 +166,7 @@ export class Plans {
     if (!partial && v.bad.length) return { error: 'err_plan_blocked', step: v.bad[0], reason: v.steps[v.bad[0]].error };
     const todo = partial ? p.steps.filter((s, k) => !v.steps[k].error) : p.steps.slice();
     if (!todo.length) return { error: 'err_plan_blocked' };
-    const cost = todo.reduce((a, s) => a + this.dry(s).cost, 0);
+    const cost = this.quote(todo).reduce((a, r) => a + r.cost, 0);
     if (!g.economy.canAfford(cost)) return { error: 'err_no_money', cost };
     const coins0 = g.economy.coins;
     C._collect = [];
@@ -164,7 +181,8 @@ export class Plans {
       const es = C._collect; C._collect = null;
       if (fail && !partial) {
         // take back what was built (newest first)
-        for (let k = es.length - 1; k >= 0; k--) { C.undoStack.push(es[k]); C.undo(); }
+        g.economy.reversing = true;
+        try { for (let k = es.length - 1; k >= 0; k--) { C.undoStack.push(es[k]); C.undo(); } } finally { g.economy.reversing = false; }
       } else if (es.length) {
         const prev = [], roles = [];
         for (let k = es.length - 1; k >= 0; k--) if (es[k].type === 'track') { prev.push(...es[k].prev); if (es[k].roles) roles.push(...es[k].roles); }
@@ -181,11 +199,11 @@ export class Plans {
     if (!p.steps.length) this.remove(p);
     this.game.events.emit('plans');
     this.game.events.emit('planBuilt', p, spent);
-    return { ok: true, built, spent, left: p.steps.length };
+    return { ok: true, built, spent, quoted: cost, left: p.steps.length };
   }
   apply(s) {
     const g = this.game, C = g.construction, S = g.stations, net = g.net;
-    if (s.op === 'track') return C.trackOp(s.a, s.b, s.tier, s.mode, false, s.L);
+    if (s.op === 'track') return C.trackOp(s.a, s.b, s.tier, s.mode, false, s.L, s.straight ? { straight: true } : null);
     if (s.op === 'pair') { const sv = [C.pairSide, C.pairRoles]; C.pairSide = s.side; C.pairRoles = s.roles; try { return C.trackOp(s.a, s.b, s.tier, 'pair'); } finally { [C.pairSide, C.pairRoles] = sv; } }
     if (s.op === 'station') return C.stationOp(s.a, s.b, s.tracks, false, true);
     if (s.op === 'depot') { const r = S.buildDepot(s.tile); return r.error ? r : { ok: true }; }

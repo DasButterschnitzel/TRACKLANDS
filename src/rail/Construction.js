@@ -517,9 +517,10 @@ export class Construction {
 
   // ---------- track ----------
   // a track plan on the chosen layer (tunnels, viaducts: Phase 11)
-  planTrack(a, b, tier, L = this.layer) {
+  planTrack(a, b, tier, L = this.layer, opts = null) {
     const net = this.game.net;
-    return L ? net.planLayered(baseTile(a), baseTile(b), tier, L) : net.planConstruction(a, b, tier);
+    if (L) return net.planLayered(baseTile(a), baseTile(b), tier, L);
+    return opts && opts.straight ? net.planStraight(a, b, tier) : net.planConstruction(a, b, tier);
   }
   previewTrack() {
     const g = this.game;
@@ -613,7 +614,7 @@ export class Construction {
     return null;
   }
   // the whole a→b drag as one call: plan, check, build (pending construction)
-  trackOp(a, b, tier, mode, dry, L = 0) {
+  trackOp(a, b, tier, mode, dry, L = 0, opts = null) {
     const g = this.game;
     if (mode === 'role') {
       const plan = this.planRole(a, b, tier);
@@ -630,7 +631,7 @@ export class Construction {
       this.applyPair(plan);
       return { ok: true, cost: plan.cost, tiles: plan.tiles };
     }
-    const plan = this.planTrack(a, b, tier, L);
+    const plan = this.planTrack(a, b, tier, L, opts);
     this.adjustPlanForMode(plan, mode);
     if (!plan.ok) return { error: plan.reason || 'err_no_path' };
     const err = this.trackCheck(plan);

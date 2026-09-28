@@ -281,23 +281,16 @@ export class RailNetwork {
     // depot rules
     if (sa && sa.type === 'depot' && this.conn[a] && !this.hasDir(a, path.dirs[0])) { res.reason = 'err_depot_connected'; res.invalid.push(a); return res; }
     if (sb && sb.type === 'depot' && this.conn[b] && !this.hasDir(b, opp(path.dirs[path.dirs.length - 1]))) { res.reason = 'err_depot_connected'; res.invalid.push(b); return res; }
-    const cost = this.game.economy.costs;
     let total = 0, prevBridge = false, prevTunnel = false;
     for (let k = 0; k < res.tiles.length; k++) {
       const i = res.tiles[k];
       const kd = this.kindArr[i];
-      const has = this.conn[i] !== 0 || this.special.has(i);
-      const curTier = this.conn[i] ? this.tier[i] : -1;
-      if (!this.conn[i]) {
-        res.newTiles++;
-        total += cost.trackTile(tierId, kd);
-      } else if (curTier < tierId) {
-        total += cost.trackTile(tierId, K_NORMAL) - cost.trackTile(curTier, K_NORMAL);
-      }
-      if (kd === K_BRIDGE && !this.conn[i]) { if (!prevBridge) res.bridges++; }
-      if (kd === K_TUNNEL && !this.conn[i]) { if (!prevTunnel) res.tunnels++; }
+      const q = this.trackTileCost(i, tierId, kd);
+      total += q.cost;
+      if (q.fresh) res.newTiles++;
+      if (kd === K_BRIDGE && q.fresh) { if (!prevBridge) res.bridges++; }
+      if (kd === K_TUNNEL && q.fresh) { if (!prevTunnel) res.tunnels++; }
       prevBridge = kd === K_BRIDGE; prevTunnel = kd === K_TUNNEL;
-      void has;
     }
     res.cost = Math.round(total);
     res.ok = true;
@@ -343,11 +336,48 @@ export class RailNetwork {
     let total = 0, newTiles = 0;
     for (const t of tiles) {
       if (layerOf(t) !== L) continue;
-      if (!this.conn[t]) { newTiles++; total += cost.trackTile(tierId, this.kindArr[t]); }
-      else if (this.tier[t] < tierId) total += cost.trackTile(tierId, K_NORMAL) - cost.trackTile(this.tier[t], K_NORMAL);
+      const q = this.trackTileCost(t, tierId);
+      total += q.cost;
+      if (q.fresh) newTiles++;
     }
     total += links.length * cost.portal(L);
     Object.assign(res, { ok: true, tiles, dirs, links, cost: Math.round(total), newTiles, tunnels: L === L_ELEVATED ? 0 : 1, bridges: L === L_ELEVATED ? 1 : 0 });
+    return res;
+  }
+
+  // a straight run exactly from a to b (blueprints: the track goes where the
+  // pattern says, not where the path finder would prefer); bridges and
+  // tunnels where the ground needs them. Not straight or diagonal: the
+  // ordinary planner.
+  planStraight(a, b, tierId) {
+    const res = { ok: false, tiles: [a], dirs: [], cost: 0, bridges: 0, tunnels: 0, newTiles: 0, reason: null, invalid: [], straight: true };
+    if (a < 0 || b < 0) { res.reason = 'err_out_of_map'; return res; }
+    if (a === b) { res.reason = 'err_drag_track'; return res; }
+    const dx = tx(b) - tx(a), dz = tz(b) - tz(a);
+    if (layerOf(a) !== layerOf(b) || (dx && dz && Math.abs(dx) !== Math.abs(dz))) return this.planConstruction(a, b, tierId);
+    const d = dirOf(Math.sign(dx), Math.sign(dz));
+    const ra = this.tileBlockedReason(a);
+    if (ra) { res.reason = ra; res.invalid.push(a); return res; }
+    let i = a, guard = 0;
+    while (i !== b && guard++ < 400) {
+      const j = this.nb(i, d);
+      if (j < 0) { res.reason = 'err_out_of_map'; return res; }
+      if (!this.passable(j, j === b)) { res.reason = this.tileBlockedReason(j) || 'err_occupied'; res.invalid.push(j); res.tiles.push(j); return res; }
+      // (no diagonal through a crossing diagonal)
+      if (d & 1) { const x = tx(i), z = tz(i), i1 = i - baseTile(i) + idx(x + DX[d], z); if (this.hasDir(i1, dirOf(-DX[d], DZ[d])) && !this.hasDir(i, d)) { res.reason = 'err_occupied'; res.invalid.push(j); return res; } }
+      res.dirs.push(d); res.tiles.push(j); i = j;
+    }
+    let total = 0, prevBridge = false, prevTunnel = false;
+    for (const t of res.tiles) {
+      const kd = this.kindArr[t], q = this.trackTileCost(t, tierId, kd);
+      total += q.cost;
+      if (q.fresh) res.newTiles++;
+      if (kd === K_BRIDGE && q.fresh && !prevBridge) res.bridges++;
+      if (kd === K_TUNNEL && q.fresh && !prevTunnel) res.tunnels++;
+      prevBridge = kd === K_BRIDGE; prevTunnel = kd === K_TUNNEL;
+    }
+    res.cost = Math.round(total);
+    res.ok = true;
     return res;
   }
 
@@ -919,6 +949,21 @@ export class RailNetwork {
     if (this.special.has(tile)) return 'err_signal_station';
     return null;
   }
+
+  // ---------- construction price (Phase 12: one source for build and plan) ----------
+  // the price of track on a tile: new track, or the upgrade to a better tier.
+  // Every estimate and every build prices track through here. A project quote
+  // (Plans.quote) marks the tiles its earlier steps lay as already there
+  // (virt: tile → tier), so a station planned over planned track is priced
+  // as it will be built.
+  trackTileCost(i, tierId, kd = this.kindArr[i]) {
+    const cost = this.game.economy.costs;
+    const vt = this.virt ? this.virt.get(i) : undefined;
+    if (!this.conn[i] && vt === undefined) return { cost: cost.trackTile(tierId, kd), fresh: true };
+    const cur = this.conn[i] ? Math.max(this.tier[i], vt ?? -1) : vt;
+    return { cost: cur < tierId ? cost.trackTile(tierId, K_NORMAL) - cost.trackTile(cur, K_NORMAL) : 0, fresh: false };
+  }
+  hasTrack(i) { return this.conn[i] !== 0 || (!!this.virt && this.virt.has(i)); }
 
   // ---------- track roles ----------
   roleOf(i) { return this.conn[i] ? this.role[i] : 0; }

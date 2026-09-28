@@ -112,6 +112,9 @@ export class Economy {
   earn(n, cat, xp = true, ref = null, note = null) {
     n = Math.max(0, Math.round(n));
     if (!n) return;
+    // (while a failed project is taken back, refunds reverse the construction
+    // expense instead of showing up as income)
+    if (this.reversing && cat === 'refund' && !this.game.actor) { this.coins += n; if (this.game.ledger) this.game.ledger.unbook(n, 'construction', ref, 'reversal'); this.game.stats.inc('coinsSpent', -n); this.game.events.emit('coins', n, 'reversal'); return; }
     const r = this.payer(ref);
     if (r) { r.earn(n, cat); return; }
     this.coins += n;

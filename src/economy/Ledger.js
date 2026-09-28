@@ -78,6 +78,17 @@ export class Ledger {
     }
     return c;
   }
+  // a reversal (Phase 12): an expense taken back, as if never booked (a
+  // project build that failed half way); logged, not income
+  unbook(n, cat, ref = null, note = 'reversal') {
+    if (!n || !isFinite(n)) return;
+    this.roll();
+    const c = this.mapCat(cat, -1);
+    this.cur.exp[c] = Math.max(0, (this.cur.exp[c] || 0) - Math.abs(n));
+    if (ref) this.objBook(ref, Math.abs(n), c);
+    this.log.push({ id: this.seq++, t: this.game.time, amt: Math.round(Math.abs(n)), cat: c, ref, note });
+    if (this.log.length > LOG_MAX) this.log.splice(0, this.log.length - LOG_MAX);
+  }
   // transport revenue by cargo (analysis; the categories stay pax/mail/freight)
   noteCargo(c, rev) {
     if (!(rev > 0) || !c) return;

@@ -107,7 +107,7 @@ export class Blueprints {
     const ax = tx(anchor), az = tz(anchor);
     const at = (x, z, L = 0) => { const [u, v] = transformPoint(x, z, rot, mirror); const X = ax + u, Z = az + v; return inMap(X, Z) ? onLayer(idx(X, Z), L) : -1; };
     const out = [];
-    for (const r of bp.runs) { const a = at(r[0], r[1], r[4]), b = at(r[2], r[3], r[4]); if (a < 0 || b < 0) return { error: 'err_out_of_map' }; out.push({ op: 'track', a, b, tier, mode: 'double', L: r[4] }); }
+    for (const r of bp.runs) { const a = at(r[0], r[1], r[4]), b = at(r[2], r[3], r[4]); if (a < 0 || b < 0) return { error: 'err_out_of_map' }; out.push({ op: 'track', a, b, tier, mode: 'double', L: r[4], straight: 1 }); }
     for (const s of bp.stations) { const a = at(s[0], s[1]), b = at(s[2], s[3]); if (a < 0 || b < 0) return { error: 'err_out_of_map' }; out.push({ op: 'station', a, b, tracks: s[4] }); }
     for (const d of bp.depots) { const t = at(d[0], d[1]); if (t < 0) return { error: 'err_out_of_map' }; out.push({ op: 'depot', tile: t }); }
     for (const s of bp.signals) { const t = at(s[0], s[1]); if (t < 0) return { error: 'err_out_of_map' }; out.push({ op: 'signal', key: t * 8 + transformDir(s[2], rot, mirror), type: s[3] }); }
