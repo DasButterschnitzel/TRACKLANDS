@@ -66,7 +66,7 @@ export const FinanceUIMixin = {
         ${kv('train', this.money(L.transportRevenue()), 'fin_transport')}
         ${kv('trains', this.money(cur.exp.op_trains || 0), 'fin_opcost')}
         ${kv('track', `<span data-tip="${this.infraTip()}" id="fin-infra">${this.money((cur.exp.maint_track || 0) + (cur.exp.maint_station || 0))}</span>`, 'fin_infra')}
-        ${kv('builder', this.money((cur.exp.construction || 0) + (cur.exp.vehicles || 0) + (cur.exp.upgrades || 0)), 'fin_building')}
+        ${kv('builder', this.money((cur.exp.construction || 0) + (cur.exp.vehicles || 0) + (cur.exp.upgrades || 0) + (cur.exp.renovation || 0)), 'fin_building')}
       </div>
       ${this.finLoanBox()}
       <h4>${this.tr('fin_profit_chart')}</h4>${this.finChart('profit', 12)}
@@ -154,7 +154,7 @@ export const FinanceUIMixin = {
         case 'income': v = r.inc; break;
         case 'expenses': v = r.exp; break;
         case 'transport': v = L.transportRevenue(p); break;
-        case 'construction': v = (p.exp.construction || 0) + (p.exp.vehicles || 0) + (p.exp.upgrades || 0) + (p.exp.compensation || 0); break;
+        case 'construction': v = (p.exp.construction || 0) + (p.exp.vehicles || 0) + (p.exp.upgrades || 0) + (p.exp.renovation || 0) + (p.exp.compensation || 0); break;
         case 'cash': v = live ? this.game.economy.coins : p.cash; break;
         case 'debt': v = live ? L.loan : p.debt; break;
         case 'value': v = live ? L.companyValue().total : p.value; break;

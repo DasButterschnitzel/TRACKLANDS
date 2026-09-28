@@ -61,6 +61,8 @@ export async function run({ browser, base }) {
     const c0 = g.economy.coins;
     out.renErr = air ? R.renovateTerminal(air) : 'none';
     out.paid = Math.round(c0 - g.economy.coins);
+    // (booked as renovation, not as train upgrades)
+    out.booked = Math.round(g.ledger.cur.exp.renovation || 0);
     out.fam2 = air ? R.termFamily(air) : null;
     out.cap = air ? cap0 === JSON.stringify([air.size, R.stopRadius(air), R.runway(air).cap]) : false;
     out.again = air ? R.renovateTerminal(air) : 'none';
@@ -72,7 +74,7 @@ export async function run({ browser, base }) {
   check(!a.air.error && !a.dock.error, `an airport and a port opened in ${a.y0} (${a.air.error || 'ok'}, ${a.dock.error || 'ok'})`);
   check(a.fam0[0] === 'pioneer' && a.fam0[1] === 'early', `they look their age: ${a.fam0.join(', ')}`);
   check(a.fam1[0] === 'pioneer' && a.fam1[1] === 'early', `in ${a.y1} they still look as they were built (${a.fam1.join(', ')}): no global swap`);
-  check(a.info && !a.info.error && a.info.to === 'jet' && !a.renErr && a.paid === a.info.cost && a.fam2 === 'jet' && a.cap, `renovation: ${a.info && a.info.from} → ${a.fam2} for ${a.paid} ● (capacity unchanged: ${a.cap})`);
+  check(a.info && !a.info.error && a.info.to === 'jet' && !a.renErr && a.paid === a.info.cost && a.booked >= a.paid && a.fam2 === 'jet' && a.cap, `renovation: ${a.info && a.info.from} → ${a.fam2} for ${a.paid} ● booked under renovation (${a.booked}) (capacity unchanged: ${a.cap})`);
   check(a.again === 'err_reno_same' && !a.dockReno, `a second renovation is refused (${a.again}); the port renovates too`);
   check(a.keys.some((k) => /^airport:jet:/.test(k)) && a.keys.some((k) => /^dock:container:/.test(k)) && a.keys.some((k) => /^airport:pioneer:/.test(k)), `model cache keys by look: ${a.keys.join(', ')}`);
   await page.screenshot({ path: path.join(out, 'erainfra-renovated.png') });

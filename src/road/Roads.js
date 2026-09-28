@@ -1358,7 +1358,7 @@ export class Roads {
     if (!r) return 'err_unknown';
     if (r.error) return r.error;
     const g = this.game;
-    g.economy.spend(r.cost, 'upgrades', null, 'renovation');
+    g.economy.spend(r.cost, 'renovation', null, 'renovation');
     s.reno = g.ledger.year();
     if (!s.yb) s.yb = g.ledger.startYear;
     this.rebuildStopMesh();

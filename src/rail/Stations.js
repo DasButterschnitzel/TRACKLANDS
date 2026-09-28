@@ -1050,7 +1050,7 @@ export class StationSystem {
     if (!this.canRenovate(stn)) return 'err_cannot_renovate';
     const cost = this.renovateCost(stn);
     if (!g.economy.canAfford(cost)) return 'err_no_money';
-    g.economy.spend(cost, 'upgrades', null, 'renovation');
+    g.economy.spend(cost, 'renovation', null, 'renovation');
     stn.reno = g.ledger.year();
     this.buildVisual(stn);
     if (!stn.owner) g.events.emit('stationRenovated', stn);

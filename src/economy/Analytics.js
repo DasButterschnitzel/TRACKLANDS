@@ -15,7 +15,7 @@ import { roadModel } from '../road/Roads.js';
 export const DIVISIONS = ['rail', 'bus', 'truck', 'tram', 'dock', 'airport'];
 const OPERATING_IN = ['pax', 'mail', 'freight', 'contract', 'objective', 'grant', 'dividend', 'other'];
 const OPERATING_OUT = ['op_trains', 'op_road', 'maint_vehicles', 'maint_track', 'maint_station', 'other'];
-const INVEST_OUT = ['construction', 'vehicles', 'road_vehicles', 'upgrades', 'regions', 'decor', 'compensation', 'industry_fund', 'shares', 'deposit', 'acquisition'];
+const INVEST_OUT = ['construction', 'vehicles', 'road_vehicles', 'upgrades', 'renovation', 'regions', 'decor', 'compensation', 'industry_fund', 'shares', 'deposit', 'acquisition'];
 const INVEST_IN = ['sale', 'refund', 'share_sale', 'deposit_back'];
 
 export class Analytics {
