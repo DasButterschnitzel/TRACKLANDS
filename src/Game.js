@@ -298,11 +298,21 @@ export class Game {
   }
   selectTile(tile) {
     if (tile < 0) { this.select(null); return; }
-    const rs = this.roads.stopAt(tile);
+    // the layers under and over the tile (Phase 11/12): the underground view
+    // picks tunnels and metro stations first; the surface view the viaduct
+    // above, then the ground; a metro entrance picks its station
+    const NN = N * N, base = tile % NN;
+    const order = this.layerView && this.layerView.showsUnderground() ? [1, 2, 3, 0] : [3, 0];
+    for (const L of order) {
+      const sp = this.net.special.get(base + L * NN);
+      if (sp) { this.select({ type: sp.type, id: sp.id }); return; }
+      if (L === 0) break;
+    }
+    const rs = this.roads.stopAt(base);
     if (rs) { this.select({ type: 'roadstop', id: rs.id }); return; }
-    const sp = this.net.special.get(tile);
-    if (sp) { this.select({ type: sp.type, id: sp.id }); return; }
-    const o = this.occupancy.owner[tile];
+    const o = this.occupancy.owner[base];
+    if (o < 0 && this.stations.byId(-o)) { this.select({ type: 'station', id: -o }); return; }
+    tile = base;
     if (o >= 1000) { this.select({ type: 'industry', id: o }); return; }
     if (o > 0) { this.select({ type: 'town', id: o }); return; }
     // towns are also selectable by clicking near their center
