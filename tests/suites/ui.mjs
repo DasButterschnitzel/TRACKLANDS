@@ -2,7 +2,7 @@
 // layout checks: no horizontal page overflow, HUD bars inside the viewport,
 // panels/inspectors inside the viewport, touch target size on touch devices,
 // and no missing translations. Screenshots go to tests/output/ui/.
-import { openPage, loadSave, productionSave, ensureOut, devices } from '../lib.mjs';
+import { openPage, loadSave, productionSave, ensureOut, devices, gateRendering, settle } from '../lib.mjs';
 import path from 'path';
 import fs from 'fs';
 
@@ -127,12 +127,22 @@ export async function run({ browser, base, quick, args = {} }) {
   const lines = [];
   let ok = true;
   const list = await matrix();
+  const timing = [];
   // --viewports=1366x768,tablet-portrait picks viewports; --quick: one desktop + one phone
   const pick = args.viewports ? String(args.viewports).split(',') : quick ? ['1280x800', 'phone-portrait'] : null;
   for (const [label, ctxOpts] of pick ? list.filter(([l]) => pick.includes(l)) : list) {
+    // timing per phase (Phase 12: find out where the minutes go)
+    const tm = {}, T0 = Date.now();
+    let t = Date.now();
+    const lap = (k) => { tm[k] = (tm[k] || 0) + (Date.now() - t); t = Date.now(); };
     const { ctx, page, errors } = await openPage(browser, base, ctxOpts);
+    lap('open');
     await loadSave(page, save, { paused: false });
+    lap('load');
     await page.evaluate(() => { const g = window.__tracklands.game; g.speed = 0; for (let i = 0; i < 30 * 30; i++) g.tick(1 / 30); g.speed = 1; });
+    lap('ticks');
+    // (frames only when a screenshot needs them; waits follow the page state)
+    await gateRendering(page);
     const probs = new Set();
     // every mixin's action and input map is spread into one object, so a key
     // defined twice silently replaces the other panel's handler
@@ -145,11 +155,16 @@ export async function run({ browser, base, quick, args = {} }) {
       }
       return out;
     })) probs.add(`handler collision: ${d}`);
+    lap('checks');
     for (const [screen, fn] of SCREENS) {
       await page.evaluate(fn);
-      await page.waitForTimeout(700);
+      lap('setup:' + screen);
+      await settle(page, 2);
+      lap('wait');
       await page.screenshot({ path: path.join(dir, `${label}-${screen}.png`) });
+      lap('shot');
       for (const p of await page.evaluate(layoutCheck)) probs.add(`${screen}: ${p}`);
+      lap('layout');
     }
     // touch: a tap just beside a world label (touch adjustment snaps it onto
     // the label) must reach the world at the finger position, not the label
@@ -166,9 +181,14 @@ export async function run({ browser, base, quick, args = {} }) {
     const miss = await page.evaluate(async () => { const m = await import('./src/i18n.js'); return [...m.missing]; });
     const bad = probs.size || miss.length || errors.length;
     if (bad) ok = false;
+    lap('rest');
+    const slow = Object.entries(tm).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`).join(', ');
+    timing.push([label, Date.now() - T0, slow]);
     lines.push(`${bad ? 'FAIL' : 'ok  '} ${label}${probs.size ? ' — ' + [...probs].slice(0, 8).join('; ') : ''}${miss.length ? ' — missing i18n: ' + miss.slice(0, 8).join(',') : ''}${errors.length ? ' — errors: ' + errors.slice(0, 2).join(' | ') : ''}`);
     await ctx.close();
   }
   lines.push(`screenshots: ${path.relative(process.cwd(), dir)}`);
+  // the slowest viewports and where their time went
+  for (const [l, ms, slow] of timing.sort((a, b) => b[1] - a[1]).slice(0, 5)) lines.push(`     time ${l}: ${(ms / 1000).toFixed(1)}s (${slow})`);
   return { ok, lines };
 }

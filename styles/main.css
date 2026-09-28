@@ -1039,3 +1039,9 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 .ldiag .xm{font-style:normal;font-size:11px;margin-left:3px;opacity:.85}
 .ldiag .xm.metro svg{width:12px;height:12px;vertical-align:-2px}
 .nm-filter{margin:6px 0}
+/* access amenities in the light inspector (Phase 12: were white on white) */
+.pill-row.amen .chip { background: #fff; color: var(--ink); border: 1px solid var(--line); min-height: 44px; }
+.pill-row.amen .chip small { color: var(--ink2); opacity: 1; }
+.pill-row.amen .chip.on { background: var(--teal); color: #fff; border-color: var(--teal2); }
+.pill-row.amen .chip.on small { color: #fff; }
+.pill-row.amen .chip[disabled]:not(.on) { opacity: .6; }

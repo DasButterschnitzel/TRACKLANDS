@@ -87,3 +87,25 @@ export function regressionSeeds() { return JSON.parse(fs.readFileSync(path.join(
 
 export function ensureOut() { fs.mkdirSync(OUT, { recursive: true }); return OUT; }
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Screenshot pacing for slow software renderers (Phase 12). SwiftShader
+// draws 1–2 frames a second; a screenshot taken while the game renders
+// continuously waits several seconds for the compositor. Tests that only
+// need a picture gate the game's frames (test only: the game itself is
+// untouched) and ask for exactly the frames they need: settle() waits for
+// finite CSS transitions to end, then renders n frames.
+export async function gateRendering(page) {
+  await page.evaluate(() => {
+    const g = window.__tracklands && window.__tracklands.game;
+    if (!g || g._gated) return;
+    g._gated = true;
+    g._frame = g.frame.bind(g);
+    window.__gate = 0;
+    g.frame = (dt) => { if (window.__gate > 0) { window.__gate--; g._frame(dt); } };
+  });
+}
+export async function settle(page, frames = 2) {
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || !a.effect || a.effect.getComputedTiming().iterations === Infinity), null, { timeout: 5000 }).catch(() => {});
+  await page.evaluate((n) => { window.__gate = n; }, frames);
+  await page.waitForFunction(() => !(window.__gate > 0), null, { timeout: 30000 }).catch(() => {});
+}
