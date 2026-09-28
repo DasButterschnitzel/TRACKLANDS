@@ -90,6 +90,9 @@ export async function run({ browser, base }) {
     g.ui.openInspector && g.ui.openInspector();
     await new Promise((res) => setTimeout(res, 50));
     out.pills = document.querySelector('.metro-pills') ? document.querySelector('.metro-pills').textContent : (g.ui.metroPills ? g.ui.metroPills(sA).replace(/<[^>]+>/g, ' ') : '');
+    // semantic markers: the level and the upkeep, whatever the language
+    const lay = document.querySelector('.metro-pills [data-field="station-layer"]'), upk = document.querySelector('.metro-pills [data-field="station-upkeep"]');
+    out.pillLayer = lay ? +lay.dataset.value : -1; out.pillUpkeep = upk ? +upk.dataset.value : -1;
     out.cost = { ug: g.economy.costs.station(A), surf: g.economy.costs.station(T(10, 3)) };
     // picking across levels: the underground view picks the metro station under the ground tile;
     // the surface view picks it through its entrance and the surface station where it stands
@@ -112,7 +115,7 @@ export async function run({ browser, base }) {
   check(r.rev > 0 && r.rev <= 0.5, `a metro set reverses quickly (${r.rev} s)`);
   check(r.walk != null && r.walk > 20 + 12, `the surface station is a walking transfer with a flight of stairs (${r.walk} s; edge ${r.walkKeys})`);
   check(r.upkeep.sums && r.upkeep.sums.track > 20 && r.upkeep.track > 0 && r.upkeep.station > 0, `upkeep for tunnels and metro stations is booked (${r.upkeep.track} ● track, ${r.upkeep.station} ● stations)`);
-  check(/Tunnel|tunnel/.test(r.pills) && /Depth|Ebene/.test(r.pills) && /Upkeep|Unterhalt/.test(r.pills), `the inspector shows level and upkeep: “${r.pills.trim().replace(/\s+/g, ' ')}”`);
+  check(r.pillLayer >= 1 && r.pillUpkeep > 0, `the inspector shows level ${r.pillLayer} and upkeep ${r.pillUpkeep} ●: “${r.pills.trim().replace(/\s+/g, ' ')}”`);
   check(r.pickUg && r.pickEntrance && r.pickSurface, `picking across levels: the underground view finds the metro station (${r.pickUg}), its street entrance picks it (${r.pickEntrance}), the surface station stays pickable (${r.pickSurface})`);
   check(r.cost.ug > r.cost.surf * 3, `a metro station costs more than a surface one (${r.cost.ug} vs ${r.cost.surf})`);
   const out = ensureOut();

@@ -48,7 +48,7 @@ export const CompanyUIMixin = {
     const started = g.ledger.monthIndex() >= r.startAt;
     let h = `<div class="card rival big"><i class="rdot" style="background:${hex(r.color)}"></i><b>${esc(r.name)}</b><small>${this.tr('rival_strategy_' + r.strategy)}${r.personality ? ' · ' + this.tr('rival_pers_' + r.personality) : ''}</small></div>`;
     if (!started) h += `<p class="muted">${this.tr('rival_starts', { n: Math.max(1, r.startAt - g.ledger.monthIndex()) })}</p>`;
-    h += `<div class="kvgrid">${kv('rival_founded', founded != null ? `${founded} (${this.tr('rival_years', { n: Math.max(0, y - founded) })})` : '—')}${kv('rival_value', fmt(r.value()) + ' ●')}${kv('rival_cash', fmt(Math.round(r.money)) + ' ●')}${kv('rival_loan', fmt(Math.round(r.loan || 0)) + ' ●')}${kv('rival_profit', fmt(r.lastProfit) + ' ●')}${kv('rival_pax', fmt(Math.round(r.paxCarried)))}${kv('rival_cargo', fmt(Math.round(r.cargoCarried)))}</div>`;
+    h += `<div class="kvgrid" data-section="company-facts" data-founded="${founded != null ? founded : ''}" data-trains="${r.trains().length}">${kv('rival_founded', founded != null ? `${founded} (${this.tr('rival_years', { n: Math.max(0, y - founded) })})` : '—')}${kv('rival_value', fmt(r.value()) + ' ●')}${kv('rival_cash', fmt(Math.round(r.money)) + ' ●')}${kv('rival_loan', fmt(Math.round(r.loan || 0)) + ' ●')}${kv('rival_profit', fmt(r.lastProfit) + ' ●')}${kv('rival_pax', fmt(Math.round(r.paxCarried)))}${kv('rival_cargo', fmt(Math.round(r.cargoCarried)))}</div>`;
     if (r.rail) {
       const ops = r.rail.projects.filter((p) => p.stage === 'operate' || p.stage === 'review');
       const P = g.rivals.planner(r);

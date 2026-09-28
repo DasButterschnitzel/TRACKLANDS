@@ -148,7 +148,8 @@ export async function run({ browser, base, quick }) {
     if (link) link.click();
     await new Promise((res) => setTimeout(res, 50));
     const txt = document.getElementById('panel').textContent;
-    out.page = txt.includes(r.name) && /Founded|Gegründet/.test(txt) && txt.includes(String(r.trains().length));
+    const facts = document.querySelector('#panel [data-section="company-facts"]');
+    out.page = txt.includes(r.name) && !!facts && 'founded' in facts.dataset && +facts.dataset.trains === r.trains().length;
     ui.closePanel();
     // a rival train and station: only the company card, no controls
     const acts = (sel) => { g.select(sel); ui.renderInspector(); return [...document.querySelectorAll('#inspector [data-act]')].map((e) => e.dataset.act).filter((a) => !['rivalPage', 'focusSel', 'closeInspector'].includes(a)); };

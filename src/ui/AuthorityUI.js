@@ -19,7 +19,7 @@ export const AuthorityUIMixin = {
     }).join('');
     const marks = BANDS.map(([min]) => `<i style="left:${min}%"></i>`).join('');
     return `<h4>${this.tr('auth_heading')}</h4>
-      <div class="auth-head"><b>${r}</b><span>/ 100</span><span class="auth-band ${band}">${this.tr('band_' + band)}</span><span class="pill small">${this.tr('policy_' + A.policy(town))}</span></div>
+      <div class="auth-head" data-section="town-authority" data-field="town-relationship" data-value="${r}"><b>${r}</b><span>/ 100</span><span class="auth-band ${band}">${this.tr('band_' + band)}</span><span class="pill small">${this.tr('policy_' + A.policy(town))}</span></div>
       <div class="auth-bar" role="meter" aria-valuenow="${r}" aria-valuemin="0" aria-valuemax="100">${marks}<em style="width:${r}%"></em></div>
       <p class="muted small">${this.tr('policy_' + A.policy(town) + '_desc')}</p>
       <h5>${this.tr('auth_recent')}</h5>${log || `<p class="muted small">${this.tr('auth_none')}</p>`}

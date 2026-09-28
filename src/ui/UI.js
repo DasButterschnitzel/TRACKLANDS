@@ -1345,7 +1345,7 @@ export class UI {
         <div><span>${this.tr('town_modes')}</span><b>${modes.join(' · ') || this.tr('town_no_station')}</b></div>
         ${big ? `<div><span>${this.tr('town_largest_station')}</span><b><button class="link" data-act="jump" data-arg="station:${big.id}">${esc(big.name)}</button></b></div>` : ''}
         ${inds.length ? `<div><span>${this.tr('town_industries')}</span><b>${inds.map((i) => `<button class="link" data-act="jump" data-arg="industry:${i.id}">${esc(g.industries.displayName(i))}</button>`).join(', ')}</b></div>` : ''}
-        ${g.authority ? `<div><span>${this.tr('town_relationship')}</span><b>${this.tr('band_' + g.authority.band(t))} · ${this.tr('policy_' + g.authority.policy(t))}</b></div>` : ''}
+        ${g.authority ? `<div data-field="town-relationship-summary"><span>${this.tr('town_relationship')}</span><b>${this.tr('band_' + g.authority.band(t))} · ${this.tr('policy_' + g.authority.policy(t))}</b></div>` : ''}
       </div></div>`;
   }
   // how the town is served: stations, stops and lines, the share of the

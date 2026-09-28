@@ -142,7 +142,8 @@ export async function run({ browser, base }) {
     // a town: its relationship with the company
     await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'town', id: g.towns.list[0].id }); });
     await P.waitForTimeout(200);
-    found['city relationship'] = await P.evaluate(() => /Relationship|Beziehung|rating|Ansehen/i.test(document.querySelector('#inspector').textContent));
+    // (a semantic marker, not the translated wording: this checks the feature, not the language)
+    found['city relationship'] = await P.evaluate(() => { const e = document.querySelector('#inspector [data-field="town-relationship"]'); return !!e && e.getBoundingClientRect().height > 0 && Number.isFinite(+e.dataset.value); });
     // an industry: buy a stake
     await P.evaluate(() => { const g = window.__tracklands.game; g.select({ type: 'industry', id: g.industries.list[0].id }); });
     await P.waitForTimeout(200);

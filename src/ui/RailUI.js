@@ -420,7 +420,7 @@ export const RailUIMixin = {
     const S = this.game.stations, k = S.stationKind(s), U = COSTS.upkeep.station[L];
     const up = Math.round(U * Math.max(1, S.allTiles(s).length) * (1 + (s.level || 0) * 0.25));
     const ent = s.entrance;
-    return `<div class="pill-row metro-pills"><span class="pill">${this.tr('st_layer')}: ${this.tr('layer_' + L)}</span><span class="pill">${this.tr('plat_' + k.platform)}</span>${ent != null && ent >= 0 ? `<button class="pill link" data-act="jumpTile" data-arg="${ent}">${icon('town', 'mini')} ${this.tr('st_entrance')}</button>` : ''}<span class="pill" data-tip="${this.tr('fin_upkeep')}">${this.tr('st_upkeep', { n: fmt(up) + '●' })}</span></div>`;
+    return `<div class="pill-row metro-pills" data-section="station-level"><span class="pill" data-field="station-layer" data-value="${L}">${this.tr('st_layer')}: ${this.tr('layer_' + L)}</span><span class="pill">${this.tr('plat_' + k.platform)}</span>${ent != null && ent >= 0 ? `<button class="pill link" data-act="jumpTile" data-arg="${ent}">${icon('town', 'mini')} ${this.tr('st_entrance')}</button>` : ''}<span class="pill" data-field="station-upkeep" data-value="${up}" data-tip="${this.tr('fin_upkeep')}">${this.tr('st_upkeep', { n: fmt(up) + '●' })}</span></div>`;
   },
   stationActions(s, up) {
     const b = (act, arg, ic, label, dis = false, tip = '') => `<button class="tact" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''} ${tip ? `data-tip="${esc(tip)}"` : ''}>${icon(ic)}<span>${label}</span></button>`;
