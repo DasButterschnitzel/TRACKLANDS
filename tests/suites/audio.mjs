@@ -40,7 +40,7 @@ export async function run({ browser, base }) {
     // voice budget and sound effect names
     const v = await page.evaluate(() => {
       const A = window.__tracklands.audio, bad = [];
-      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error', 'busDoor', 'airBrake', 'hornCar', 'hornBus', 'heavyTruck', 'pedCrossing', 'crowd', 'construction', 'clank', 'gull', 'moo', 'doorChime', 'doorWarn', 'renovate', 'project', 'jetWhine', 'tunnelRush']) {
+      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error', 'busDoor', 'airBrake', 'hornCar', 'hornBus', 'heavyTruck', 'pedCrossing', 'crowd', 'construction', 'clank', 'gull', 'moo', 'doorChime', 'doorWarn', 'renovate', 'project', 'jetWhine', 'tunnelRush', 'busElectric']) {
         try { A.lastPlay = {}; A.voices = []; A.play(n); } catch (e) { bad.push(n + ': ' + e.message); }
       }
       A.voices = []; A.lastPlay = {};
@@ -82,6 +82,28 @@ export async function run({ browser, base }) {
       return { town, near, mineType: mine.type, kind: industryKind(mine.type), far, same };
     });
     check(amb.town.traffic > 0 && amb.near.ind === amb.mineType && amb.near.v > 0.8 && amb.far === 0 && amb.same, `ambience: town street traffic ${amb.town.traffic.toFixed(2)}, crowd ${amb.town.crowd.toFixed(2)}, next to a ${amb.mineType} the ${amb.kind} loop, zoomed out silent, pooled loops`);
+    // Phase 13: how a vehicle sounds comes from its data, never its name: a
+    // pack truck called model_x92 declared heavy sounds heavy; ore_hauler
+    // without a profile is heavy by its bulk cargo; a box van named
+    // dump_something with crates stays light; bad profiles are refused
+    const sp = await page.evaluate(async () => {
+      const C = await import('./src/config.js'), P = await import('./src/content/Packs.js');
+      const pack = { id: 'snd', name: 'Sound test', version: '1', vehicles: [
+        { id: 'model_x92', name: 'X92', kind: 'truck', groups: ['crate'], cap: 12, speed: 50, price: 1000, op: 10, soundProfile: 'truck_heavy' },
+        { id: 'ore_hauler', name: 'Ore Hauler', kind: 'truck', groups: ['bulk'], cap: 14, speed: 50, price: 1000, op: 10 },
+        { id: 'dump_something', name: 'Van', kind: 'truck', groups: ['crate'], cap: 8, speed: 60, price: 800, op: 8 },
+        { id: 'volt_bus', name: 'Volt', kind: 'bus', cap: 40, speed: 60, price: 3000, op: 8, soundProfile: 'bus_electric' },
+      ] };
+      const r = P.checkPack(pack, 'snd.json');
+      const prof = r.vehicles.map((m) => C.soundProfileOf(m));
+      const bad1 = P.vehicleErrors({ id: 'a', name: 'A', kind: 'truck', groups: ['crate'], cap: 1, speed: 10, price: 1, op: 1, soundProfile: 'jet_engine' });
+      const bad2 = P.vehicleErrors({ id: 'b', name: 'B', kind: 'truck', groups: ['crate'], cap: 1, speed: 10, price: 1, op: 1, soundProfile: 'ship' });
+      const all = C.ROAD_VEHICLES.filter((m) => !m.pack).every((m) => C.SOUND_PROFILES.includes(m.soundProfile) && C.SOUND_KIND[m.soundProfile] === m.kind);
+      const src = await (await fetch('./src/Game.js')).text();
+      return { prof, errs: r.errors.length, bad1, bad2, all, regex: /dump\|logging\|tanker/.test(src) };
+    });
+    check(sp.prof.join(',') === 'truck_heavy,truck_heavy,truck_light,bus_electric' && !sp.errs && sp.bad1.includes('bad:soundProfile') && sp.bad2.includes('bad:soundProfile_kind') && sp.all && !sp.regex,
+      `sound profiles from data: model_x92 ${sp.prof[0]}, ore_hauler ${sp.prof[1]}, dump_something ${sp.prof[2]}, volt_bus ${sp.prof[3]}; bad profiles refused; every built-in vehicle declares one; no name pattern left in the code`);
     // Phase 12: a harbour, an airport and a train in a tunnel next to the
     // camera are heard (gulls / jets / wheel rumble); the tunnel loop is part
     // of the fixed pool

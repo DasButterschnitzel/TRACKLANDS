@@ -300,52 +300,65 @@ export const KMH_PER_TILE_S = 40;
 
 // ---------- ROAD TRANSPORT ----------
 // buses carry passengers (and some mail); trucks carry the cargo groups of their body
+// how a road, water or air vehicle sounds (Phase 13): explicit in the data;
+// older data and packs without it are classed by structure (kind, energy,
+// cargo groups, capacity), never by the model's name
+export const SOUND_PROFILES = ['bus_diesel', 'bus_electric', 'truck_light', 'truck_heavy', 'tram', 'ship', 'aircraft'];
+export const SOUND_KIND = { bus_diesel: 'bus', bus_electric: 'bus', truck_light: 'truck', truck_heavy: 'truck', tram: 'tram', ship: 'dock', aircraft: 'airport' };
+const HEAVY_GROUPS = ['bulk', 'liquid', 'log'];
+export function soundProfileOf(m) {
+  if (!m) return 'truck_light';
+  if (SOUND_PROFILES.includes(m.soundProfile) && SOUND_KIND[m.soundProfile] === m.kind) return m.soundProfile;
+  if (m.kind === 'bus') return m.energy === 'electric' ? 'bus_electric' : 'bus_diesel';
+  if (m.kind === 'truck') return (m.groups || []).some((g) => HEAVY_GROUPS.includes(g)) || (m.cap || 0) >= 20 ? 'truck_heavy' : 'truck_light';
+  return m.kind === 'tram' ? 'tram' : m.kind === 'dock' ? 'ship' : m.kind === 'airport' ? 'aircraft' : 'truck_light';
+}
 export const ROAD_VEHICLES = [
   // buses: role city (fast boarding, many stops), regional (fast, comfortable,
   // slow to board), airport (luggage: pays more on airport legs); board =
   // boarding speed, comfort scales fares a little, rel = reliability when new
-  { id: 'minibus', name: 'Hopper 16', kind: 'bus', role: 'city', era: 1, cap: 16, mail: 2, speed: 50, accel: 1.4, board: 1.3, comfort: 0.9, rel: 0.93, energy: 'diesel', doors: 1, life: 14, price: 520, op: 5, level: 1, color: 0x5aa0c8, shape: 'mini' },
-  { id: 'citybus', name: 'Citybus 30', kind: 'bus', role: 'city', era: 1, cap: 30, mail: 4, speed: 55, accel: 1.1, board: 1.0, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 2, life: 18, price: 900, op: 10, level: 1, color: 0xe8c547, shape: 'classic' },
-  { id: 'urban_bus', name: 'Metro 40 Low-Floor', kind: 'bus', role: 'city', era: 2, cap: 40, mail: 4, speed: 60, accel: 1.2, board: 1.35, comfort: 1.0, rel: 0.92, energy: 'diesel', doors: 2, life: 18, price: 1500, op: 13, level: 6, color: 0xd8483a, shape: 'urban' },
-  { id: 'coach', name: 'Coach Express 44', kind: 'bus', role: 'regional', era: 2, cap: 44, mail: 8, speed: 90, accel: 1.0, board: 0.6, comfort: 1.1, rel: 0.9, energy: 'diesel', doors: 1, life: 16, price: 2600, op: 22, level: 8, color: 0x3f6e9a, shape: 'coach' },
-  { id: 'double_decker', name: 'Skyline 70 Double-Deck', kind: 'bus', role: 'city', era: 2, cap: 70, mail: 6, speed: 55, accel: 0.9, board: 0.75, comfort: 1.0, rel: 0.9, energy: 'diesel', doors: 2, life: 20, price: 3200, op: 20, level: 10, color: 0xc0392b, shape: 'decker' },
-  { id: 'articulated', name: 'Flex 90 Articulated', kind: 'bus', role: 'city', era: 3, cap: 90, mail: 6, speed: 58, accel: 0.9, board: 1.5, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 3, life: 18, price: 4200, op: 26, level: 12, color: 0xe0a33a, shape: 'artic', turn: 0.85 },
-  { id: 'airport_shuttle', name: 'Jetlink 36 Airport Shuttle', kind: 'bus', role: 'airport', era: 3, cap: 36, mail: 2, speed: 80, accel: 1.1, board: 0.9, comfort: 1.1, rel: 0.93, energy: 'diesel', doors: 2, life: 16, price: 2400, op: 16, level: 12, color: 0x2f8a9a, shape: 'shuttle', airport: 0.25 },
-  { id: 'e_citybus', name: 'Volta 42 Electric', kind: 'bus', role: 'city', era: 4, cap: 42, mail: 4, speed: 62, accel: 1.7, board: 1.4, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 2, life: 16, price: 3600, op: 7, level: 16, color: 0x3fae5a, shape: 'electric' },
-  { id: 'express_coach', name: 'Interstate 52', kind: 'bus', role: 'regional', era: 4, cap: 52, mail: 10, speed: 110, accel: 1.1, board: 0.6, comfort: 1.18, rel: 0.93, energy: 'diesel', doors: 1, life: 16, price: 5200, op: 30, level: 18, color: 0x4a5568, shape: 'express' },
-  { id: 'e_articulated', name: 'Volta Flex 100 Electric', kind: 'bus', role: 'city', era: 4, cap: 100, mail: 6, speed: 62, accel: 1.5, board: 1.7, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 3, life: 18, price: 6800, op: 14, level: 20, color: 0x17a2b8, shape: 'eartic', turn: 0.85 },
-  { id: 'autopod', name: 'Pod 12 Autonomous Shuttle', kind: 'bus', role: 'city', era: 5, cap: 12, mail: 0, speed: 45, accel: 1.6, board: 1.6, comfort: 1.1, rel: 0.97, energy: 'electric', doors: 1, life: 14, price: 1700, op: 2, level: 26, color: 0xe8e8ee, shape: 'pod' },
-  { id: 'box_truck', name: 'Box Truck', kind: 'truck', groups: ['crate', 'mail'], cap: 14, speed: 55, price: 1100, op: 12, level: 1, color: 0xc9793a },
-  { id: 'logging_truck', name: 'Logging Truck', kind: 'truck', groups: ['log'], cap: 16, speed: 50, price: 1200, op: 13, level: 1, color: 0x7a5a3a },
-  { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
-  { id: 'tanker_truck', name: 'Tanker Truck', kind: 'truck', groups: ['liquid'], cap: 16, speed: 55, price: 1500, op: 15, level: 5, color: 0xb8bcc2 },
-  { id: 'flatbed_truck', name: 'Flatbed Truck', kind: 'truck', groups: ['flat'], cap: 14, speed: 55, price: 1400, op: 14, level: 5, color: 0x5a7a4a },
-  { id: 'livestock_truck', name: 'Livestock Truck', kind: 'truck', groups: ['animal'], cap: 12, speed: 55, price: 1300, op: 13, level: 3, color: 0x8a6a4a },
-  { id: 'car_transporter', name: 'Car Transporter', kind: 'truck', groups: ['vehicle'], cap: 8, speed: 60, price: 2400, op: 18, level: 10, color: 0xc0392b },
+  { id: 'minibus', name: 'Hopper 16', kind: 'bus', soundProfile: 'bus_diesel', role: 'city', era: 1, cap: 16, mail: 2, speed: 50, accel: 1.4, board: 1.3, comfort: 0.9, rel: 0.93, energy: 'diesel', doors: 1, life: 14, price: 520, op: 5, level: 1, color: 0x5aa0c8, shape: 'mini' },
+  { id: 'citybus', name: 'Citybus 30', kind: 'bus', soundProfile: 'bus_diesel', role: 'city', era: 1, cap: 30, mail: 4, speed: 55, accel: 1.1, board: 1.0, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 2, life: 18, price: 900, op: 10, level: 1, color: 0xe8c547, shape: 'classic' },
+  { id: 'urban_bus', name: 'Metro 40 Low-Floor', kind: 'bus', soundProfile: 'bus_diesel', role: 'city', era: 2, cap: 40, mail: 4, speed: 60, accel: 1.2, board: 1.35, comfort: 1.0, rel: 0.92, energy: 'diesel', doors: 2, life: 18, price: 1500, op: 13, level: 6, color: 0xd8483a, shape: 'urban' },
+  { id: 'coach', name: 'Coach Express 44', kind: 'bus', soundProfile: 'bus_diesel', role: 'regional', era: 2, cap: 44, mail: 8, speed: 90, accel: 1.0, board: 0.6, comfort: 1.1, rel: 0.9, energy: 'diesel', doors: 1, life: 16, price: 2600, op: 22, level: 8, color: 0x3f6e9a, shape: 'coach' },
+  { id: 'double_decker', name: 'Skyline 70 Double-Deck', kind: 'bus', soundProfile: 'bus_diesel', role: 'city', era: 2, cap: 70, mail: 6, speed: 55, accel: 0.9, board: 0.75, comfort: 1.0, rel: 0.9, energy: 'diesel', doors: 2, life: 20, price: 3200, op: 20, level: 10, color: 0xc0392b, shape: 'decker' },
+  { id: 'articulated', name: 'Flex 90 Articulated', kind: 'bus', soundProfile: 'bus_diesel', role: 'city', era: 3, cap: 90, mail: 6, speed: 58, accel: 0.9, board: 1.5, comfort: 0.95, rel: 0.9, energy: 'diesel', doors: 3, life: 18, price: 4200, op: 26, level: 12, color: 0xe0a33a, shape: 'artic', turn: 0.85 },
+  { id: 'airport_shuttle', name: 'Jetlink 36 Airport Shuttle', kind: 'bus', soundProfile: 'bus_diesel', role: 'airport', era: 3, cap: 36, mail: 2, speed: 80, accel: 1.1, board: 0.9, comfort: 1.1, rel: 0.93, energy: 'diesel', doors: 2, life: 16, price: 2400, op: 16, level: 12, color: 0x2f8a9a, shape: 'shuttle', airport: 0.25 },
+  { id: 'e_citybus', name: 'Volta 42 Electric', kind: 'bus', soundProfile: 'bus_electric', role: 'city', era: 4, cap: 42, mail: 4, speed: 62, accel: 1.7, board: 1.4, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 2, life: 16, price: 3600, op: 7, level: 16, color: 0x3fae5a, shape: 'electric' },
+  { id: 'express_coach', name: 'Interstate 52', kind: 'bus', soundProfile: 'bus_diesel', role: 'regional', era: 4, cap: 52, mail: 10, speed: 110, accel: 1.1, board: 0.6, comfort: 1.18, rel: 0.93, energy: 'diesel', doors: 1, life: 16, price: 5200, op: 30, level: 18, color: 0x4a5568, shape: 'express' },
+  { id: 'e_articulated', name: 'Volta Flex 100 Electric', kind: 'bus', soundProfile: 'bus_electric', role: 'city', era: 4, cap: 100, mail: 6, speed: 62, accel: 1.5, board: 1.7, comfort: 1.05, rel: 0.95, energy: 'electric', doors: 3, life: 18, price: 6800, op: 14, level: 20, color: 0x17a2b8, shape: 'eartic', turn: 0.85 },
+  { id: 'autopod', name: 'Pod 12 Autonomous Shuttle', kind: 'bus', soundProfile: 'bus_electric', role: 'city', era: 5, cap: 12, mail: 0, speed: 45, accel: 1.6, board: 1.6, comfort: 1.1, rel: 0.97, energy: 'electric', doors: 1, life: 14, price: 1700, op: 2, level: 26, color: 0xe8e8ee, shape: 'pod' },
+  { id: 'box_truck', name: 'Box Truck', kind: 'truck', soundProfile: 'truck_light', groups: ['crate', 'mail'], cap: 14, speed: 55, price: 1100, op: 12, level: 1, color: 0xc9793a },
+  { id: 'logging_truck', name: 'Logging Truck', kind: 'truck', soundProfile: 'truck_heavy', groups: ['log'], cap: 16, speed: 50, price: 1200, op: 13, level: 1, color: 0x7a5a3a },
+  { id: 'dump_truck', name: 'Dump Truck', kind: 'truck', soundProfile: 'truck_heavy', groups: ['bulk'], cap: 18, speed: 50, price: 1300, op: 14, level: 3, color: 0xd0a030 },
+  { id: 'tanker_truck', name: 'Tanker Truck', kind: 'truck', soundProfile: 'truck_heavy', groups: ['liquid'], cap: 16, speed: 55, price: 1500, op: 15, level: 5, color: 0xb8bcc2 },
+  { id: 'flatbed_truck', name: 'Flatbed Truck', kind: 'truck', soundProfile: 'truck_light', groups: ['flat'], cap: 14, speed: 55, price: 1400, op: 14, level: 5, color: 0x5a7a4a },
+  { id: 'livestock_truck', name: 'Livestock Truck', kind: 'truck', soundProfile: 'truck_light', groups: ['animal'], cap: 12, speed: 55, price: 1300, op: 13, level: 3, color: 0x8a6a4a },
+  { id: 'car_transporter', name: 'Car Transporter', kind: 'truck', soundProfile: 'truck_light', groups: ['vehicle'], cap: 8, speed: 60, price: 2400, op: 18, level: 10, color: 0xc0392b },
   // trams run on tram track laid along streets and company roads
-  { id: 'tram', name: 'Tram Classic', kind: 'tram', pax: true, cap: 45, mail: 4, speed: 45, price: 1700, op: 9, level: 4, color: 0xd8483a },
-  { id: 'tram_lowfloor', name: 'Citylink Low-Floor Tram', kind: 'tram', pax: true, cap: 110, mail: 6, speed: 70, price: 5200, op: 20, level: 22, color: 0x3fae5a },
-  { id: 'tram_lr', name: 'Light Rail Tram', kind: 'tram', pax: true, cap: 80, mail: 6, speed: 70, price: 3600, op: 16, level: 14, color: 0x2f8a9a },
+  { id: 'tram', name: 'Tram Classic', kind: 'tram', soundProfile: 'tram', pax: true, cap: 45, mail: 4, speed: 45, price: 1700, op: 9, level: 4, color: 0xd8483a },
+  { id: 'tram_lowfloor', name: 'Citylink Low-Floor Tram', kind: 'tram', soundProfile: 'tram', pax: true, cap: 110, mail: 6, speed: 70, price: 5200, op: 20, level: 22, color: 0x3fae5a },
+  { id: 'tram_lr', name: 'Light Rail Tram', kind: 'tram', soundProfile: 'tram', pax: true, cap: 80, mail: 6, speed: 70, price: 3600, op: 16, level: 14, color: 0x2f8a9a },
   // ships sail on connected water between docks
-  { id: 'ferry', name: 'Harbour Ferry', kind: 'dock', pax: true, cap: 70, mail: 10, speed: 30, price: 3200, op: 12, level: 6, color: 0xf0f0f0 },
-  { id: 'cargo_ship', name: 'Coaster', kind: 'dock', groups: ['crate', 'bulk', 'flat', 'log'], cap: 90, speed: 25, price: 4200, op: 15, level: 8, color: 0x3a5a8a },
-  { id: 'tanker_ship', name: 'Coastal Tanker', kind: 'dock', groups: ['liquid'], cap: 100, speed: 25, price: 4600, op: 16, level: 10, color: 0xb04a3a },
-  { id: 'river_barge', name: 'River Barge', kind: 'dock', groups: ['bulk', 'log'], cap: 60, speed: 16, price: 2200, op: 8, level: 4, color: 0x5a4a3a },
-  { id: 'hydrofoil', name: 'Hydrofoil 60', kind: 'dock', pax: true, cap: 60, mail: 6, speed: 65, price: 9800, op: 34, level: 14, color: 0xe8f0f8, comfort: 1.1 },
-  { id: 'car_carrier', name: 'Ro-Ro Carrier', kind: 'dock', groups: ['vehicle', 'flat'], cap: 120, speed: 28, price: 11000, op: 32, level: 15, color: 0x4a6a3a, minPort: 2 },
-  { id: 'bulk_carrier', name: 'Bulk Carrier', kind: 'dock', groups: ['bulk', 'log'], cap: 240, speed: 22, price: 14000, op: 38, level: 16, color: 0x8a3a2a, minPort: 2 },
-  { id: 'container_ship', name: 'Feeder Container Ship', kind: 'dock', groups: ['crate', 'vehicle', 'flat'], cap: 260, speed: 30, price: 22000, op: 52, level: 20, color: 0x2a4a7a, minPort: 3 },
-  { id: 'cruise_ship', name: 'Coastal Cruiser', kind: 'dock', pax: true, cap: 320, mail: 0, speed: 32, price: 26000, op: 60, level: 22, color: 0xf8f8f8, minPort: 2, comfort: 1.35 },
+  { id: 'ferry', name: 'Harbour Ferry', kind: 'dock', soundProfile: 'ship', pax: true, cap: 70, mail: 10, speed: 30, price: 3200, op: 12, level: 6, color: 0xf0f0f0 },
+  { id: 'cargo_ship', name: 'Coaster', kind: 'dock', soundProfile: 'ship', groups: ['crate', 'bulk', 'flat', 'log'], cap: 90, speed: 25, price: 4200, op: 15, level: 8, color: 0x3a5a8a },
+  { id: 'tanker_ship', name: 'Coastal Tanker', kind: 'dock', soundProfile: 'ship', groups: ['liquid'], cap: 100, speed: 25, price: 4600, op: 16, level: 10, color: 0xb04a3a },
+  { id: 'river_barge', name: 'River Barge', kind: 'dock', soundProfile: 'ship', groups: ['bulk', 'log'], cap: 60, speed: 16, price: 2200, op: 8, level: 4, color: 0x5a4a3a },
+  { id: 'hydrofoil', name: 'Hydrofoil 60', kind: 'dock', soundProfile: 'ship', pax: true, cap: 60, mail: 6, speed: 65, price: 9800, op: 34, level: 14, color: 0xe8f0f8, comfort: 1.1 },
+  { id: 'car_carrier', name: 'Ro-Ro Carrier', kind: 'dock', soundProfile: 'ship', groups: ['vehicle', 'flat'], cap: 120, speed: 28, price: 11000, op: 32, level: 15, color: 0x4a6a3a, minPort: 2 },
+  { id: 'bulk_carrier', name: 'Bulk Carrier', kind: 'dock', soundProfile: 'ship', groups: ['bulk', 'log'], cap: 240, speed: 22, price: 14000, op: 38, level: 16, color: 0x8a3a2a, minPort: 2 },
+  { id: 'container_ship', name: 'Feeder Container Ship', kind: 'dock', soundProfile: 'ship', groups: ['crate', 'vehicle', 'flat'], cap: 260, speed: 30, price: 22000, op: 52, level: 20, color: 0x2a4a7a, minPort: 3 },
+  { id: 'cruise_ship', name: 'Coastal Cruiser', kind: 'dock', soundProfile: 'ship', pax: true, cap: 320, mail: 0, speed: 32, price: 26000, op: 60, level: 22, color: 0xf8f8f8, minPort: 2, comfort: 1.35 },
   // aircraft fly straight between airports: fast, costly to run
-  { id: 'propliner', name: 'Propliner 40', kind: 'airport', pax: true, cap: 40, mail: 12, speed: 320, price: 18000, op: 450, level: 12, color: 0xe8e8ee },
-  { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
+  { id: 'propliner', name: 'Propliner 40', kind: 'airport', soundProfile: 'aircraft', pax: true, cap: 40, mail: 12, speed: 320, price: 18000, op: 450, level: 12, color: 0xe8e8ee },
+  { id: 'jetliner', name: 'Jetliner 120', kind: 'airport', soundProfile: 'aircraft', pax: true, cap: 120, mail: 30, speed: 650, price: 60000, op: 1300, level: 24, color: 0xf4f4f8 },
   // cargo aircraft carry parcels, goods and electronics; the biggest aircraft
   // need an international airport (airport size 2)
-  { id: 'freighter', name: 'Skyvan Freighter', kind: 'airport', groups: ['crate', 'mail'], cap: 36, speed: 300, price: 21000, op: 430, level: 14, color: 0xd8dde2 },
-  { id: 'cargo_jet', name: 'Cargojet 90', kind: 'airport', groups: ['crate', 'mail', 'vehicle'], cap: 110, speed: 620, price: 72000, op: 1250, level: 30, color: 0xe8c547, minAirport: 2 },
-  { id: 'commuter_prop', name: 'Commuter Prop 19', kind: 'airport', pax: true, cap: 19, mail: 4, speed: 280, price: 9000, op: 220, level: 10, color: 0xe8e8ee },
-  { id: 'widebody', name: 'Widebody 250F', kind: 'airport', groups: ['crate', 'mail', 'vehicle', 'flat'], cap: 240, speed: 680, price: 160000, op: 2900, level: 38, color: 0xe8c547, minAirport: 3 },
-  { id: 'jumbo', name: 'Skyliner 300', kind: 'airport', pax: true, cap: 300, mail: 60, speed: 700, price: 150000, op: 2700, level: 36, color: 0xf4f4f8, minAirport: 2 },
+  { id: 'freighter', name: 'Skyvan Freighter', kind: 'airport', soundProfile: 'aircraft', groups: ['crate', 'mail'], cap: 36, speed: 300, price: 21000, op: 430, level: 14, color: 0xd8dde2 },
+  { id: 'cargo_jet', name: 'Cargojet 90', kind: 'airport', soundProfile: 'aircraft', groups: ['crate', 'mail', 'vehicle'], cap: 110, speed: 620, price: 72000, op: 1250, level: 30, color: 0xe8c547, minAirport: 2 },
+  { id: 'commuter_prop', name: 'Commuter Prop 19', kind: 'airport', soundProfile: 'aircraft', pax: true, cap: 19, mail: 4, speed: 280, price: 9000, op: 220, level: 10, color: 0xe8e8ee },
+  { id: 'widebody', name: 'Widebody 250F', kind: 'airport', soundProfile: 'aircraft', groups: ['crate', 'mail', 'vehicle', 'flat'], cap: 240, speed: 680, price: 160000, op: 2900, level: 38, color: 0xe8c547, minAirport: 3 },
+  { id: 'jumbo', name: 'Skyliner 300', kind: 'airport', soundProfile: 'aircraft', pax: true, cap: 300, mail: 60, speed: 700, price: 150000, op: 2700, level: 36, color: 0xf4f4f8, minAirport: 2 },
 ];
 // stop kind → how its vehicles move
 export const STOP_MODE = { bus: 'road', truck: 'road', tram: 'tram', dock: 'water', airport: 'air', garage: 'road' };

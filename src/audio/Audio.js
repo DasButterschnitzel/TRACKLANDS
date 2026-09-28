@@ -195,6 +195,8 @@ export class AudioEngine {
       case 'doors': this.noiseHit(0.35, { freq: 2200, q: 1.5, gain: 0.025 * v, attack: 0.05 }); this.tone(1320, 0.12, { gain: 0.015 * v, when: 0.35 }); break;
       case 'announce': [659, 523, 784].forEach((f, k) => this.tone(f, 0.45, { gain: 0.03 * v, when: k * 0.28, rev: 0.5 })); break;
       case 'busEngine': case 'truckEngine': this.tone(name === 'truckEngine' ? 58 : 72, 0.8, { type: 'sawtooth', gain: 0.02 * v, attack: 0.1, glide: name === 'truckEngine' ? 90 : 110 }); this.noiseHit(0.6, { freq: 200, q: 0.8, type: 'lowpass', gain: 0.04 * v }); break;
+      // an electric bus: a soft rising motor note and a little tyre noise (Phase 13)
+      case 'busElectric': this.tone(420, 0.7, { gain: 0.012 * v, attack: 0.12, glide: 760 }); this.noiseHit(0.5, { freq: 900, q: 0.7, type: 'lowpass', gain: 0.018 * v }); break;
       case 'tramBell': for (let k = 0; k < 2; k++) this.tone(1760, 0.3, { type: 'triangle', gain: 0.03 * v, when: k * 0.22, rev: 0.3 }); break;
       // bus doors: an air hiss, the leaves sliding, a soft chime
       case 'busDoor': this.noiseHit(0.32, { freq: 3600, q: 1.2, gain: 0.03 * v, attack: 0.02 }); this.noiseHit(0.25, { freq: 900, q: 2, gain: 0.025 * v, when: 0.12 }); this.tone(988, 0.1, { gain: 0.012 * v, when: 0.4 }); break;

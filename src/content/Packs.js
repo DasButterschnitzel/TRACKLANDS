@@ -12,7 +12,7 @@
 // half-loaded). Pack vehicles get the id "<pack>.<id>", so they can never
 // replace a built-in one. Saves that use a pack vehicle keep working while
 // the pack is installed; without it those vehicles are dropped on load.
-import { ROAD_VEHICLES, CARGO } from '../config.js';
+import { ROAD_VEHICLES, CARGO, SOUND_PROFILES, SOUND_KIND } from '../config.js';
 import { BUS_SHAPES } from '../road/RoadModels.js';
 import { cleanScenario } from '../world/Scenarios.js';
 
@@ -39,6 +39,8 @@ const VEHICLE_SCHEMA = {
   comfort: ['number', num(0.5, 2), false],
   minAirport: ['number', num(1, 3), false],
   minPort: ['number', num(1, 3), false],
+  // how it sounds (Phase 13): one of SOUND_PROFILES, matching its kind
+  soundProfile: ['string', (v) => SOUND_PROFILES.includes(v), false],
 };
 
 // problems with one vehicle entry (empty: fine)
@@ -52,6 +54,7 @@ export function vehicleErrors(v) {
   for (const k of Object.keys(v)) if (!VEHICLE_SCHEMA[k]) out.push('unknown:' + k);
   // passengers or cargo: a bus/tram/ferry/airliner carries people; trucks need cargo groups
   if (v.kind === 'truck' && !v.groups) out.push('missing:groups');
+  if (typeof v.soundProfile === 'string' && SOUND_PROFILES.includes(v.soundProfile) && SOUND_KIND[v.soundProfile] !== v.kind) out.push('bad:soundProfile_kind');
   return out;
 }
 
@@ -66,6 +69,7 @@ function toModel(pack, v) {
   if (v.comfort) m.comfort = v.comfort;
   if (v.minAirport) m.minAirport = v.minAirport;
   if (v.minPort) m.minPort = v.minPort;
+  if (v.soundProfile) m.soundProfile = v.soundProfile;
   return m;
 }
 

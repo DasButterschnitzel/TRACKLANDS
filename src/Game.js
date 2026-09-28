@@ -3,7 +3,9 @@
 // gameplay events, and handles saving plus offline progress.
 import * as THREE from 'three';
 import { N, TILE, Emitter, tileCX, tileCZ, tx, tz, fmt, clamp, setMapSize , LAYERS} from './util.js';
-import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION } from './config.js';
+import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, OFFLINE, REGIONS, INDUSTRIES, REVENUE, WORLDGEN_VERSION, soundProfileOf } from './config.js';
+// the effect a sound profile plays when a vehicle leaves or arrives
+const SOUND_OF = { bus_diesel: 'busEngine', bus_electric: 'busElectric', truck_light: 'truckEngine', truck_heavy: 'heavyTruck', tram: 'tramBell', ship: 'shipHorn', aircraft: 'air' };
 import { generateWorld } from './world/WorldGen.js';
 import { WorldView } from './world/WorldView.js';
 import { RailNetwork, b64, unb64 } from './rail/RailNetwork.js';
@@ -434,17 +436,17 @@ export class Game {
       if (v > 0.1) {
         // a change of vehicle: the load is paid when it arrives
         if (d.transfer) ui.floatText(x, 0.8, z, `⇄ ${fmt(d.amount)}`, 'info'); else ui.floatText(x, 0.8, z, `+${fmt(d.revenue)}`, 'coin');
-        if (d.stop.kind === 'bus') { A.play('airBrake', { vol: v * 0.5, world: true }); A.play('busDoor', { vol: v * 0.7, world: true }); } else A.play('truckEngine', { vol: v * 0.7, world: true });
+        if (d.stop.kind === 'bus') { A.play('airBrake', { vol: v * 0.5, world: true }); A.play('busDoor', { vol: v * 0.7, world: true }); } else A.play(d.vehicle && soundProfileOf(roadModel(d.vehicle.model)) === 'truck_heavy' ? 'heavyTruck' : 'truckEngine', { vol: v * 0.7, world: true });
       }
     });
     // trams ring, ships sound their horn, aircraft take off and land (near the camera)
     const rvSnd = (v, dep) => {
       const o = this.roads.vehPos(v, {}), vol = this.near({ x: o.x, z: o.z });
       if (vol < 0.1) return;
-      const k = roadModel(v.model).kind;
-      const heavy = k === 'truck' && /dump|logging|tanker/.test(v.model);
-      const name = k === 'tram' ? 'tramBell' : k === 'dock' ? 'shipHorn' : k === 'airport' ? (dep ? 'takeoff' : 'landing') : k === 'bus' ? 'busEngine' : heavy ? 'heavyTruck' : 'truckEngine';
-      A.play(name, { vol: vol * 0.7, world: true, dur: k === 'airport' ? 2 : 0.8 });
+      // (the vehicle's sound profile comes from its data: config / content pack)
+      const sp = soundProfileOf(roadModel(v.model));
+      const name = SOUND_OF[sp] === 'air' ? (dep ? 'takeoff' : 'landing') : SOUND_OF[sp];
+      A.play(name, { vol: vol * 0.7, world: true, dur: sp === 'aircraft' ? 2 : 0.8 });
     };
     E.on('rvDepart', (v) => rvSnd(v, true));
     E.on('rvArrive', (v) => rvSnd(v, false));
