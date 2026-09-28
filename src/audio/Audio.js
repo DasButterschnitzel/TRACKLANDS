@@ -2,7 +2,7 @@
 // big networks never turn into noise, a continuous sound for the nearest
 // trains, and background music from creator-supplied files (MusicManager).
 import { MusicManager } from './MusicManager.js';
-import { TILE, tileCX, tileCZ } from '../util.js';
+import { TILE, tileCX, tileCZ, worldToTile } from '../util.js';
 
 // industry ambience by kind: filtered noise loop (gain, filter) and a low hum,
 // plus a typical one-shot now and then
@@ -245,6 +245,14 @@ export class AudioEngine {
         [196, 294, 392, 494, 587].forEach((f, k) => this.tone(f, 2.5, { type: 'triangle', gain: 0.035 * v, when: 0.3 + k * 0.12, attack: 0.3, rev: 0.7 }));
         break;
       case 'achievement': [392, 523, 659, 784, 1046].forEach((f, k) => this.tone(f, 0.45, { type: 'square', gain: 0.018 * v, when: k * 0.1, rev: 0.4 })); break;
+      // Phase 12: metro door warning, renovation, a whole project built, jet
+      // engines idling at an airport, the low rumble of a train in a tunnel
+      case 'doorChime': [1175, 988, 784].forEach((f, k) => this.tone(f, 0.22, { gain: 0.03 * v, when: k * 0.2, rev: 0.4 })); break;
+      case 'doorWarn': for (let k = 0; k < 4; k++) this.tone(2090, 0.07, { type: 'square', gain: 0.01 * v, when: k * 0.13 }); break;
+      case 'renovate': this.noiseHit(0.18, { freq: 1600, q: 1.2, gain: 0.04 * v }); [523, 659, 784, 1046].forEach((f, k) => this.tone(f, 0.35, { type: 'triangle', gain: 0.03 * v, when: 0.12 + k * 0.08, rev: 0.4 })); break;
+      case 'project': this.play('construct', { vol: v }); [392, 587, 784].forEach((f, k) => this.tone(f, 0.5, { gain: 0.03 * v, when: 0.3 + k * 0.1, rev: 0.5 })); break;
+      case 'jetWhine': this.tone(3200 + Math.random() * 400, 1.6, { gain: 0.006 * v, attack: 0.4, glide: 2800 }); this.noiseHit(1.4, { freq: 1100, q: 0.8, gain: 0.02 * v, attack: 0.4 }); break;
+      case 'tunnelRush': this.noiseHit(1.2, { freq: 140, q: 0.6, type: 'lowpass', gain: 0.08 * v, attack: 0.25 }); break;
       case 'error': this.tone(330, 0.14, { type: 'triangle', gain: 0.05 * v }); this.tone(262, 0.18, { type: 'triangle', gain: 0.05 * v, when: 0.1 }); break;
       case 'legend':
         [262, 330, 392, 523, 659, 784, 1046].forEach((f, k) => this.tone(f, 2.4, { type: 'triangle', gain: 0.04 * v, when: k * 0.15, rev: 0.8 }));
@@ -278,8 +286,10 @@ export class AudioEngine {
     const of = c.createBiquadFilter(); of.type = 'lowpass'; of.frequency.value = 180;
     o.connect(of).connect(og).connect(this.amb); o.start();
     this.industryHum = { o, g: og };
+    // trains below ground: a low wheel rumble that swells when one is near
+    this.tunnelL = mk(150, 'lowpass', 0.9);
     this.ambT = 0; this.oneShotT = 3;
-    this.scene = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0 };
+    this.scene = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0, tunnel: 0, port: 0, air: 0 };
   }
 
   // What is around the camera, measured a few times a second: cars on the
@@ -288,7 +298,7 @@ export class AudioEngine {
   // and with zooming out, so a large city is subtly alive up close and the
   // map view stays quiet.
   sceneAround() {
-    const g = this.game.g, out = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0 };
+    const g = this.game.g, out = { traffic: 0, crowd: 0, build: 0, ind: null, indV: 0, lights: 0, jam: 0, zoom: 0, tunnel: 0, port: 0, air: 0 };
     if (!g || !g.camera) return out;
     const cam = g.camera, vs = cam.viewSize;
     out.zoom = Math.max(0, Math.min(1, (42 - vs) / 30));
@@ -310,6 +320,20 @@ export class AudioEngine {
     for (const s of g.stations.list) if (s) out.crowd += g.near({ x: tileCX(s.tile), z: tileCZ(s.tile) }) * Math.min(80, wait(s));
     if (g.roads) for (const s of g.roads.stops) if (!s.owner) out.crowd += g.near({ x: tileCX(s.tile), z: tileCZ(s.tile) }) * Math.min(40, wait(s)) * 0.6;
     out.crowd = Math.min(1, out.crowd / 120);
+    // harbours and airports nearby (gulls and ship horns; jet engines)
+    if (g.roads) for (const s of g.roads.stops) {
+      if (s.kind !== 'dock' && s.kind !== 'airport') continue;
+      const v = g.near({ x: tileCX(s.tile), z: tileCZ(s.tile) });
+      if (s.kind === 'dock') out.port = Math.max(out.port, v); else out.air = Math.max(out.air, v);
+    }
+    // moving trains below ground (metro, tunnels)
+    if (g.trains && g.world) for (const t of g.trains.trains) {
+      if (t.state !== 'run' || t.v < 0.3 || !t.visual) continue;
+      const p = t.visual.cars[0].mesh.position, tile = worldToTile(p.x, p.z);
+      if (tile < 0 || p.y >= g.world.tileH[tile] - 0.6) continue;
+      out.tunnel += g.near(p) * Math.min(1, t.v / 3);
+    }
+    out.tunnel = Math.min(1, out.tunnel);
     if (g.towns && g.towns.animating) for (const b of g.towns.animating) out.build = Math.max(out.build, g.near({ x: b.pos[0], z: b.pos[2] }));
     if (g.industries) for (const i of g.industries.list) {
       const v = g.near({ x: (i.x + 1) * TILE, z: (i.z + 1) * TILE });
@@ -335,6 +359,9 @@ export class AudioEngine {
     this.industryL.g.gain.setTargetAtTime(prof ? prof.noise * iv : 0, t, 0.6);
     if (prof) { this.industryL.f.frequency.setTargetAtTime(prof.freq, t, 0.4); this.industryL.f.type = prof.filter; }
     this.industryHum.g.gain.setTargetAtTime(prof ? prof.hum * iv : 0, t, 0.6);
+    // louder in the underground view, where the tunnels are what you see
+    const under = this.game.g && this.game.g.layerView && this.game.g.layerView.showsUnderground() ? 1 : 0.35;
+    this.tunnelL.g.gain.setTargetAtTime(0.06 * S.tunnel * z * under, t, 0.5);
     if (prof && prof.humF) this.industryHum.o.frequency.setTargetAtTime(prof.humF, t, 0.5);
     // occasional one-shots from the same scene (the voice budget still applies)
     this.oneShotT -= dt;
@@ -342,6 +369,9 @@ export class AudioEngine {
     this.oneShotT = 1.2 + Math.random() * 2.5;
     const r = Math.random();
     if (prof && iv > 0.3 && prof.shot && r < 0.4) this.play(prof.shot, { vol: iv, world: true });
+    else if (S.port > 0.35 && r < 0.5) this.play(Math.random() < 0.15 ? 'shipHorn' : 'gull', { vol: S.port * z * 0.8, world: true, dur: 1.5 });
+    else if (S.air > 0.35 && r < 0.5) this.play('jetWhine', { vol: S.air * z, world: true, dur: 1.6 });
+    else if (S.tunnel > 0.4 && r < 0.5) this.play('tunnelRush', { vol: S.tunnel * z, world: true, dur: 1.2 });
     else if (S.build > 0.3 && r < 0.6) this.play('construction', { vol: S.build * z, world: true });
     else if (S.jam > 0.25 && r < 0.75) this.play(Math.random() < 0.3 ? 'hornBus' : 'hornCar', { vol: Math.min(1, S.jam) * z * 0.8, world: true });
     else if (S.lights > 0.5 && z > 0.5 && r < 0.9) this.play('pedCrossing', { vol: S.lights * z * 0.7, world: true, dur: 1 });

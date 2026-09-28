@@ -155,6 +155,14 @@ export async function run({ browser, base }) {
     return { terms: terms.map((t) => R.termFamily(t)).join(','), tiles, years: s.net.years === undefined, start: g.ledger.startYear };
   });
   check(!old.bad && old.years, `the production save loads with sane defaults (${old.tiles} track tiles; airports/ports: ${old.terms || 'none'}; start ${old.start}); nothing new is written until something is built`);
+  // ---- the world at a glance: year, today's style, terrain, climate ----
+  const wi = await page.evaluate(() => {
+    const ui = window.__tracklands.ui; ui.openPanel('search');
+    const el = document.getElementById('world-info');
+    const v = (k) => { const b = el && el.querySelector(`[data-wi="${k}"]`); return b ? b.textContent.trim() : ''; };
+    return { year: v('wi_year'), look: v('wi_look'), terrain: v('wi_terrain'), climate: v('wi_climate'), now: window.__tracklands.game.ledger.year() };
+  });
+  check(wi.year === String(wi.now) && wi.look && !/^vera_|^terrain_|^tp_/.test(wi.look + wi.terrain + wi.climate) && wi.terrain && wi.climate, `world info: ${wi.year}, ${wi.look}, ${wi.terrain}, ${wi.climate}`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();
   return { ok, lines };

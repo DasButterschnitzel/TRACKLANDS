@@ -398,7 +398,8 @@ export class Game {
       if (!loco) return;
       const v = this.near(loco.position);
       const m = locoModel(t.model);
-      if (v > 0.1 && t.trips % 3 === 0) A.play('whistle', { kind: m.kind, vol: v });
+      if (v > 0.1 && this.trains.isMetro(t)) A.play('doorWarn', { vol: v * 0.8, world: true });
+      else if (v > 0.1 && t.trips % 3 === 0) A.play('whistle', { kind: m.kind, vol: v });
       if (v > 0.1 && m.kind.startsWith('steam')) { A.play('chuff', { vol: v * 0.7 }); P.emit('steam', loco.position.x, loco.position.y + 0.9, loco.position.z, 6); }
     });
     E.on('trainArrive', (t, stn, moved) => {
@@ -410,6 +411,8 @@ export class Game {
         A.play('arrive', { vol: v * 0.6, world: true });
         if (moved) A.play('unload', { vol: v, world: true });
         if (t._st.caps && t._st.caps.PASSENGERS) A.play('doors', { vol: v * 0.8, world: true });
+        // a metro set chimes as its doors open (the warning sounds on departure)
+        if (this.trains.isMetro(t)) A.play('doorChime', { vol: v * 0.7, world: true, dur: 0.7 });
         if ((stn.level | 0) >= 3 && t.trips % 4 === 0) A.play('announce', { vol: v * 0.7, world: true, dur: 1.2 });
       }
       stn.pulse = Math.max(stn.pulse || 0, 0.5);

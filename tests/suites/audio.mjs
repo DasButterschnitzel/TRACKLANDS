@@ -40,7 +40,7 @@ export async function run({ browser, base }) {
     // voice budget and sound effect names
     const v = await page.evaluate(() => {
       const A = window.__tracklands.audio, bad = [];
-      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error', 'busDoor', 'airBrake', 'hornCar', 'hornBus', 'heavyTruck', 'pedCrossing', 'crowd', 'construction', 'clank', 'gull', 'moo']) {
+      for (const n of ['click', 'confirm', 'cancel', 'purchase', 'loan', 'coin', 'construct', 'demolish', 'bulldoze', 'rail', 'road', 'station', 'switch', 'blade', 'crossing', 'barrier', 'whistle', 'chuff', 'hornDiesel', 'hornElectric', 'brake', 'coupler', 'doors', 'announce', 'load', 'unload', 'busEngine', 'truckEngine', 'tramBell', 'shipHorn', 'takeoff', 'landing', 'cityGrow', 'industryUp', 'research', 'contract', 'approve', 'reject', 'thunder', 'townUp', 'levelUp', 'error', 'busDoor', 'airBrake', 'hornCar', 'hornBus', 'heavyTruck', 'pedCrossing', 'crowd', 'construction', 'clank', 'gull', 'moo', 'doorChime', 'doorWarn', 'renovate', 'project', 'jetWhine', 'tunnelRush']) {
         try { A.lastPlay = {}; A.voices = []; A.play(n); } catch (e) { bad.push(n + ': ' + e.message); }
       }
       A.voices = []; A.lastPlay = {};
@@ -82,6 +82,24 @@ export async function run({ browser, base }) {
       return { town, near, mineType: mine.type, kind: industryKind(mine.type), far, same };
     });
     check(amb.town.traffic > 0 && amb.near.ind === amb.mineType && amb.near.v > 0.8 && amb.far === 0 && amb.same, `ambience: town street traffic ${amb.town.traffic.toFixed(2)}, crowd ${amb.town.crowd.toFixed(2)}, next to a ${amb.mineType} the ${amb.kind} loop, zoomed out silent, pooled loops`);
+    // Phase 12: a harbour, an airport and a train in a tunnel next to the
+    // camera are heard (gulls / jets / wheel rumble); the tunnel loop is part
+    // of the fixed pool
+    const p12 = await page.evaluate(() => {
+      const g = window.__tracklands.game, A = window.__tracklands.audio, N = g.mapSize;
+      const tile = Math.floor(N / 2) * N + Math.floor(N / 2), x = (tile % N + 0.5) * 2, z = (Math.floor(tile / N) + 0.5) * 2;
+      g.camera.target.set(x, 0, z); g.camera.viewSize = 12;
+      const loop = A.tunnelL;
+      const fakes = [{ kind: 'dock', tile }, { kind: 'airport', tile }];
+      const train = { state: 'run', v: 3, visual: { cars: [{ mesh: { position: { x, y: g.world.tileH[tile] - 4, z } } }] } };
+      g.roads.stops.push(...fakes); g.trains.trains.push(train);
+      A.ambT = 0; A.updateAmbience(1 / 30);
+      const sc = { port: A.scene.port, air: A.scene.air, tunnel: A.scene.tunnel };
+      g.roads.stops.splice(g.roads.stops.indexOf(fakes[0]), 2); g.trains.trains.splice(g.trains.trains.indexOf(train), 1);
+      A.ambT = 0; A.updateAmbience(1 / 30);
+      return { ...sc, after: A.scene.tunnel, pooled: loop === A.tunnelL && !!loop };
+    });
+    check(p12.port > 0.8 && p12.air > 0.8 && p12.tunnel > 0.5 && p12.after < p12.tunnel && p12.pooled, `harbour ${p12.port.toFixed(2)}, airport ${p12.air.toFixed(2)} and tunnel ${p12.tunnel.toFixed(2)} ambience near the camera; pooled tunnel loop`);
     if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 2).join(' | ')); }
     await ctx.close();
   }

@@ -6,6 +6,8 @@ import { fmt, escapeHtml as esc } from '../util.js';
 import { icon } from './icons.js';
 import { WEATHER_IDS } from '../world/Environment.js';
 import { ERA_BANDS, bandOf } from '../world/Eras.js';
+import { VISUAL_ERAS, visualBand } from '../world/VisualEra.js';
+import { resolveTerrain } from '../world/Terrain.js';
 
 const MAX_BOOKMARKS = 12;
 // commands FIND also offers (a command palette: Ctrl+K or F, then type)
@@ -58,7 +60,20 @@ export const ToolsUIMixin = {
       <div id="find-body" class="fin-list">${this.searchRows()}</div>
       <h3>${this.tr('bookmarks')}</h3>${marks || `<p class="muted small">${this.tr('bm_none')}</p>`}
       <div class="row wrap"><button class="btn small" data-act="bmAdd" ${B.length >= MAX_BOOKMARKS ? 'disabled' : ''}>${icon('plus', 'mini')} ${this.tr('bm_add')}</button></div>
+      ${this.worldInfo()}
       ${g.difficultyId === 'builder' ? `<h3>${this.tr('sandbox')}</h3>${this.sandboxBlock()}` : ''}`;
+  },
+  // the world at a glance (Phase 12): the year and the style it builds in,
+  // when the game began, the terrain, climate, seed and size
+  worldInfo() {
+    const g = this.game, y = g.ledger.year(), W = g.world;
+    const T = resolveTerrain(W.terrain);
+    const row = (k, v) => `<div><span>${this.tr(k)}</span><b data-wi="${k}">${v}</b></div>`;
+    return `<h3>${this.tr('world_info')}</h3><div class="kv-list small" id="world-info">
+      ${row('wi_year', y)}${row('wi_look', this.tr('vera_' + VISUAL_ERAS[visualBand(y)].id))}${row('wi_since', g.ledger.startYear)}
+      ${row('wi_terrain', this.tr('terrain_' + T.preset))}${row('wi_climate', this.tr('tp_climate_' + T.climate))}
+      ${row('wi_size', `${g.mapSize}×${g.mapSize}`)}${row('wi_seed', esc(String(W.seed)))}</div>
+      <p class="muted small">${this.tr('wi_help')}</p>`;
   },
   // the camera spot as a bookmark (named after the nearest town)
   addBookmark(name = null) {

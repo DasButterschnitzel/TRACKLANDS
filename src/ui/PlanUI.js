@@ -50,7 +50,7 @@ export const PlanUIMixin = {
     const g = () => this.game;
     const P = () => g().plans, B = () => g().blueprints;
     const pid = (a) => P().byId(+a);
-    const report = (r) => { if (r.error) this.toast(this.tr(r.error) + (r.reason ? ': ' + this.tr(r.reason) : ''), 'bad', 'plans'); else this.toast(this.tr('plan_built', { n: r.built, cost: fmt(r.spent) }), 'good', 'plans'); this.refreshPanel(); };
+    const report = (r) => { if (r.error) this.toast(this.tr(r.error) + (r.reason ? ': ' + this.tr(r.reason) : ''), 'bad', 'plans'); else { this.toast(this.tr('plan_built', { n: r.built, cost: fmt(r.spent) }), 'good', 'plans'); this.app.audio.play('project'); } this.refreshPanel(); };
     return {
       planMode: (a) => { P().setOn(a === '1'); if (P().on && !['track', 'station', 'depot'].includes(g().construction.tool)) g().construction.setTool('track'); this.refreshPanel(); this.renderToolbar && this.renderToolbar(); },
       planNew: () => { P().create(); this.refreshPanel(); },

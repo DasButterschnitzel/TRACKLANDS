@@ -652,7 +652,7 @@ export const RailUIMixin = {
 
   railActions() {
     const eraAct = {
-      renovateStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.renovate(st); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_renovated_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
+      renovateStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.renovate(st); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_renovated_toast', { name: st.name })); this.app.audio.play('renovate'); this.refreshPanel && this.refreshPanel(); } },
       listStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.setHeritage(st, true); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_listed_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
       unlistStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; G.stations.setHeritage(st, false); this.refreshPanel && this.refreshPanel(); },
     };
