@@ -403,7 +403,12 @@ export class TownSystem {
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._s = new THREE.Vector3(); this._up = new THREE.Vector3(0, 1, 0);
   }
 
-  byId(id) { return this.list.find((t) => t.id === id); }
+  // (indexed: the town's cars look their town up every step)
+  byId(id) {
+    if (this._idxList !== this.list || this._idx.size !== this.list.length) { this._idx = new Map(this.list.map((t) => [t.id, t])); this._idxList = this.list; }
+    const t = this._idx.get(id);
+    return t && t.id === id ? t : this.list.find((x) => x.id === id);
+  }
   // street traffic uses its own seeded generator (reproducible tests)
   rand() { this._r = (Math.imul(this._r ?? 0x2f6b4a1, 1103515245) + 12345) >>> 0; return (this._r >>> 8) / 16777216; }
   // population class (nine steps, from the head count)

@@ -5,7 +5,7 @@
 // service worker installs the complete new set in the background and waits;
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
-const CACHE = 'tracklands-6.0.0-c1cc7b6b38';
+const CACHE = 'tracklands-6.0.0-dbe10bd024';
 const ASSETS = [
   './',
   './assets/music/README.md',

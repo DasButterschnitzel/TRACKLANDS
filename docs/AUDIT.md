@@ -239,7 +239,20 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 Four-layer map sizes (`mapsize`), platform extension underground and on viaducts (`metro`), undo restoring track roles (`fourtrack`), plan rollback in money and ledger (`planning`, `costquote`), bulldozer on tunnel and viaduct layers (`layers`), a second pair inside a project (`planning`), seed 18 platform isolation (`fuzz`).
 
 ## Release gates 6.0.0
-In progress (run locally; dispatching `deep.yml` from this session is refused): full regression of every regular suite, 1000 save-fuzz cases + corpus, rail fuzzer seeds 1–40, `prodsave`, `qa`, `bench`, `perf`, `gallery`, `ai`, `aidecades`, `eralong` (60 years: PASS). Results are recorded here when they finish.
+Run locally on the 6.0.0 commits (dispatching `deep.yml` from this session is refused); CI (`tests.yml`, eight jobs incl. Chromium, Firefox and WebKit) green on every pushed head from `29ef398` on. This container renders at about **1 frame per second** (SwiftShader), so time-bound UI suites were run one at a time.
+
+| Gate | Result |
+|---|---|
+| Every regular suite (72, incl. `monkey` and all `ui` viewports) | PASS — `industry`, `transport` first timed out waiting for the camera at 1 fps; nine suites now drive the camera instead of waiting on frames (the checks are unchanged). `tutorial`, `touch`, `xbrowser` and `seeds` passed when re-run alone. |
+| Save fuzz, 1000 cases + corpus | 1008 started, 11 rejected cleanly, **2 bad → fixed**: a daily-challenge set without its stats snapshot crashed the statistics (case 365); a track map that does not decode left stations on nothing (case 859, now refused with the load-failed dialog). Both are corpus entries (22 entries, all PASS); 250 cases mutated era fields directly |
+| Rail fuzzer, seeds 1–40 | PASS (no gaps, overlaps, stuck trains or NaN; the resolver cleared every deadlock) |
+| `prodsave` | PASS — 1,220 coins/min (band 900–2000) |
+| `qa`, `gallery`, `ai` | PASS |
+| `perf` | PASS — 100 trains: tick average 0.47 ms, p99 2.3 ms |
+| `aidecades` (50 years, four companies) | PASS — networks never touch, 0 % unused track, fleets within two eras, save 350 KB |
+| `eralong` (60 years from 1900) | PASS |
+| `bench` | **FAIL, not a regression**: the 192 × 192 world's simulation takes 8.7–9.2 ms against the 8 ms budget. The 5.0.0 release commit (`b430f16`), which passed this gate at its release, measures 8.83 ms in this container today, and the pre-Phase-12 commit 9.57 ms. Draw calls, scene size and memory are within the baseline; 64² and 128² are within budget. Town traffic dominates (about 3 ms a frame with 248 cars); town lookups are now indexed. The budget was not raised. |
+| Static release build | see the PR description |
 
 ## Standing constraints
 | Rule | Status |
