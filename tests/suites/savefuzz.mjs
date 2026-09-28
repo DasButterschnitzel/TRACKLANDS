@@ -82,10 +82,23 @@ export async function run({ browser, base, quick, args }) {
   const layersBase = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'save-layers.json'), 'utf8'));
   const { ctx, page, errors } = await openPage(browser, base, { viewport: { width: 900, height: 650 } });
   await startTestGame(page, 5 * 1013);
-  const v3 = await page.evaluate(() => { const g = window.__tracklands.game; g.runRailFuzz(5, 2); return JSON.parse(JSON.stringify(g.serialize())); });
+  // (Phase 12: the generated save also carries the era fields: per-tile
+  // years of building and electrification, an airport and a port with their
+  // opening and renovation years)
+  const v3 = await page.evaluate(() => {
+    const g = window.__tracklands.game, R = g.roads, N = g.mapSize;
+    g.runRailFuzz(5, 2);
+    let n = 0;
+    for (let i = 0; i < g.net.NN && n < 400; i++) if (g.net.conn[i]) { g.net.markBuilt(i, 1890 + (n % 150), g.net.tier[i] >= 2); n++; }
+    g.economy.coins = 1e7;
+    for (const kind of ['airport', 'dock']) for (let i = N * 6; i < N * N - N * 6; i += 3) if (!R.stopError(i, kind)) { const st = R.addStop(i, kind).stop; if (st) { st.yb = 1910; st.reno = 1975; } break; }
+    const d = JSON.parse(JSON.stringify(g.serialize()));
+    return d;
+  });
+  const eraFields = !!(v3.net && v3.net.years) && JSON.stringify(v3).includes('"reno":1975');
   errors.length = 0;
   const lines = [];
-  let bad = 0, started = 0, failed = 0;
+  let bad = 0, started = 0, failed = 0, eraCases = 0;
   // the jobs: corpus entries first (cheap, known bugs), then the random cases
   const jobs = [...corpus.map((e) => ({ corpus: e })), ...Array.from({ length: N }, (_, c) => ({ caseNo: seed0 + c }))];
   for (const job of jobs) {
@@ -101,6 +114,14 @@ export async function run({ browser, base, quick, args }) {
       prodBase = (caseNo - 1) % 2 === 1;
       base0 = JSON.parse(JSON.stringify(prodBase ? prod : v3));
       log = mutate(base0, r);
+      // every fourth generated case also mutates an era field directly (the
+      // random paths rarely reach the terminals at the end of the stop list)
+      if (!prodBase && caseNo % 4 === 1) {
+        const si = (base0.road && Array.isArray(base0.road.stops)) ? base0.road.stops.findIndex((x) => x && x.reno) : -1;
+        const tgt = r() < 0.5 && base0.net && base0.net.years && typeof base0.net.years === 'object' ? ['net.years', base0.net.years] : si >= 0 ? [`road.stops.${si}`, base0.road.stops[si]] : null;
+        if (tgt) eraCases++;
+        if (tgt) log.push(...mutate(tgt[1], r).map((o) => { const i = o.indexOf(':'); return `${o.slice(0, i)}:${tgt[0]}.${o.slice(i + 1)}`; }));
+      }
       label = job.corpus ? `corpus "${job.corpus.id}" (case ${caseNo})` : `case ${caseNo}`;
     }
     errors.length = 0;
@@ -135,6 +156,9 @@ export async function run({ browser, base, quick, args }) {
         if (new Set(sids).size !== sids.length || sids.some((i) => !Number.isInteger(i) || i < 0 || i >= 900000)) probs.push('station ids ' + sids.slice(0, 5).join(','));
         for (const ind of g.industries.list) for (const f of ['out', 'inp']) for (const c2 in ind[f] || {}) if (!Number.isFinite(ind[f][c2])) probs.push('ind ' + ind.id);
         // the rail graph stays sound on every layer, whatever the save held
+        // era fields: years in range, every object resolves to a family
+        for (const st of g.roads.stops) if (st.kind === 'airport' || st.kind === 'dock') { const f = g.roads.termFamily(st); if (typeof f !== 'string' || !f) probs.push('term family ' + st.id); if (st.yb != null && !Number.isFinite(st.yb)) probs.push('term yb ' + st.yb); if (st.reno != null && !Number.isFinite(st.reno)) probs.push('term reno ' + st.reno); }
+        for (let i = 0; i < g.net.NN; i += 7) if (g.net.conn[i]) { const y = g.net.yearBuilt(i, 1950); if (!Number.isFinite(y) || y < 1800 || y > 2100) { probs.push('year ' + i + '=' + y); break; } if (g.railView.catenaryFamily(i) == null) { probs.push('catenary ' + i); break; } }
         const gv = g.net.validateGraph(3);
         if (gv.length) probs.push('graph ' + gv.map((x) => x.kind + '@' + x.tile).join(','));
         let d; try { d = JSON.parse(JSON.stringify(g.serialize())); } catch (e) { probs.push('serialize ' + e.message); }
@@ -149,7 +173,8 @@ export async function run({ browser, base, quick, args }) {
       lines.push(`     reproduce: ${job.caseNo != null ? `node tests/run.mjs savefuzz --seed=${job.caseNo} --cases=1` : 'node tests/run.mjs savefuzz --cases=0 --corpus'}  (add it to tests/fuzz-corpus.json once fixed)`);
     }
   }
-  lines.push(`cases ${N}${args.shard ? ` (shard ${args.shard}: ${seed0}–${seed0 + N - 1})` : ''}${corpus.length ? ` + ${corpus.length} corpus` : ''}: started ${started}, rejected with load-failed dialog ${failed}, bad ${bad}`);
+  if (!eraFields) { bad++; lines.push('FAIL the generated save lacks the era fields (net.years, renovated terminals)'); }
+  lines.push(`cases ${N}${args.shard ? ` (shard ${args.shard}: ${seed0}–${seed0 + N - 1})` : ''}${corpus.length ? ` + ${corpus.length} corpus` : ''}: started ${started}, rejected with load-failed dialog ${failed}, bad ${bad}; ${eraCases} with a direct era-field mutation`);
   await ctx.close();
   return { ok: bad === 0, lines };
 }
