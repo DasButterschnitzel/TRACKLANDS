@@ -115,7 +115,17 @@ export const RoadUIMixin = {
       use = `<div class="kvrow" data-tip="${this.tr('berths_tip')}"><span>${this.tr('berths_use')}</span>${this.bar(B.used / B.cap, B.used >= B.cap ? 'warn' : '')}<b>${B.used}/${B.cap}</b></div>${B.queued ? `<p class="muted small">${icon('warn', 'mini')} ${this.tr('berths_queue', { n: B.queued })}</p>` : ''}`;
     }
     const stats = air ? this.tr('airport_stats2', { r: I.radius, t: Math.round(I.turn * 100), c: Math.floor(60 / I.slot) }) : this.tr('port_stats', { r: R.stopRadius(s), t: Math.round(I.turn * 100), b: I.berths });
-    return `<div class="card stype"><b>${this.tr(pre + '_size_' + size)}</b><small>${stats}</small></div>${use}${up}`;
+    return `<div class="card stype"><b>${this.tr(pre + '_size_' + size)}</b><small>${stats}</small></div>${use}${up}${this.terminalEraBlock(s)}`;
+  },
+  // the era look (Phase 12): opened, renovated, the look it shows; renovation
+  // changes the look only, never the capacity
+  terminalEraBlock(s) {
+    const R = this.game.roads, r = R.renovateInfo(s);
+    if (!r) return '';
+    const cat = s.kind === 'airport' ? 'airport' : 'port';
+    const hist = `${r.opened ? this.tr('opened_in', { y: r.opened }) : this.tr('opened_before')}${r.renovated ? ' · ' + this.tr('renovated_in', { y: r.renovated }) : ''}`;
+    const btn = r.from === r.to ? '' : `<button class="btn small ${r.error ? 'ghost' : ''}" data-act="terminalRenovate" data-arg="${s.id}" ${r.error ? `disabled data-tip="${this.tr(r.error)}"` : ''}>${icon('builder', 'mini')} ${this.tr('renovate_to', { look: this.tr('vfam_' + cat + '_' + r.to) })} · ${fmt(r.cost)} ●</button>`;
+    return `<div class="kvrow era-look"><span>${this.tr('era_look')}</span><b>${this.tr('vfam_' + cat + '_' + r.from)}${R.termVariant(s) !== 'pax' && s.kind === 'dock' ? ' · ' + this.tr('pspec_' + R.termVariant(s)) : s.kind === 'airport' && R.termVariant(s) === 'cargo' ? ' · ' + this.tr('air_cargo') : ''}</b></div><p class="muted small">${hist}</p>${btn}<p class="muted small">${btn ? this.tr('renovate_look_only') : ''}</p>`;
   },
   // the actions a stop or a vehicle needs most, one tap away (touch first)
   tactBtn(act, arg, ic, label, dis = false, cls = '') { return `<button class="tact ${cls}" data-act="${act}" data-arg="${arg}" ${dis ? 'disabled' : ''}>${icon(ic)}<span>${label}</span></button>`; },
@@ -189,6 +199,7 @@ export const RoadUIMixin = {
       rvSell: (a) => { const v = g().roads.byId(+a); if (!v) return; g().roads.sell(v); g().select(null); },
       rvRouteAdd: (a) => { const [vid, sid] = a.split(':').map(Number); const v = g().roads.byId(vid); if (v && !v.stops.includes(sid)) { v.stops.push(sid); if (v.state === 'idle') v.t = 0; } re(); },
       rvRouteDel: (a) => { const [vid, i] = a.split(':').map(Number); const v = g().roads.byId(vid); if (v && v.stops.length > 1) { v.stops.splice(i, 1); v.idx = v.idx % v.stops.length; } re(); },
+      terminalRenovate: (a) => { const st = g().roads.stopById(+a); if (!st) return; const e = g().roads.renovateTerminal(st); if (e) this.error(e); else { this.toast(this.tr('terminal_renovated', { name: st.name }), 'good', st.kind === 'dock' ? 'dock' : 'airport'); g().audio && g().audio.play('construct'); } re(); },
       airportUpgrade: (a) => { const st = g().roads.stopById(+a); if (!st) return; const r = g().roads.upgradeTerminal(st); if (r.error) this.error(r.error); else this.toast(this.tr(st.kind === 'dock' ? 'port_upgraded' : 'airport_upgraded_to', { name: st.name, kind: this.tr((st.kind === 'dock' ? 'port' : 'airport') + '_size_' + st.size) }), 'good', st.kind === 'dock' ? 'dock' : 'airport'); re(); },
       stopUpgrade: (a) => { const st = g().roads.stopById(+a); if (!st) return; const r = g().roads.upgradeStop(st); if (r.error) this.error(r.error); else this.toast(this.tr('stop_upgraded', { name: st.name, t: this.tr('stype_' + st.type) }), 'good', 'bus'); re(); },
       stopFac: (a) => { const [id, f] = a.split(':'); const st = g().roads.stopById(+id); if (!st) return; const r = g().roads.addFacility(st, f); if (r.error) this.error(r.error); re(); },

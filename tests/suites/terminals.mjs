@@ -45,7 +45,9 @@ export async function run({ browser, base }) {
       out.hubCap = R.runway(A).cap;
       out.wideHub = !!R.buy('widebody', A).vehicle;
       out.sizeA = A.size;
-      out.hubMesh = R.hubMesh.count;
+      // (Phase 12: a hub is its own model, second runway included, drawn by size)
+      R.rebuildStopMesh();
+      out.hubMesh = [...R.termMeshes].filter(([k, m]) => /^airport:[a-z]+:3:/.test(k)).reduce((a, [, m]) => a + m.count, 0);
       g.select({ type: 'roadstop', id: A.id });
       out.panel = !!document.querySelector('[data-tip*="runway"], .kvrow') && document.body.innerText.includes(g.ui.tr('runway_use'));
     }
@@ -67,7 +69,9 @@ export async function run({ browser, base }) {
       out.berths1 = R.berths(A).cap;
       out.bulkPort = !!R.buy('bulk_carrier', A).vehicle;
       out.containerPort = R.buy('container_ship', A).error;
-      out.cranes = R.craneMesh.count;
+      // (Phase 12: cranes are part of the port model, one per size step)
+      R.rebuildStopMesh();
+      out.cranes = [...R.termMeshes].filter(([k, m]) => /^dock:[a-z]+:[23]:/.test(k)).reduce((a, [, m]) => a + m.count, 0) * (A.size || 1);
       out.reach = R.stopRadius(A);
     }
     out.save = g.serialize();

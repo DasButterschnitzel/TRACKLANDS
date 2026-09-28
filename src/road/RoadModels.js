@@ -185,14 +185,23 @@ export function roadVehicleGeometry(m) {
 }
 
 // bus stop types; the kerb (road) is toward -z, the land side +z
-export function stopModel(type) {
+// by era (VisualEra 'stop', Phase 12): timber (early), concrete (postwar),
+// brown and orange plastic (late), glass and steel (modern)
+const STOP_LOOK = {
+  early: { pole: 0x5a4030, panel: 0x8a6a4a, roof: 0x5a4a3a, gable: true, hall: 0xd8c8a8, hallRoof: 0x7a3f33 },
+  postwar: { pole: 0x6a6e74, panel: 0xb8b4aa, roof: 0x8a8680, gable: false, hall: 0xcac6bc, hallRoof: 0x6a6f76 },
+  late: { pole: 0x6a4a2a, panel: 0xd8a060, roof: 0x5a4a3a, gable: false, hall: 0xb89a78, hallRoof: 0x5a4a3a },
+  modern: { pole: 0x3a4250, panel: 0xbfd8e6, roof: 0x3a4250, gable: false, hall: 0xd8d2c4, hallRoof: 0x7a3f33 },
+};
+export function stopModel(type, fam = 'modern') {
   const b = new ModelBuilder();
-  const POLE = 0x3a4250, SIGN = 0xffffff;
+  const LK = STOP_LOOK[fam] || STOP_LOOK.modern;
+  const POLE = LK.pole, SIGN = 0xffffff;
   const shelter = (x = 0, w = 0.5) => {
-    b.box(w, 0.03, 0.2, POLE, { x, y: 0.34 });
+    if (LK.gable) b.roof(w + 0.06, 0.1, 0.26, LK.roof, { x, y: 0.35 }); else b.box(w, fam === 'postwar' ? 0.06 : 0.03, 0.2, LK.roof, { x, y: 0.34 });
     b.cyl(0.02, 0.02, 0.34, 5, POLE, { x: x - w / 2 + 0.03, z: 0.08 });
     b.cyl(0.02, 0.02, 0.34, 5, POLE, { x: x + w / 2 - 0.03, z: 0.08 });
-    b.box(w - 0.04, 0.22, 0.02, 0xbfd8e6, { x, z: 0.09, y: 0.1 });
+    b.box(w - 0.04, 0.22, 0.02, LK.panel, { x, z: 0.09, y: 0.1, glow: fam === 'modern' });
     b.box(w * 0.6, 0.03, 0.07, 0x8a6f63, { x, z: 0.04, y: 0.1 });    // bench
   };
   const sign = (x, h = 0.46) => { b.cyl(0.015, 0.015, h, 5, POLE, { x, z: -0.08 }); b.box(0.12, 0.12, 0.02, SIGN, { x, z: -0.08, y: h - 0.08 }); };
@@ -214,8 +223,8 @@ export function stopModel(type) {
       b.box(1.8, 0.05, 0.5, 0xc8c2b6, { z: 0.1 });                 // platform
       b.box(1.7, 0.035, 0.46, 0x3a4250, { z: 0.1, y: 0.4 });       // canopy
       for (const x of [-0.8, 0, 0.8]) b.cyl(0.025, 0.025, 0.38, 5, POLE, { x, z: 0.3 });
-      b.box(1.2, 0.46, 0.8, 0xd8d2c4, { z: 0.95, x: 0 });           // station building on the land beside
-      b.roof(1.3, 0.2, 0.9, 0x7a3f33, { z: 0.95, y: 0.46 });
+      b.box(1.2, 0.46, 0.8, LK.hall, { z: 0.95, x: 0 });           // station building on the land beside
+      if (fam === 'early' || fam === 'modern') b.roof(1.3, 0.2, 0.9, LK.hallRoof, { z: 0.95, y: 0.46 }); else b.box(1.3, 0.06, 0.9, LK.hallRoof, { z: 0.95, y: 0.46 });
       b.box(0.5, 0.14, 0.02, 0x3a4a5a, { z: 0.54, y: 0.22, glow: true });
       sign(0.9, 0.6);
       break;
@@ -224,7 +233,7 @@ export function stopModel(type) {
       b.box(2.4, 0.05, 0.9, 0xc8c2b6, { z: 0.2 });
       b.box(2.3, 0.04, 0.8, 0x3a4250, { z: 0.25, y: 0.46 });       // long canopy over the bays
       for (const x of [-1.1, -0.35, 0.35, 1.1]) b.cyl(0.03, 0.03, 0.44, 5, POLE, { x, z: 0.6 });
-      b.box(1.9, 0.66, 1.2, 0xe2dccf, { z: 1.6 });                  // terminal hall on the land beside
+      b.box(1.9, 0.66, 1.2, LK.hall, { z: 1.6 });                  // terminal hall on the land beside
       b.box(1.8, 0.2, 0.02, 0x3a4a5a, { z: 0.99, y: 0.34, glow: true });
       b.box(2.0, 0.06, 1.3, 0x6a7078, { z: 1.6, y: 0.66 });
       b.box(0.24, 1.2, 0.24, 0xd8d2c4, { x: 0.8, z: 1.2 });         // clock tower

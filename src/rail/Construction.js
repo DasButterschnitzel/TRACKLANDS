@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, tx, tz, idx, inMap, step, tileCX, tileCZ, fmt , onLayer, baseTile, layerOf} from '../util.js';
 import { COSTS, DECORATIONS, TRACK_TIERS, INDUSTRY_INVEST } from '../config.js';
+import { packYear } from '../world/VisualEra.js';
 import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV, TRACK_ROLES } from './RailNetwork.js';
 
 const UNDO_WINDOW = 10;
@@ -655,6 +656,12 @@ export class Construction {
     }
     for (const t of plan.tiles) net.tier[t] = Math.max(prev.find((p) => p.t === t).conn ? net.tier[t] : 0, tier);
     for (const p of prev) if (p.conn && p.tier > tier) net.tier[p.t] = p.tier;
+    // the year of building and of electrification (visual eras: masts, portals, crossings)
+    const yr = g.ledger ? g.ledger.year() : 1950;
+    for (const p of prev) {
+      if (!p.conn) { net.yb[p.t] = 0; net.ey[p.t] = 0; net.markBuilt(p.t, yr, net.tier[p.t] >= 2); }
+      else if (p.tier < 2 && net.tier[p.t] >= 2) net.ey[p.t] = packYear(yr);
+    }
     g.economy.spend(plan.cost, 'construction', { type: 'tile', id: plan.tiles[Math.floor(plan.tiles.length / 2)] }, `~fin_n_track:${plan.tiles.length}`);
     // near-miss drags: join a path end to an adjacent station/depot that has no track yet
     for (const end of [plan.tiles[0], plan.tiles[plan.tiles.length - 1]]) {

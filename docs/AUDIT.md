@@ -156,6 +156,36 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Competitors and eras | PASS | modernization by era, electrification, station renovation (`ai`) |
 | Benchmarks, memory audit, stress | PASS | `bench`, `stress`, `perf` *(deep)* |
 
+## Phase 11 — metro, four-track corridors, planning
+| Area | Status | Evidence / reason |
+|---|---|---|
+| Multi-layer rail graph (surface, shallow tunnel, deep tunnel, viaduct); portals and ramps link layers only at track ends; no layer leak | PASS | `layers` (graph validation per layer, `bad_link`/`layer_leak` kinds), `savefuzz` corpus (10 layer cases) |
+| Grade separation: surface track across a tunnel or under a viaduct never joins it | PASS | `layers`, `fourtrack` (flyover over both pairs) |
+| Underground view (surface / underground / all), layer chips, `U` and `[` `]` shortcuts, touch toolbar button | PASS | `layers` (screenshot), `touch` |
+| Metro stations (cut-and-cover, deep, interchange, elevated), street entrances (a street corner in dense centres), metro names | PASS | `metro` |
+| Metro vehicles: five sets (1930s to driverless), research `urban_rail`, short dwell and quick reversal | PASS | `metro`, `rollingstock`, `makers` |
+| Monthly upkeep of tunnels, viaducts and metro/elevated stations; rivals pay their own | PASS | `metro` (ledger `maint_track`/`maint_station`) |
+| Walking transfers between levels include stairs time | PASS | `metro` (50 s for three tiles and one flight) |
+| Rival metro: at most one per company, only for a city, only when the estimate covers the upkeep | PASS | `metro` (none for small towns; one for a city; paid by the rival; no second) |
+| Platforms lengthened and tracks added underground and on viaducts | PASS | `metro` (once refused as bad terrain) |
+| Bulldozer on tunnel, deep and viaduct layers | PASS | `layers` (once found nothing there) |
+| Track roles (local, express, freight) per tile; soft routing preference with fallback | PASS | `fourtrack` (express keeps its pair, freight the local pair, express falls back when its pair is cut) |
+| “Second pair” tool: parallel pair with crossovers, one transaction, charged once, one undo step, roles restored on undo | PASS | `fourtrack`, `planning` (pair inside a project) |
+| Express overtaking on a four-track corridor | PASS | `fourtrack` (side by side, more trips, no collisions) |
+| Roles overlay | PASS | `fourtrack` (screenshot) |
+| Planning mode: drawing plans builds and charges nothing; ghosts; no land reservation | PASS | `planning` |
+| Project states, cost breakdown, revalidation when the ground is taken | PASS | `planning` |
+| BUILD PROJECT all or nothing (rollback of a step failing half way); build the valid part; duplicate; compare; saved with the game | PASS | `planning` |
+| Project estimate equals the charge | PARTIAL | a station planned over track planned in the same project is estimated as if the track were not there (860 estimated, 720 charged); being fixed in Phase 12 |
+| Blueprints: capture, five built-in patterns + terminus throat, rotate, mirror, JSON import/export (numbers only; bad input refused), versioned browser library | PASS | `planning`, `stationcomplex` |
+| Station complexes (stations and stops a walk away, across levels) | PASS | `stationcomplex` |
+| Bike parking (+1 reach) and park & ride (towns 3 tiles further), charged once, saved | PASS | `stationcomplex` |
+| Line diagram marks metro stops, other lines and walking interchanges | PASS | `stationcomplex` |
+| Network map filters (all / railway / metro), metro stations as squares | PASS | `stationcomplex` |
+| Older saves load on the surface layer only; nothing moves | PASS | `layers`, `prodsave`, `savefuzz` |
+| `mapsize` expected one-layer rail arrays | PASS | fixed (four layers) |
+| Four-track catenary, tunnel portals and metro stations by era | DEFERRED | Phase 12 |
+
 ## Standing constraints
 | Rule | Status |
 |---|---|

@@ -14,9 +14,11 @@
 import * as THREE from 'three';
 import { N, TILE, idx, tx, tz, inMap, tileCX, tileCZ, cheb, WATER_LEVEL } from '../util.js';
 import { heightAt } from '../world/WorldGen.js';
-import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, AIRPORT_SIZES, PORT_SIZES, TOWN_ACCEPTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, modeFit, ROAD_TYPES, ROAD_TYPE_IDS, STREET_LIMIT } from '../config.js';
+import { CARGO, KMH_PER_TILE_S, ROAD_VEHICLES, ROAD_COSTS, AIRPORT_SIZES, PORT_SIZES, TOWN_ACCEPTS, STOP_MODE, STOP_TYPES, STOP_ORDER, STOP_FACILITIES, modeFit, ROAD_TYPES, ROAD_TYPE_IDS, STREET_LIMIT, CONTAINER_CARGO } from '../config.js';
 import { ModelBuilder, MATS } from '../core/ModelBuilder.js';
 import { RoadLines } from './Lines.js';
+import { airportModel, portModel } from './TerminalModels.js';
+import { visualFamily, lookYear } from '../world/VisualEra.js';
 import { BUS_SHAPES, VEHICLE_MODELS, stopModel, garageModel, personModel, doorModel, signModel } from './RoadModels.js';
 import { cleanFin } from '../economy/Ledger.js';
 import { RS } from '../economy/Network.js';
@@ -619,6 +621,7 @@ export class Roads {
       stats: { arrivals: 0, wait: 0, _lastWait: 0, waitEma: 0, transfers: 0, recent: [], util: [] }, links: null, accepts: null, supplies: null, warn: false,
     };
     if (owner) s.owner = owner.id;
+    s.yb = g.ledger ? g.ledger.year() : undefined;
     if (kind === 'airport' || kind === 'dock') s.size = 1;
     if (kind === 'garage') s.land = this.findLand(s, 1, false) || [];
     this.relink(s);
@@ -1273,46 +1276,11 @@ export class Roads {
     const tram = new ModelBuilder(); VEHICLE_MODELS.tram(tram);
     const ship = new ModelBuilder(); VEHICLE_MODELS.dock(ship);
     const plane = new ModelBuilder(); VEHICLE_MODELS.airport(plane);
-    const dock = new ModelBuilder();
-    dock.box(1.6, 0.12, 0.8, 0x8a6a4a, { y: 0.02 });
-    for (const x of [-0.7, 0, 0.7]) dock.cyl(0.05, 0.05, 0.5, 5, 0x5a4a3a, { x, y: -0.35, z: 0.35 });
-    dock.box(0.5, 0.4, 0.4, 0xd8d2c4, { x: -0.4, y: 0.14, z: -0.2 });
-    dock.roof(0.56, 0.2, 0.46, 0x7a3f33, { x: -0.4, y: 0.54, z: -0.2 });
-    dock.box(0.06, 0.9, 0.06, 0xd0a030, { x: 0.5, y: 0.1, z: -0.2 });
-    dock.box(0.7, 0.05, 0.05, 0xd0a030, { x: 0.35, y: 0.98, z: -0.2 });
-    const air = new ModelBuilder();
-    air.box(5.6, 0.06, 1.2, 0x4a4e54, { y: 0.02 });
-    for (let k = -2; k <= 2; k++) air.box(0.5, 0.01, 0.06, 0xf4f4f4, { x: k * 1.1, y: 0.06 });
-    air.box(5.6, 0.04, 4.6, 0x8a9a6a, { y: -0.02 });
-    air.box(1.6, 0.5, 0.9, 0xd8dde2, { x: -1.4, z: 1.6, y: 0.2 });
-    air.box(1.7, 0.08, 1.0, 0x5a6470, { x: -1.4, z: 1.6, y: 0.46 });
-    air.box(1.4, 0.2, 0.02, 0x3a4a5a, { x: -1.4, z: 1.14, y: 0.3, glow: true });
-    air.cyl(0.14, 0.18, 1.4, 8, 0xe8e2d4, { x: 1.6, z: 1.6, y: 0.0 });
-    air.box(0.46, 0.3, 0.46, 0x3a4a5a, { x: 1.6, z: 1.6, y: 1.45, glow: true });
-    air.box(1.2, 0.3, 0.9, 0x9aa3ac, { x: 0.4, z: -1.6, y: 0.14 });
     this.busMesh = new THREE.InstancedMesh(bus.build(), MATS, MAXV);
     this.tramMesh = new THREE.InstancedMesh(tram.build(), MATS, MAXV);
     this.shipMesh = new THREE.InstancedMesh(ship.build(), MATS, 120);
     this.planeMesh = new THREE.InstancedMesh(plane.build(), MATS, 120);
-    this.dockMesh = new THREE.InstancedMesh(dock.build(), MATS, 60);
-    this.airMesh = new THREE.InstancedMesh(air.build(), MATS, 20);
-    // port cranes (a port and a deep-water port) and a hub's second runway
-    // with its big terminal
-    const crane = new ModelBuilder();
-    crane.box(0.08, 1.3, 0.08, 0xd0a030, { x: -0.18, y: 0.1 }); crane.box(0.08, 1.3, 0.08, 0xd0a030, { x: 0.18, y: 0.1 });
-    crane.box(0.5, 0.1, 0.1, 0xd0a030, { y: 1.35 });
-    crane.box(0.1, 0.1, 1.3, 0xd0a030, { y: 1.45, z: 0.3 });
-    crane.box(0.18, 0.14, 0.18, 0x3a4250, { y: 1.3, z: 0.7 });
-    crane.box(0.5, 0.2, 0.3, 0x2a5a8a, { x: 0.7, y: 0.14 }); crane.box(0.5, 0.2, 0.3, 0xc0392b, { x: 0.7, y: 0.34 }); crane.box(0.5, 0.2, 0.3, 0x3a8a4a, { x: 0.7, y: 0.14, z: -0.34 });
-    const rw2 = new ModelBuilder();
-    rw2.box(5.6, 0.06, 1.0, 0x4a4e54, { z: -2.9, y: 0.02 });
-    for (let k = -2; k <= 2; k++) rw2.box(0.5, 0.01, 0.06, 0xf4f4f4, { x: k * 1.1, z: -2.9, y: 0.06 });
-    rw2.box(5.6, 0.04, 1.6, 0x8a9a6a, { z: -2.9, y: -0.02 });
-    rw2.box(2.6, 0.7, 1.1, 0xe4e8ec, { x: -2.6, z: 1.6, y: 0.2 });
-    rw2.box(2.7, 0.08, 1.2, 0x5a6470, { x: -2.6, z: 1.6, y: 0.66 });
-    this.craneMesh = new THREE.InstancedMesh(crane.build(), MATS, 120);
-    this.hubMesh = new THREE.InstancedMesh(rw2.build(), MATS, 20);
-    for (const m of [this.tramMesh, this.shipMesh, this.planeMesh, this.dockMesh, this.airMesh, this.craneMesh, this.hubMesh]) { m.count = 0; m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; }
+    for (const m of [this.tramMesh, this.shipMesh, this.planeMesh]) { m.count = 0; m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; }
     this.tramRailMat = new THREE.MeshLambertMaterial({ color: 0x3a3d42 });
     this.truckMesh = new THREE.InstancedMesh(truck.build(), MATS, MAXV);
     this.stopMesh = new THREE.InstancedMesh(stop.build(), MATS, 200);
@@ -1329,11 +1297,74 @@ export class Roads {
     this.signMesh = inst(signModel(), 700, false);
     this.crowdMesh = inst(personModel(), 900, false);
     this._crowdT = 0;
-    this.group.add(this.tramMesh, this.shipMesh, this.planeMesh, this.dockMesh, this.airMesh, this.craneMesh, this.hubMesh);
+    this.termMeshes = new Map();   // airports and ports by look (Phase 12), made on first use
+    this.stopEraMeshes = new Map(); // bus stops in older looks (Phase 12)
+    this.group.add(this.tramMesh, this.shipMesh, this.planeMesh);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._s = new THREE.Vector3(1.3, 1.3, 1.3); this._c = new THREE.Color();
     this._up = new THREE.Vector3(0, 1, 0);
   }
   ensureVehMesh() { /* instanced meshes sized for MAXV */ }
+
+  // ---------- airports and ports by era (Phase 12) ----------
+  // the year an airport or port shows: opened or renovated (older saves: the world's start year)
+  termYear(s) { const L = this.game.ledger; return lookYear(s.yb, s.reno, L ? L.startYear : 1950); }
+  termFamily(s) { return visualFamily(s.kind === 'airport' ? 'airport' : 'port', this.termYear(s)); }
+  // what it handles: a cargo airport; a port's specialization by the goods it serves
+  termVariant(s) {
+    const cs = new Set([...(s.accepts || []), ...(s.supplies || [])]);
+    const L = s.links || { towns: [], industries: [] };
+    if (s.kind === 'airport') return L.industries.length > 0 && L.industries.length >= L.towns.length ? 'cargo' : 'pax';
+    let bulk = 0, oil = 0, cont = 0, gen = 0;
+    for (const c of cs) {
+      if (c === 'PASSENGERS' || c === 'MAIL') continue;
+      if (['COAL', 'ORE', 'STONE', 'SAND', 'CLAY', 'GRAIN', 'COPPER', 'GRAVEL'].includes(c)) bulk++;
+      else if (['OIL', 'FUEL', 'CHEMICALS'].includes(c)) oil++;
+      else if (CONTAINER_CARGO.includes(c)) cont++;
+      else gen++;
+    }
+    const n = bulk + oil + cont + gen;
+    if (!n) return L.towns.length ? 'ferry' : 'general';
+    const top = Math.max(bulk, oil, cont, gen);
+    if (top < n * 0.6) return 'mixed';
+    return top === oil ? 'oil' : top === bulk ? 'bulk' : top === cont ? 'container' : 'general';
+  }
+  termKey(s) { return `${s.kind}:${this.termFamily(s)}:${s.size || 1}:${this.termVariant(s)}`; }
+  termMesh(s) {
+    const key = this.termKey(s);
+    let M = this.termMeshes.get(key);
+    if (!M) {
+      const [kind, fam, size, v] = key.split(':');
+      const geo = kind === 'airport' ? airportModel(fam, +size, v === 'cargo') : portModel(fam, +size, v);
+      M = new THREE.InstancedMesh(geo, MATS, kind === 'airport' ? 12 : 30);
+      M.count = 0; M.frustumCulled = false; M.castShadow = true; M.receiveShadow = true;
+      this.termMeshes.set(key, M);
+      this.group.add(M);
+    }
+    return M;
+  }
+  // renovation: the look of the current era; the capacity stays as it is
+  renovateInfo(s) {
+    if (s.kind !== 'airport' && s.kind !== 'dock') return null;
+    const g = this.game, year = g.ledger ? g.ledger.year() : 1950;
+    const cat = s.kind === 'airport' ? 'airport' : 'port';
+    const from = this.termFamily(s), to = visualFamily(cat, year);
+    const age = year - this.termYear(s);
+    const cost = Math.round((ROAD_COSTS[s.kind] || 1000) * 0.45 * (s.size || 1) * g.economy.costs.mul());
+    const error = from === to ? 'err_reno_same' : age < 20 ? 'err_reno_young' : s.owner ? 'err_not_yours' : !g.economy.canAfford(cost) ? 'err_no_money' : null;
+    return { from, to, cost, age, error, opened: s.yb || null, renovated: s.reno || null };
+  }
+  renovateTerminal(s) {
+    const r = this.renovateInfo(s);
+    if (!r) return 'err_unknown';
+    if (r.error) return r.error;
+    const g = this.game;
+    g.economy.spend(r.cost, 'upgrades', null, 'renovation');
+    s.reno = g.ledger.year();
+    if (!s.yb) s.yb = g.ledger.startYear;
+    this.rebuildStopMesh();
+    g.events.emit('terminalRenovated', s, r);
+    return null;
+  }
   rebuildRoadMesh() {
     if (this.roadMesh) { this.group.remove(this.roadMesh); this.roadMesh.geometry.dispose(); this.roadMesh = null; }
     if (this.bridgeMesh) { this.group.remove(this.bridgeMesh); this.bridgeMesh.geometry.dispose(); this.bridgeMesh = null; }
@@ -1531,8 +1562,18 @@ export class Roads {
     const sc = big ? 1 : 1.3;
     this._s.set(sc, sc, sc);
     this._m.compose(this._p, this._q, this._s);
-    const mesh = s.kind === 'garage' ? this.garageMesh : this.stopTypeMeshes[s.type] || this.stopTypeMeshes.basic;
-    const key = s.kind === 'garage' ? 'garage' : this.stopTypeMeshes[s.type] ? s.type : 'basic';
+    let mesh = s.kind === 'garage' ? this.garageMesh : this.stopTypeMeshes[s.type] || this.stopTypeMeshes.basic;
+    let key = s.kind === 'garage' ? 'garage' : this.stopTypeMeshes[s.type] ? s.type : 'basic';
+    // (older looks by the stop's era; the modern one is the shared default mesh)
+    if (s.kind === 'bus') {
+      const L = this.game.ledger, fam = visualFamily('stop', lookYear(s.yb, s.reno, L ? L.startYear : 1950));
+      if (fam !== 'modern') {
+        key = key + ':' + fam;
+        if (!this.stopEraMeshes.has(key)) { const [t] = key.split(':'); const M = new THREE.InstancedMesh(stopModel(t, fam), MATS, 60); M.count = 0; M.frustumCulled = false; M.castShadow = true; M.receiveShadow = true; this.group.add(M); this.stopEraMeshes.set(key, M); }
+        mesh = this.stopEraMeshes.get(key);
+      }
+    }
+    if (cnt[key] == null) cnt[key] = 0;
     const n = cnt[key]++;
     if (n >= mesh.instanceMatrix.count) return;
     mesh.setMatrixAt(n, this._m);
@@ -1556,9 +1597,10 @@ export class Roads {
   }
   rebuildStopMesh() {
     const W = this.game.world;
-    let k = 0, kd = 0, ka = 0, kc = 0, kh = 0;
+    let k = 0;
     const cnt = { garage: 0, sign: 0 };
     for (const t in this.stopTypeMeshes) cnt[t] = 0;
+    const tc = new Map();
     for (const s of this.stops) {
       if (k >= 200) break;
       if (s.kind === 'dock' || s.kind === 'airport') {
@@ -1570,22 +1612,11 @@ export class Roads {
         }
         this._p.set(x, Math.max(heightAt(W, x, z), WATER_LEVEL) + 0.02, z);
         this._q.setFromAxisAngle(this._up, yaw);
-        // an international airport: longer runway, bigger terminal (and a
-        // lighter concrete apron)
-        const big = s.kind === 'airport' && (s.size || 1) >= 2;
-        this._s.set(big ? 1.18 : 1, big ? 1.3 : 1, big ? 1.12 : 1);
-        this._m.compose(this._p, this._q, this._s);
-        const mesh = s.kind === 'dock' ? this.dockMesh : this.airMesh;
-        const n = s.kind === 'dock' ? kd++ : ka++;
-        if (n < mesh.instanceMatrix.count) { mesh.setMatrixAt(n, this._m); mesh.setColorAt(n, this._c.set(big ? 0xf2f0ff : 0xffffff)); }
-        const size = s.size || 1;
-        if (s.kind === 'airport' && size >= 3 && kh < this.hubMesh.instanceMatrix.count) { this.hubMesh.setMatrixAt(kh, this._m); this.hubMesh.setColorAt(kh++, this._c.set(0xffffff)); }
-        if (s.kind === 'dock' && size >= 2) for (let c = 0; c < size - 1 && kc < this.craneMesh.instanceMatrix.count; c++) {
-          const ox = (c ? 0.55 : -0.35), cy = Math.cos(yaw), sy = Math.sin(yaw);
-          this._p.set(x + cy * ox, Math.max(heightAt(W, x, z), WATER_LEVEL) + 0.02, z - sy * ox);
-          this._m.compose(this._p, this._q, this._s.set(1, 1, 1));
-          this.craneMesh.setMatrixAt(kc, this._m); this.craneMesh.setColorAt(kc++, this._c.set(0xffffff));
-        }
+        // the airport or port as it looks in its era, at its size, for what it handles (Phase 12)
+        this._m.compose(this._p, this._q, this._s.set(1, 1, 1));
+        const M = this.termMesh(s);
+        const n = tc.get(M) || 0;
+        if (n < M.instanceMatrix.count) { M.setMatrixAt(n, this._m); M.setColorAt(n, this._c.set(s.owner && this.rival(s) ? 0xf4f0e8 : 0xffffff)); tc.set(M, n + 1); }
         continue;
       }
       if (s.kind === 'bus' || s.kind === 'garage') { this.placeTypedStop(s, cnt); continue; }
@@ -1606,9 +1637,8 @@ export class Roads {
     for (const t in this.stopTypeMeshes) { const M = this.stopTypeMeshes[t]; M.count = Math.min(cnt[t], M.instanceMatrix.count); M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; }
     this.garageMesh.count = cnt.garage; this.garageMesh.instanceMatrix.needsUpdate = true; if (this.garageMesh.instanceColor) this.garageMesh.instanceColor.needsUpdate = true;
     this._stopSigns = cnt.sign;
-    this.dockMesh.count = Math.min(kd, 60); this.airMesh.count = Math.min(ka, 20);
-    this.craneMesh.count = kc; this.hubMesh.count = kh;
-    for (const m of [this.dockMesh, this.airMesh, this.craneMesh, this.hubMesh]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    for (const [key, M] of this.stopEraMeshes) { M.count = Math.min(cnt[key] || 0, M.instanceMatrix.count); M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; }
+    for (const M of this.termMeshes.values()) { M.count = tc.get(M) || 0; M.instanceMatrix.needsUpdate = true; if (M.instanceColor) M.instanceColor.needsUpdate = true; }
     this.stopMesh.instanceMatrix.needsUpdate = true;
     if (this.stopMesh.instanceColor) this.stopMesh.instanceColor.needsUpdate = true;
   }
@@ -1801,7 +1831,7 @@ export class Roads {
     return {
       roads, tram, lane: this.lane.some((x) => x) ? [...this.lane.keys()].filter((i) => this.lane[i]) : undefined,
       rtype: this.sparse(this.rtype), ow: this.sparse(this.ow), br: this.sparse(this.br), nextStop: this.nextStop, nextVeh: this.nextVeh,
-      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, size: (s.kind === 'airport' || s.kind === 'dock') && s.size > 1 ? s.size : undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
+      stops: this.stops.map((s) => ({ id: s.id, tile: s.tile, kind: s.kind, owner: s.owner || undefined, name: s.name, type: s.type && s.type !== 'basic' ? s.type : undefined, size: (s.kind === 'airport' || s.kind === 'dock') && s.size > 1 ? s.size : undefined, yb: s.yb || undefined, reno: s.reno || undefined, fac: s.facilities && s.facilities.length ? s.facilities : undefined, land: s.land && s.land.length ? s.land : undefined, stock: s.stock, pk: s.pk && s.pk.length ? s.pk.map((p) => CargoFlows.cleanLot(p)).filter(Boolean) : undefined, delivered: s.delivered, picked: s.picked, created: s.created, arrivals: s.stats.arrivals, transfers: s.stats.transfers, ratings: this.game.ratings ? this.game.ratings.serialize(s) : undefined, fin: cleanFin(s.fin) })),
       lines: this.lines.serialize(),
       vehicles: this.vehicles.map((v) => ({ id: v.id, model: v.model, owner: v.owner || undefined, line: v.line ?? undefined, name: v.name, stops: v.stops, idx: v.idx, tile: v.tile, cargo: v.cargo, earned: Math.round(v.earned), trips: v.trips, bought: Math.round(v.bought || 0), fin: cleanFin(v.fin), dly: v.dly ? Math.round(v.dly * 10) / 10 : undefined, state: v.state === 'run' || v.state === 'broken' ? 'load' : v.state, rel: v.rel != null ? Math.round(v.rel * 1000) / 1000 : undefined, served: v.served != null ? Math.round(v.served) : undefined, goGarage: v.goGarage || undefined, service: v.service || undefined, color: v.color != null ? v.color : undefined, breakdowns: v.breakdowns || undefined, heritage: v.heritage || undefined, refurb: v.refurb || undefined })),
       rules: this.rules.length ? this.rules : undefined,
@@ -1827,6 +1857,10 @@ export class Roads {
       if (typeof s.owner === 'string' && /^r\d{1,2}$/.test(s.owner)) stop.owner = s.owner;
       stop.type = stop.kind === 'bus' && STOP_TYPES[s.type] ? s.type : 'basic';
       if (stop.kind === 'airport' || stop.kind === 'dock') stop.size = s.size === 2 || s.size === 3 ? s.size : 1;   // (older saves: regional / harbour)
+      // the year it opened and was last renovated (older saves: the world's start year, see termYear)
+      const yr = (v) => (Number.isInteger(v) && v >= 1700 && v <= 2300 ? v : undefined);
+      stop.yb = yr(s.yb); stop.reno = yr(s.reno);
+      if (stop.reno && stop.yb && stop.reno < stop.yb) stop.reno = undefined;
       stop.level = stop.kind === 'bus' ? STOP_ORDER.indexOf(stop.type) : 0;
       stop.facilities = (Array.isArray(s.fac) ? s.fac : []).filter((f) => STOP_FACILITIES[f]).slice(0, 12);
       stop.land = (Array.isArray(s.land) ? s.land : []).filter((t) => okTile(t) && t !== stop.tile).slice(0, 2);

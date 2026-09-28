@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, step, tx, tz, idx, tileCX, tileCZ, opp, LAYERS, layerOf, onLayer } from '../util.js';
 import { K_BRIDGE, K_TUNNEL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
+import { visualFamily } from '../world/VisualEra.js';
 
 const CH = 16;
 const LANE = 0.34;
@@ -193,7 +194,7 @@ export class RailRenderer {
       const l = net.linkOf(i);
       if (l && (layerOf(l.to) === 1)) {
         const e = edge(net, i, l.d);
-        this.portal(gb, e[0] - DX[l.d] * 0.1, e[1] - 0.2, e[2] - DZ[l.d] * 0.1, Math.atan2(DZ[l.d], -DX[l.d]), delay);
+        this.portal(gb, e[0] - DX[l.d] * 0.1, e[1] - 0.2, e[2] - DZ[l.d] * 0.1, Math.atan2(DZ[l.d], -DX[l.d]), delay, 'metro');
       }
     }
     if (under) this.tube(gb, i, kind === K_DEEP, delay);
@@ -205,7 +206,7 @@ export class RailRenderer {
         if (j >= 0 && net.kind(j) === K_TUNNEL) continue;
         const e = edge(net, i, d);
         const yaw = Math.atan2(-DZ[d], DX[d]);
-        this.portal(gb, e[0] - DX[d] * 0.15, e[1], e[2] - DZ[d] * 0.15, yaw, delay);
+        this.portal(gb, e[0] - DX[d] * 0.15, e[1], e[2] - DZ[d] * 0.15, yaw, delay, this.portalFamily(i));
       }
       return;
     }
@@ -319,15 +320,9 @@ export class RailRenderer {
         }
       }
     }
-    // catenary masts
-    if (tier >= 2 && !under && curves.length) {
-      const cv = curves[0], m = cv[Math.floor(cv.length / 2)];
-      for (const sgn of [1, -1]) {
-        const x = m.x + m.nx * 0.9 * sgn, z = m.z + m.nz * 0.9 * sgn;
-        gb.box(x, m.y + 0.72, z, 0.035, 0.72, 0.035, 0, 0x6a7078, delay);
-      }
-      gb.box(m.x, m.y + 1.42, m.z, 0.03, 0.03, 0.92, Math.atan2(-m.tz, m.tx), 0x6a7078, delay);
-    }
+    // catenary masts: the family of the year the line was electrified;
+    // parallel electrified lines share one gantry, stations carry none
+    if (tier >= 2 && !under && curves.length) this.catenary(gb, i, curves[0], pairs, tier, delay);
     // bridge piers
     if (bridge && curves.length) {
       const cv = curves[0], m = cv[Math.floor(cv.length / 2)];
@@ -369,7 +364,82 @@ export class RailRenderer {
   // Stone tunnel portal: facade across the track with a dark arched opening
   // (stepped crown), a lighter voussoir band, a cornice and two wing walls
   // splaying out along the cutting. Local x = along the track, pointing out.
-  portal(gb, x, y, z, yaw, delay) {
+  // the portal family of a tunnel tile: its building year (high-speed lines their own)
+  portalFamily(i) {
+    const g = this.game, net = g.net;
+    if (net.tier[i] === 3) return 'hs';
+    return visualFamily('portal', net.yearBuilt(i, g.ledger ? g.ledger.startYear : 1950));
+  }
+  catenaryFamily(i) {
+    const g = this.game, net = g.net;
+    if (net.tier[i] === 3) return 'hs';
+    return visualFamily('catenary', net.yearElectrified(i, g.ledger ? g.ledger.startYear : 1950));
+  }
+  // a parallel electrified line on one side of a straight orthogonal tile
+  parallelTo(i, a, b, sd) {
+    const net = this.game.net, j = net.nb(i, sd);
+    if (j < 0 || !net.conn[j] || net.tier[j] < 2 || net.special.has(j)) return false;
+    return net.hasDir(j, a) && net.hasDir(j, b) && net.degree(j) === 2;
+  }
+  catenary(gb, i, cv, pairs, tier, delay) {
+    const net = this.game.net;
+    const fam = this.catenaryFamily(i);
+    const m = cv[Math.floor(cv.length / 2)];
+    const yaw = Math.atan2(-m.tz, m.tx);
+    const sp = net.special.get(i);
+    if (sp && sp.type === 'station') return;           // (no poles through platforms and canopies)
+    // straight orthogonal tiles: masts every other tile, aligned across parallel lines
+    let sideL = false, sideR = false;
+    if (pairs.length === 1 && pairs[0][1] === ((pairs[0][0] + 4) & 7) && pairs[0][0] % 2 === 0) {
+      const [a, b] = pairs[0];
+      const along = a === 0 || a === 4 ? tx(i) : tz(i);
+      if (along % 2) return;
+      // the neighbour on the normal's side (+n) and the other (−n)
+      const dn = [0, 2, 4, 6].find((d) => Math.abs(DX[d] - Math.round(m.nx)) < 0.01 && Math.abs(DZ[d] - Math.round(m.nz)) < 0.01);
+      if (dn != null) { sideL = this.parallelTo(i, a, b, dn); sideR = this.parallelTo(i, a, b, (dn + 4) & 7); }
+    } else if (i % 2) return;
+    const H = fam === 'hs' ? 1.5 : 1.42;
+    const S = {
+      lattice: { r: 0.05, col: 0x4d5a4f, beam: 0x4d5a4f },
+      standard: { r: 0.035, col: 0x6a7078, beam: 0x6a7078 },
+      modern: { r: 0.024, col: 0x9aa3ab, beam: 0x9aa3ab },
+      hs: { r: 0.04, col: 0xc8ccd0, beam: 0xb0b6bc },
+    }[fam] || { r: 0.035, col: 0x6a7078, beam: 0x6a7078 };
+    const mast = (sgn) => {
+      const x = m.x + m.nx * 0.9 * sgn, z = m.z + m.nz * 0.9 * sgn;
+      gb.box(x, m.y + H / 2, z, S.r, H / 2, S.r, yaw, S.col, delay);
+      if (fam === 'lattice') {
+        // a lattice mast: cross bracing and a heavier foot
+        for (const yy of [0.35, 0.75, 1.1]) gb.box(x, m.y + yy, z, S.r * 1.35, 0.012, S.r * 1.35, yaw, S.col, delay);
+        gb.box(x, m.y + 0.06, z, S.r * 1.8, 0.06, S.r * 1.8, yaw, 0x7a7670, delay);
+      }
+      if (fam === 'modern') gb.box(x, m.y + 0.04, z, 0.05, 0.04, 0.05, yaw, 0xb8b4ac, delay);
+    };
+    // span of the beam across the line (to the middle between parallel lines on a shared gantry)
+    const reachL = sideL ? TILE / 2 : 0.9, reachR = sideR ? TILE / 2 : 0.9;
+    if (!sideL) mast(1);
+    if (!sideR) mast(-1);
+    const cx = m.x + m.nx * (reachL - reachR) / 2, cz = m.z + m.nz * (reachL - reachR) / 2, half = (reachL + reachR) / 2;
+    const beamYaw = yaw;
+    if (fam === 'modern' && !sideL && !sideR) {
+      // modern single line: two slender cantilevers, no beam across
+      for (const sgn of [1, -1]) gb.box(m.x + m.nx * 0.55 * sgn, m.y + H - 0.08, m.z + m.nz * 0.55 * sgn, 0.012, 0.012, 0.36, beamYaw, S.beam, delay);
+      return;
+    }
+    gb.box(cx, m.y + H, cz, 0.03, 0.03, half, beamYaw, S.beam, delay);
+    if (fam === 'lattice') {
+      // a truss: a second chord and droppers
+      gb.box(cx, m.y + H - 0.14, cz, 0.02, 0.02, half, beamYaw, S.beam, delay);
+      for (const f of [-0.6, 0, 0.6]) gb.box(cx + m.nx * half * f, m.y + H - 0.07, cz + m.nz * half * f, 0.012, 0.07, 0.012, beamYaw, S.beam, delay);
+    }
+    if (fam === 'hs') gb.box(cx, m.y + H + 0.07, cz, 0.05, 0.04, half, beamYaw, S.beam, delay);
+  }
+
+  // Tunnel portals by family: masonry (stone arch, the classic), industrial
+  // (brick with a concrete lintel), concrete, modern, high-speed (a wide
+  // clean hood) and metro (a cut-and-cover ramp between retaining walls).
+  portal(gb, x, y, z, yaw, delay, fam = 'masonry') {
+    if (fam !== 'masonry') { this.portalOf(gb, x, y, z, yaw, delay, fam); return; }
     const stone = 0x9a9086, trim = 0xb8ae9f, dark = 0x121316;
     const fx = Math.cos(yaw), fz = -Math.sin(yaw);   // outward
     const px = Math.sin(yaw), pz = Math.cos(yaw);    // across
@@ -386,6 +456,41 @@ export class RailRenderer {
     for (const sgn of [1, -1]) {
       const [wx, wz] = o(0.42, sgn * 1.12);
       gb.box(wx, y + 0.5, wz, 0.42, 0.55, 0.08, yaw - sgn * 0.42, shadeHex(stone, 0.9), delay);
+    }
+  }
+  portalOf(gb, x, y, z, yaw, delay, fam) {
+    const dark = 0x121316;
+    const fx = Math.cos(yaw), fz = -Math.sin(yaw), px = Math.sin(yaw), pz = Math.cos(yaw);
+    const o = (a, b) => [x + fx * a + px * b, z + fz * a + pz * b];
+    if (fam === 'metro') {
+      // a cut in the street: two retaining walls with railings and a lintel
+      for (const sgn of [1, -1]) {
+        const [wx, wz] = o(0.45, sgn * 0.98);
+        gb.box(wx, y + 0.45, wz, 0.5, 0.45, 0.06, yaw, 0xb4b0a6, delay);
+        gb.box(wx, y + 0.95, wz, 0.5, 0.02, 0.02, yaw, 0x3a4250, delay);
+      }
+      gb.box(x, y + 0.86, z, 0.1, 0.1, 1.04, yaw, 0xa8a49a, delay);
+      const [ax, az] = o(0.02, 0);
+      gb.box(ax, y + 0.4, az, 0.09, 0.42, 0.9, yaw, dark, delay);
+      return;
+    }
+    const P = {
+      industrial: { face: 0x8a4a3a, trim: 0xa8a49a, w: 1.05, h: 0.9, open: [0.62, 0.52] },
+      concrete: { face: 0xa8a8a2, trim: 0x8c8c86, w: 1.05, h: 0.85, open: [0.64, 0.56] },
+      modern: { face: 0xc8c8c0, trim: 0x9aa3ab, w: 1.15, h: 0.8, open: [0.66, 0.6] },
+      hs: { face: 0xd8d8d2, trim: 0xb0b6bc, w: 1.3, h: 1.0, open: [0.72, 0.72] },
+    }[fam] || { face: 0xa8a8a2, trim: 0x8c8c86, w: 1.05, h: 0.85, open: [0.64, 0.56] };
+    gb.box(x, y + P.h, z, 0.14, P.h, P.w, yaw, P.face, delay);
+    const [ax, az] = o(0.03, 0);
+    gb.box(ax, y + P.open[1], az, 0.13, P.open[1], P.open[0], yaw, dark, delay);
+    if (fam === 'concrete' || fam === 'hs') { for (const sgn of [1, -1]) { const [cx, cz] = o(0.03, sgn * P.open[0] * 0.85); gb.box(cx, y + P.open[1] * 2 - 0.06, cz, 0.13, 0.06, P.open[0] * 0.2, yaw, dark, delay); } }
+    // lintel or hood
+    const [lx, lz] = o(fam === 'hs' ? 0.18 : 0.04, 0);
+    gb.box(lx, y + P.open[1] * 2 + 0.07, lz, fam === 'hs' ? 0.3 : 0.15, 0.07, P.open[0] + 0.12, yaw, P.trim, delay);
+    gb.box(x, y + P.h * 2 + 0.03, z, 0.18, 0.04, P.w + 0.05, yaw, P.trim, delay);
+    for (const sgn of [1, -1]) {
+      const [wx, wz] = o(0.42, sgn * (P.w + 0.07));
+      gb.box(wx, y + 0.5, wz, 0.42, 0.5, 0.07, yaw - sgn * (fam === 'modern' || fam === 'hs' ? 0.25 : 0.42), fam === 'industrial' ? 0x9a5a48 : P.trim, delay);
     }
   }
   // a bored or cut-and-cover tunnel: a dark liner around the track (seen in

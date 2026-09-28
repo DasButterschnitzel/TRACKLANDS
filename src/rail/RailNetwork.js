@@ -3,6 +3,7 @@
 // automatic block reservation (per tile lane) and step geometry sampling.
 import { N, TILE, DX, DZ, DLEN, opp, turnOf, idx, tx, tz, step, inMap, tileCX, tileCZ, clamp, LAYERS, layerOf, baseTile, onLayer, L_SURFACE, L_SHALLOW, L_DEEP, L_ELEVATED } from '../util.js';
 import { TRACK_TIERS } from '../config.js';
+import { packYear, unpackYear, rleEncode, rleDecode } from '../world/VisualEra.js';
 
 // the extra cost per tile of a track with a role for a train of a class
 // (rows: 0 -, 1 local, 2 express, 3 freight; columns: the track's role)
@@ -56,6 +57,10 @@ export class RailNetwork {
     // 3 freight. A soft preference in routing: a train takes another track
     // when its own is missing or blocked (never a hard rule)
     this.role = new Uint8Array(N * N * LAYERS);
+    // the year each tile was built and electrified (Phase 12; packed, 0 =
+    // unknown: older saves show the world's start year)
+    this.yb = new Uint8Array(N * N * LAYERS);
+    this.ey = new Uint8Array(N * N * LAYERS);
     this.signals = new Map();                   // tile*8+dir -> {type:'block'|'path', oneway}
     this.waypoints = new Map();                 // tile -> {id, name}
     this.jres = new Map();                      // junction tile -> Map(trainId -> [a, b])
@@ -918,6 +923,21 @@ export class RailNetwork {
   // ---------- track roles ----------
   roleOf(i) { return this.conn[i] ? this.role[i] : 0; }
   setRole(i, r) { if (!this.conn[i] || r < 0 || r > 3) return false; if (this.role[i] === r) return false; this.role[i] = r; this.routeCache.clear(); this.bumpVersion(); return true; }
+  // years a tile was built / electrified (Phase 12 visual eras)
+  yearBuilt(i, fallback) { return unpackYear(this.yb[i]) || fallback; }
+  yearElectrified(i, fallback) { return unpackYear(this.ey[i]) || unpackYear(this.yb[i]) || fallback; }
+  markBuilt(i, year, electrified) {
+    if (!this.yb[i]) this.yb[i] = packYear(year);
+    if (electrified && !this.ey[i]) this.ey[i] = packYear(year);
+  }
+  yearsOut() {
+    let any = false;
+    for (let i = 0; i < this.yb.length; i++) {
+      if (!this.conn[i] && !this.special.has(i)) { this.yb[i] = 0; this.ey[i] = 0; continue; }
+      if (this.yb[i] || this.ey[i]) any = true;
+    }
+    return any ? { b: rleEncode(this.yb), e: rleEncode(this.ey) } : undefined;
+  }
   rolesB64() {
     let any = false;
     for (let i = 0; i < this.role.length; i++) if (this.role[i]) { if (!this.conn[i]) this.role[i] = 0; else any = true; }
@@ -934,7 +954,7 @@ export class RailNetwork {
     for (const [k, j] of this.links) { const i = k >> 3; if (i < j) links.push([i, k & 7, j]); }
     return {
       conn: b64(sub(this.conn)), tier: b64(sub(this.tier)), single: b64(sub(this.single)), own: sub(this.own).some((x) => x) ? b64(sub(this.own)) : undefined,
-      ly, links: links.length ? links : undefined, roles: this.rolesB64(),
+      ly, links: links.length ? links : undefined, roles: this.rolesB64(), years: this.yearsOut(),
       signals: [...this.signals].map(([k, v]) => (v.y ? [k, v.type, v.oneway ? 1 : 0, v.y] : [k, v.type, v.oneway ? 1 : 0])),
       waypoints: [...this.waypoints].map(([t, w]) => [t, w.id, w.name]), nextWp: this.nextWp,
     };
@@ -954,6 +974,9 @@ export class RailNetwork {
       const set = (arr, str, clampTo) => { if (typeof str !== 'string') return; const u = unb64(str); if (u.length !== ALL - NN) return; for (let k = 0; k < u.length; k++) arr[NN + k] = clampTo != null && u[k] > clampTo ? 0 : u[k]; };
       set(this.conn, L.conn); set(this.tier, L.tier, 3); set(this.single, L.single, 1); set(this.own, L.own, 8);
     }
+    this.yb.fill(0); this.ey.fill(0);
+    if (d.years && typeof d.years === 'object') for (const [k, arr] of [['b', this.yb], ['e', this.ey]]) { if (!rleDecode(d.years[k], arr)) arr.fill(0); }
+    for (let k = 0; k < ALL; k++) if (!this.conn[k] && !this.special.has(k)) { this.yb[k] = 0; this.ey[k] = 0; }
     this.role.fill(0);
     if (typeof d.roles === 'string' && d.roles) { const u = unb64(d.roles); if (u.length === ALL) for (let k = 0; k < ALL; k++) this.role[k] = u[k] <= 3 && this.conn[k] ? u[k] : 0; }
     if (Array.isArray(d.links)) for (const e of d.links) {

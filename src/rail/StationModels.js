@@ -7,6 +7,7 @@
 // Local frame: tracks along X at z = offset; each track's lanes at ±0.34;
 // platform edges at ±0.69, platforms 0.24 high, 0.32 wide.
 import { shade } from '../core/ModelBuilder.js';
+import { VISUAL_MATRIX } from '../world/VisualEra.js';
 import { PAL } from '../style.js';
 import { ERA_STATION, mixHex } from '../world/Eras.js';
 
@@ -257,15 +258,34 @@ export function stationComplexModel(mb, level, style, tracks, facilities, crampe
   // a metro station box (Phase 11): tiled walls, a ceiling with light strips,
   // a mezzanine bridge; the entrance stands on the surface (metroEntrance)
   if (info.underground) {
+    // by era (VisualEra 'metro'): tiled vaults, raw concrete, clean panels,
+    // glass platform doors
+    const fam = VISUAL_MATRIX.metro[info.era ?? 3];
     const w = zMax - zMin + 2.4, zc = (zMax + zMin) / 2, L = x1 - x0 + 0.4;
-    const wall = info.deep ? 0xc8ccd2 : 0xe2d8c4, band = info.lineColor || 0x2f6fa8;
+    const M = {
+      tile: { wall: 0xe8e0cc, band: 0x2a5a3a, ceil: 0x8a8272, lamp: 0xffe0a0 },
+      concrete: { wall: 0xb8b4aa, band: info.lineColor || 0xd0a030, ceil: 0x7a7670, lamp: 0xf4f4e8 },
+      modern: { wall: 0xe8ecef, band: info.lineColor || 0x2f6fa8, ceil: 0x9aa3ab, lamp: 0xffffff },
+      contemporary: { wall: 0xf2f4f4, band: info.lineColor || 0x2f6fa8, ceil: 0xc8ccd0, lamp: 0xffffff },
+    }[fam];
+    const wall = info.deep && fam !== 'tile' ? 0xc8ccd2 : M.wall;
     for (const sg of [1, -1]) {
       mb.box(L, 1.7, 0.08, wall, { x: midX, y: y0 - 0.1, z: zc + sg * w / 2 });
-      mb.box(L, 0.14, 0.09, band, { x: midX, y: y0 + 0.9, z: zc + sg * w / 2 - sg * 0.01 });
+      mb.box(L, 0.14, 0.09, M.band, { x: midX, y: y0 + 0.9, z: zc + sg * w / 2 - sg * 0.01 });
+      if (fam === 'tile') for (let x = x0 + 0.3; x < x1; x += 0.7) mb.box(0.04, 1.2, 0.1, 0xd4cab4, { x, y: y0 + 0.1, z: zc + sg * (w / 2 - 0.02) });
+      if (fam === 'concrete') for (let x = x0 + 0.5; x < x1; x += 1.2) mb.box(0.16, 1.6, 0.14, 0xa4a098, { x, y: y0 - 0.1, z: zc + sg * (w / 2 - 0.04) });
     }
-    mb.box(L, 0.08, w, 0x6a6e74, { x: midX, y: y0 + 1.6, z: zc });
-    for (let x = x0 + 0.6; x < x1 - 0.3; x += 1.4) mb.box(0.9, 0.03, 0.12, 0xfff4d8, { x, y: y0 + 1.56, z: zc, glow: true });
-    if (tracks.length) mb.box(0.8, 0.08, w - 0.2, 0x9aa0a6, { x: x1 - 0.8, y: y0 + 1.1, z: zc });
+    if (fam === 'tile') {
+      // a shallow vault: stepped ceiling
+      for (const [dz, dy] of [[0, 1.62], [w * 0.3, 1.52], [-w * 0.3, 1.52]]) mb.box(L, 0.08, w * 0.42, M.ceil, { x: midX, y: y0 + dy, z: zc + dz });
+      for (let x = x0 + 0.6; x < x1 - 0.3; x += 1.4) mb.sphere(0.08, 0, M.lamp, { x, y: y0 + 1.45, z: zc, glow: true });
+    } else {
+      mb.box(L, 0.08, w, M.ceil, { x: midX, y: y0 + 1.6, z: zc });
+      for (let x = x0 + 0.6; x < x1 - 0.3; x += 1.4) mb.box(fam === 'concrete' ? 0.7 : 0.9, 0.03, fam === 'contemporary' ? 0.3 : 0.12, M.lamp, { x, y: y0 + 1.56, z: zc, glow: true });
+    }
+    // platform screen doors: glass along the platform edges
+    if (fam === 'contemporary') for (const tk of tracks) for (const sg of [1, -1]) mb.box(tk.x1 - tk.x0, 0.5, 0.02, 0xbcd8e8, { x: (tk.x0 + tk.x1) / 2, y: tk.y + 0.1, z: tk.z + sg * 0.62, glow: true });
+    if (tracks.length) mb.box(0.8, 0.08, w - 0.2, fam === 'tile' ? 0x6a5a48 : 0x9aa0a6, { x: x1 - 0.8, y: y0 + 1.1, z: zc });
     return;
   }
   if (kind === 'halt' && tracks.length === 1) {
@@ -324,20 +344,31 @@ export function stationComplexModel(mb, level, style, tracks, facilities, crampe
 // the surface entrance of an underground station: a canopy over stairs and
 // a pylon with the metro sign, in the station's era (Phase 11)
 export function metroEntrance(mb, era = 3, color = 0x2f6fa8) {
-  const old = era <= 1;
+  // by era (VisualEra 'metro'): iron railings and a lamp, a concrete kiosk,
+  // a steel canopy, a glass pavilion
+  const fam = VISUAL_MATRIX.metro[era] || 'modern';
   mb.box(0.9, 0.05, 0.62, 0x8a8680, { y: 0 });
   mb.box(0.62, 0.04, 0.4, 0x2a2c30, { y: 0.04 });                       // the stair opening
-  for (const x of [-0.42, 0.42]) mb.box(0.04, 0.34, 0.6, old ? 0x3a4a3a : 0xd8dde2, { x, y: 0.02 });   // balustrades
-  if (old) {
+  if (fam === 'tile') {
+    for (const x of [-0.42, 0.42]) mb.box(0.03, 0.34, 0.6, 0x2a3a2a, { x, y: 0.02 });
     for (const x of [-0.42, 0.42]) mb.cyl(0.025, 0.025, 0.8, 6, 0x2a3a2a, { x, y: 0.02, z: -0.3 });
     mb.box(0.96, 0.08, 0.2, 0x2a3a2a, { y: 0.82, z: -0.3 });
     mb.sphere(0.07, 0, 0xfff0c0, { x: 0.46, y: 0.95, z: -0.3, glow: true });
-  } else {
-    mb.box(0.98, 0.04, 0.7, era >= 4 ? 0xbcd8e8 : 0x6a7078, { y: 0.7 });            // canopy
+  } else if (fam === 'concrete') {
+    for (const x of [-0.44, 0.44]) mb.box(0.08, 0.62, 0.62, 0xb8b4aa, { x, y: 0.02 });
+    mb.box(1.0, 0.08, 0.7, 0xa8a49a, { y: 0.64 });
+  } else if (fam === 'modern') {
+    for (const x of [-0.42, 0.42]) mb.box(0.04, 0.34, 0.6, 0xd8dde2, { x, y: 0.02 });
+    mb.box(0.98, 0.04, 0.7, 0x6a7078, { y: 0.7 });
     for (const x of [-0.46, 0.46]) mb.box(0.04, 0.7, 0.04, 0x9aa0a6, { x, y: 0, z: -0.32 });
+  } else {
+    // a glass pavilion
+    for (const x of [-0.46, 0.46]) mb.box(0.03, 0.66, 0.66, 0xbcd8e8, { x, y: 0.02, glow: true });
+    mb.box(0.96, 0.66, 0.03, 0xbcd8e8, { y: 0.02, z: 0.33, glow: true });
+    mb.box(1.04, 0.05, 0.74, 0xe8ecee, { y: 0.68 });
   }
   mb.box(0.08, 1.2, 0.08, 0x3a3d42, { x: 0.62, y: 0, z: -0.34 });
-  mb.box(0.26, 0.26, 0.05, color, { x: 0.62, y: 1.2, z: -0.34, glow: true });
+  mb.box(0.26, 0.26, 0.05, fam === 'tile' ? 0xb8302a : color, { x: 0.62, y: 1.2, z: -0.34, glow: true });
   mb.box(0.14, 0.14, 0.055, 0xffffff, { x: 0.62, y: 1.26, z: -0.34, glow: true });
 }
 
