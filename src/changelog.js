@@ -2,6 +2,29 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '6.0.0', date: '2026-09',
+    en: [
+      'Metro: underground and elevated railways on their own levels, with portals, street entrances, five metro sets, an underground view and a metro map',
+      'Four-track corridors: a second pair with crossovers in one step, local, express and freight roles, and flyovers',
+      'Planning mode: draw whole projects without building, see the price, then build all of it or the valid part; blueprints you can rotate, mirror and share',
+      'Station complexes with walking interchanges between levels, bike parking and park & ride',
+      'Infrastructure looks its age: airports, ports, level crossings, catenary, tunnel portals, metro stations and bus stops keep the look of the year they were built until you renovate them',
+      'One construction price: what a plan or preview shows is what is charged',
+      'New sounds: metro door chimes, tunnel rumble, harbour and airport ambience, renovation and project fanfares',
+      'World information: the year, today\'s building style, terrain and climate',
+    ],
+    de: [
+      'Metro: Untergrund- und Hochbahnen auf eigenen Ebenen, mit Portalen, Straßenzugängen, fünf Metro-Zügen, Untergrundansicht und Metro-Plan',
+      'Viergleisige Strecken: ein zweites Gleispaar mit Weichenverbindungen in einem Schritt, Rollen für Nah-, Fern- und Güterverkehr sowie Überwerfungen',
+      'Planungsmodus: ganze Projekte zeichnen ohne zu bauen, den Preis sehen, dann alles oder den gültigen Teil bauen; Baupläne drehen, spiegeln und teilen',
+      'Bahnhofskomplexe mit Fußwegen zwischen den Ebenen, Fahrradstellplätzen und Park & Ride',
+      'Infrastruktur zeigt ihr Alter: Flughäfen, Häfen, Bahnübergänge, Oberleitung, Tunnelportale, Metrostationen und Haltestellen behalten das Aussehen ihres Baujahrs, bis du sie renovierst',
+      'Ein Baupreis: Was Plan oder Vorschau zeigen, wird auch berechnet',
+      'Neue Klänge: Türsignale der Metro, Tunnelrauschen, Hafen- und Flughafenkulisse, Renovierungs- und Projektfanfaren',
+      'Welt-Info: Jahr, heutiger Baustil, Gelände und Klima',
+    ],
+  },
+  {
     v: '5.0.0', date: '2026-09',
     en: [
       'Competitor railways: companies with their own personalities plan, build, run, expand and modernize railways with their own money, and never touch yours',
