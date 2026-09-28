@@ -47,6 +47,7 @@ import * as planning from './suites/planning.mjs';
 import * as stationcomplex from './suites/stationcomplex.mjs';
 import * as erainfra from './suites/erainfra.mjs';
 import * as p12risk from './suites/p12risk.mjs';
+import * as eralong from './suites/eralong.mjs';
 import * as costquote from './suites/costquote.mjs';
 import * as company from './suites/company.mjs';
 import * as scenarios from './suites/scenarios.mjs';
@@ -84,7 +85,7 @@ import * as ai from './suites/ai.mjs';
 import * as aidecades from './suites/aidecades.mjs';
 import * as hardening from './suites/hardening.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, terrain, eras, layers, metro, fourtrack, planning, stationcomplex, erainfra, p12risk, costquote, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, ai, aidecades, hardening, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, terrain, eras, layers, metro, fourtrack, planning, stationcomplex, erainfra, p12risk, costquote, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, ai, aidecades, eralong, hardening, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];
