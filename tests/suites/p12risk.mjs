@@ -205,6 +205,22 @@ export async function run({ browser, base }) {
   });
   check(s.builder === 'builder' && s.m1.geo <= s.m0.geo + 8 && s.m1.tex <= s.m0.tex + 2, `40 calendar jumps across the eras: geometries ${s.m0.geo} → ${s.m1.geo}, textures ${s.m0.tex} → ${s.m1.tex}`);
 
+  // ---- restarts with era models (terminals in two looks, crossings): ----
+  // ---- nothing left behind in GPU memory                              ----
+  const geo = [];
+  for (let k = 0; k < 4; k++) {
+    await loadSave(page, l.save);
+    geo.push(await page.evaluate(() => {
+      const app = window.__tracklands, g = app.game, R = g.roads, N = g.mapSize;
+      g.economy.coins = 1e8;
+      let n = 0;
+      for (const kind of ['airport', 'dock', 'airport']) for (let i = N * 6 + n * 7; i < N * N - N * 6; i += 3) if (!R.stopError(i, kind)) { const s = R.addStop(i, kind).stop; if (s) { s.yb = n === 2 ? 1990 : 1915; n++; R.rebuildStopMesh(); } break; }
+      for (let f = 0; f < 5; f++) g.frame(1 / 30);
+      return { geo: app.renderer.info.memory.geometries, tex: app.renderer.info.memory.textures, looks: R.termMeshes.size };
+    }));
+  }
+  check(geo[3].geo <= geo[1].geo + 4 && geo[3].tex <= geo[1].tex && geo[1].looks >= 2, `4 restarts with era models: geometries ${geo.map((x) => x.geo).join(' → ')}, textures ${geo.map((x) => x.tex).join(' → ')} (${geo[1].looks} terminal looks)`);
+
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();
   return { ok, lines };
