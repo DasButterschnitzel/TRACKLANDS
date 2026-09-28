@@ -152,6 +152,74 @@ export async function run({ browser, base, args = {} }) {
     if (res.bad) ok = false;
     if (view === 'top') lines.push(`${res.bad ? 'FAIL' : 'ok  '} stations: ${res.n} types/sizes`);
   }
+  // eras (Phase 12): one row per year, one column per category, every model
+  // chosen by the central resolver (VisualEra) — station, airport, port, bus
+  // stop, metro entrance, tunnel portal, catenary, level crossing
+  if (want('eras')) {
+    const YEARS = [1900, 1935, 1960, 1985, 2005, 2025, 2060];
+    const res = await page.evaluate(async (YEARS) => {
+      const app = window.__tracklands, g = app.game;
+      const THREE = await import('three');
+      const SM = await import('./src/rail/StationModels.js'), TM = await import('./src/road/TerminalModels.js'), RM = await import('./src/road/RoadModels.js');
+      const V = await import('./src/world/VisualEra.js'), { GeoBuf } = await import('./src/rail/RailRenderer.js'), C = await import('./src/config.js');
+      const { ModelBuilder, MATS } = await import('./src/core/ModelBuilder.js');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9fbf7a);
+      scene.add(new THREE.HemisphereLight(0xdfefff, 0x8a7a5a, 1.2));
+      const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(6, 10, 7); scene.add(sun);
+      const vmat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+      let bad = 0;
+      const put = (geo, x, z, mat = MATS, s = 1) => {
+        for (const v of geo.attributes.position.array) if (!Number.isFinite(v)) { bad++; break; }
+        const m = new THREE.Mesh(geo, mat); m.position.set(x, 0, z); m.scale.setScalar(s); scene.add(m);
+      };
+      const looks = [];
+      YEARS.forEach((y, r) => {
+        const band = V.visualBand(y), z = r * 9;
+        const fam = (c) => V.visualFamily(c, y);
+        looks.push(`${y}: ${['station', 'airport', 'port', 'stop', 'metro', 'portal', 'catenary', 'crossing'].map(fam).join('/')}`);
+        // station: a two-track town station of the band
+        const mb = new ModelBuilder();
+        SM.stationComplexModel(mb, 2, C.STATION_STYLES[0], [{ x0: -3, x1: 3, z: 0, y: 0, role: 'any', deadEnd: [false, false] }, { x0: -3, x1: 3, z: -2, y: 0, role: 'any', deadEnd: [false, false] }], [], false, { kind: 'town', era: band });
+        put(mb.build(), 0, z);
+        put(TM.airportModel(fam('airport'), 1, false), 10, z, MATS, 0.9);
+        put(TM.portModel(fam('port'), 1, 'general'), 18, z, MATS, 0.9);
+        put(RM.stopModel('basic', fam('stop')), 25, z, MATS, 2);
+        const em = new ModelBuilder(); SM.metroEntrance(em, band); put(em.build(), 29, z, MATS, 2);
+        const gb = new GeoBuf(); g.railView.portal(gb, 0, 0, 0, 0, 0, fam('portal'));
+        put(gb.build(), 34, z, vmat, 1.4);
+        // catenary: masts and a beam over a straight line, by the family
+        const cb = new GeoBuf(), net = g.net;
+        let t = -1; for (let i = 0; i < net.NN && t < 0; i++) if (!net.conn[i] && g.world.type[i] === 0 && i % 2 === 0 && (i % g.mapSize) % 2 === 0) t = i;
+        net.conn[t] = 0b00010001; net.tier[t] = 2; net.ey[t] = V.packYear(y);
+        const cv = g.railView.curve(t, 0, 4, 2); g.railView.catenary(cb, t, cv, [[0, 4]], 2, 0);
+        net.conn[t] = 0; net.tier[t] = 0; net.ey[t] = 0;
+        const cg = cb.build(); cg.translate(-cv[1].x, -cv[1].y, -cv[1].z); put(cg, 39, z, vmat, 1.4);
+        // level crossing: the family's posts and arms
+        const F = g.crossings.fams[fam('crossing')];
+        for (const [k, o] of [[F.posts, -0.7], [F.arms, 0.7]]) if (k) put(k.geometry, 44 + o, z, MATS, 1.6);
+      });
+      const box = new THREE.Box3().setFromObject(scene);
+      const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      const W = Math.max(size.x, size.z * 1.5) * 1.1, H = W / 1.5;
+      const cam = new THREE.OrthographicCamera(-W / 2, W / 2, H / 2, -H / 2, 0.1, 400);
+      cam.position.set(ctr.x + 30, 50, ctr.z + 50); cam.lookAt(ctr.x, 0, ctr.z); cam.top *= 0.85; cam.bottom *= 0.85; cam.updateProjectionMatrix();
+      g.speed = 0;
+      const W0 = app.renderer.domElement.width, H0 = app.renderer.domElement.height;
+      app.renderer.setSize(2000, 1400, false);
+      app.renderer.render(scene, cam);
+      const url = app.renderer.domElement.toDataURL('image/png');
+      app.renderer.setSize(W0, H0, false);
+      return { url, bad, looks };
+    }, YEARS);
+    fs.writeFileSync(path.join(dir, 'eras.png'), Buffer.from(res.url.split(',')[1], 'base64'));
+    if (res.bad) ok = false;
+    lines.push(`${res.bad ? 'FAIL' : 'ok  '} eras: ${YEARS.length} years × 8 categories (eras.png)`);
+    for (const l of res.looks) lines.push('     ' + l);
+    // every row differs from the one before (no two consecutive years alike)
+    const same = res.looks.slice(1).filter((l, k) => l.split(': ')[1] === res.looks[k].split(': ')[1]).length;
+    if (same > 1) { ok = false; lines.push(`FAIL eras: ${same} rows look like the year before`); }
+  }
   // towns: one town per growth stage, rendered in the live world
   await page.evaluate(() => { document.querySelector('#hud').style.visibility = 'hidden'; document.querySelector('#labels').style.visibility = 'hidden'; });
   for (let stage = 0; stage <= (want('towns') ? 6 : -1); stage++) {

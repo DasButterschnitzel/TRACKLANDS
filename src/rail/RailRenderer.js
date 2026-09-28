@@ -17,7 +17,7 @@ const TIER_STYLE = [
   { ballast: 0xc4c2bc, sleeper: 0xd8d6d0, rail: 0xd0d5da, bridge: 0xd8d4cc },
 ];
 
-class GeoBuf {
+export class GeoBuf {
   constructor() { this.p = []; this.c = []; this.d = null; }
   tri(a, b, c, col, delay) {
     this.p.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
