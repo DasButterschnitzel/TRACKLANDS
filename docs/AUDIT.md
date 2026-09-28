@@ -1,6 +1,6 @@
-# TRACKLANDS 5.0.0 — release audit (phases 1–10)
+# TRACKLANDS 6.0.0 — release audit (phases 1–12)
 
-Status per area. **PASS**: built, reachable in the game and covered by a named test suite. **PARTIAL**: built, with a named part missing. **DEFERRED**: deliberately not built, with the reason (no fake option is shown for it). **UNTESTED**: works in the headless browser but not checked on the named hardware. **NOT EXECUTED**: a job exists but has not run (no credentials). Every requirement of phases 1–10 was re-read for this audit; rows that were DEFERRED in 4.0.0 and are now built say so.
+Status per area. **PASS**: built, reachable in the game and covered by a named test suite that ran green for this release. **PARTIAL**: built, with a named part missing. **MISSING**: asked for and not built. **BROKEN**: built and not working. **HIDDEN**: built but not reachable by the player. **UNTESTED**: works in the headless browser but not checked on the named hardware. **NOT EXECUTED**: a job exists but has not run (no credentials). **DEFERRED**: deliberately not built, with a reason that still holds today (no fake option is shown for it). Every requirement of phases 1–12 was re-read for this audit; each PASS below is re-run on the 6.0.0 commit (see *Release gates 6.0.0*), and rows whose status changed since 5.0.0 say so. No row is BROKEN or HIDDEN.
 
 Suites run in CI on every push (static check, then the core, economy, transport and fuzz-fast groups and the three-browser smoke, `.github/workflows/tests.yml`) unless marked *deep*: those run in the integration, release and nightly tiers (`deep.yml`) and locally for the release.
 
@@ -79,9 +79,9 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Speed up to 8× with the same simulation | PASS | `timectl` (1× and 8× give the same revenue and positions) |
 | Extreme weather, never destructive | PASS | `timectl` |
 | FIND, bookmarks, sandbox | PASS | `tools` |
-| Underground metro | DEFERRED | needs a second track layer under the terrain; not at production quality, so not offered |
+| Underground metro | PASS (Phase 11) | was DEFERRED in 5.0.0; see Phase 11 (`layers`, `metro`) |
 | Rail-building AI | PASS (Phase 9) | built on ownership: see Phase 9 |
-| Planning mode, blueprints | DEFERRED | need a second, non-simulated copy of the rail graph |
+| Planning mode, blueprints | PASS (Phase 11) | was DEFERRED in 5.0.0; see Phase 11 (`planning`, `costquote`) |
 | Era visuals | PASS (Phase 10) | see Phase 10 |
 
 ## Phase 8 — content, polish, QA
@@ -119,7 +119,8 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Determinism, thinking budget (two companies per step) | PASS | `ai` |
 | 50-year run with four companies | PASS | `aidecades` *(deep; 20 years in quick mode)* |
 | UI: company page, read-only cards, overlay, news (rate-limited), debug view | PASS | `ai` |
-| Four-track corridors | DEFERRED | double track with loops covers every demand the planner measures; a four-track corridor needs a junction layout the planner cannot yet verify safe |
+| Four-track corridors for the player | PASS (Phase 11) | `fourtrack` |
+| Four-track corridors built by rival companies | DEFERRED | still holds: double track with loops covers every demand the planner measures; the rival planner cannot yet verify a four-track junction layout safe |
 | AI demolition or terraforming | DEFERRED (by design) | companies never demolish buildings or change terrain |
 | CI tiers: static gate (stale service worker fails in seconds), fast gate, integration, release, nightly | PASS | `tools/check.mjs`, `tests.yml`, `deep.yml` |
 | Save fuzz tiers (150 + corpus per push, 400, 1000, 3000 sharded) and the failure corpus | PASS | `savefuzz --corpus` (the corpus catches a removed fix) |
@@ -148,7 +149,7 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Stations by era; renovation; heritage listing | PASS | `eras` |
 | Signals by era (semaphores → colour lights) | PASS | `eras` |
 | Industries and town streets by era | PASS | `eras` (news and rebuild on a new era), screenshots |
-| Airports, ports, level crossings and catenary by era | DEFERRED | shared instanced models with one look; era variants need new model sets. No option claims otherwise |
+| Airports, ports, level crossings and catenary by era | PASS (Phase 12) | was DEFERRED in 5.0.0; see Phase 12 (`erainfra`, `p12risk`, `gallery`) |
 | Era news, town history, company milestones | PASS | `eras` |
 | Catalogue era filter (All, Current, Historic, Locked) | PASS | `eras` |
 | Sandbox era (calendar) and terrain controls | PASS | `eras` (sandbox calendar); the terrain is fixed once a world exists, so the sandbox shows it |
@@ -184,7 +185,61 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Network map filters (all / railway / metro), metro stations as squares | PASS | `stationcomplex` |
 | Older saves load on the surface layer only; nothing moves | PASS | `layers`, `prodsave`, `savefuzz` |
 | `mapsize` expected one-layer rail arrays | PASS | fixed (four layers) |
-| Four-track catenary, tunnel portals and metro stations by era | DEFERRED | Phase 12 |
+| Four-track catenary, tunnel portals and metro stations by era | PASS (Phase 12) | see Phase 12 |
+
+## Phase 12 — infrastructure that looks its age
+| Area | Status | Evidence / reason |
+|---|---|---|
+| One central resolver (`src/world/VisualEra.js`): nine categories × the six era bands of `Eras.js`, every shared family explained (`FALLBACK_NOTES`), special families (high-speed catenary and portal, metro ramp) | PASS | `erainfra` (nine categories, distinct families, 1900…2060 all resolve) |
+| Objects keep the year they were built: per-tile build and electrification years (run-length encoded, written only once something is built), opening and renovation years for stations, stops and terminals; older saves show the world's start year and write nothing new | PASS | `erainfra` (production save), `savefuzz` (era fields fuzzed directly in every fourth generated case) |
+| Airports: pioneer, mid-century, jet, modern, future × three sizes × passenger/cargo | PASS | `erainfra`, `gallery` (`eras.png`) |
+| Ports: early, industrial, container, modern × size × specialization (general, container, bulk, oil, ferry, mixed; from what they handle) | PASS | `erainfra`, `gallery` |
+| Terminal renovation: look only (capacity unchanged), opened / renovated year, target look and cost in the inspector, refused when already current or younger than 20 years | PASS | `erainfra` |
+| Renovation booked in its own expense category | PASS (fixed in Phase 12) | was booked as “train upgrades”; `erainfra` checks the ledger |
+| Level crossings: gates, lights, half and full barriers by the year the track was laid, renewed by the authority every 40 years; closing for trains retested after a renewal changed the look | PASS | `erainfra`, `p12risk`, `crossings` |
+| Catenary: lattice, standard, modern and high-speed by the year of electrification; masts every other tile and aligned; one shared gantry across parallel lines; none through stations; none in tunnels; four-track masts 0.9 from the nearest track centre | PASS | `erainfra`, `p12risk` |
+| Tunnel portals: masonry, industrial, concrete, modern, high-speed; a metro ramp is a cut at ground level (it was drawn at rail height, 1.5 below the grass, and never seen) | PASS (fixed in Phase 12) | `p12risk` (every portal within 0.02 of the terrain) |
+| Metro stations and entrances in four generations (tiled, concrete, modern, glass) | PASS | `erainfra`, `p12risk` (a 1910 entrance keeps its look through save, load and 50 years) |
+| Bus stops in four looks | PASS | `erainfra` |
+| Signals by era | PASS (Phase 10) | `eras` |
+| Street furniture by era (street lamps) | PASS (Phase 10) | town lamps follow the era band (`Towns.js`); `eras` |
+| Heritage: a listed station never changes its look and refuses renovation | PASS | `p12risk` (60 years on) |
+| Era gallery: 1900, 1935, 1960, 1985, 2005, 2025, 2060 × eight categories, no two consecutive years alike | PASS | `gallery` *(deep)* |
+| Era transitions and model caches: one instanced mesh per look, made on first use; 40 sandbox calendar jumps and four restarts leave no geometry or texture behind | PASS | `p12risk` |
+| Long game from 1900 for 60 years with two railway companies: early terminals keep their look, later ones look their age, stations opened across three quarter-centuries, renovation at most one station a year per company, heap +36 MB, save 175 KB, looks survive save/load | PASS | `eralong` *(deep; 30 years quick)* |
+| Snow, night and weather on the new models | UNTESTED | they use the shared materials the snow shader and lighting already cover; not reviewed in screenshots per weather |
+| Rival companies: the same resolver for their stations; renovation only two eras behind and at most once a year; no heritage listing (a player's choice); at most one metro | PASS | `ai`, `metro`, `eralong` |
+| Rival terminal renovation | DEFERRED | rival companies do not build airports or ports |
+| Sound: metro door chime on arrival and warning tone on departure, tunnel rumble loop (louder in the underground view), gulls and ship horns at harbours, jet engines at airports, renovation and project fanfares; still under the voice budget and a fixed loop pool | PASS | `audio` (every effect plays; harbour/airport/tunnel ambience; pooled loop) |
+| Background music: only files the player adds, with id, file, title, artist, era, mood and weight | PASS | `music`; no music is generated |
+| Sound on real speakers | PHYSICAL AUDIO: UNTESTED | no audio device in the container |
+| One construction price: estimate = charge for station over track, new track, metro, elevated, extension, four-track station, partial build and blueprint; a changed world re-quotes; a failed build charges and books nothing | PASS (fixed in Phase 12) | `costquote` (found three mismatches: 860/720, 805/825, 300/170), `planning`, `p12risk` (same quote twice) |
+| UI suite time: measured (80 % in screenshots under SwiftShader); state-driven frame gate instead of fixed sleeps; coverage unchanged | PASS | `ui` prints its slowest viewports; two viewports 263 s → 113 s |
+| Picking across layers: underground view picks metro stations, entrances pick their station, viaduct before ground | PASS (fixed in Phase 12) | `metro` |
+| Infrastructure upkeep broken down by level (tooltip = what the month charges) | PASS | `p12risk` |
+| World information: year, today's building style, start year, terrain, climate, map size, seed | PASS | `erainfra` |
+| Freight routing never loops between transfers; metro sets carry passengers only and refuse freight wagons | PASS | `p12risk`, `network` |
+| Lifts and escalators | DEFERRED | optional in the specification; the walking model already charges stairs time per level (`metro`) |
+| Performance overlay (F3) counts per era family | PARTIAL | F3 shows draw calls, triangles and geometries overall, not per look |
+| Real devices, real GPUs | REAL DEVICE: UNTESTED | everything ran on SwiftShader and emulated touch |
+| Device cloud (BrowserStack) | NOT EXECUTED | no credentials configured |
+
+### Phase 12 risks, each a permanent check (`p12risk`, `erainfra`)
+- an old airport switching look as the calendar moves — `erainfra` (1905 terminals still pioneer/early in 1985), `eralong`
+- a listed station changing on year advance — `p12risk`
+- catenary duplicated after renovation — `p12risk` (vertex count unchanged)
+- four-track catenary intersecting trains — `p12risk`
+- crossing barriers failing after the look changes — `p12risk`
+- a metro entrance in the wrong era after save/load — `p12risk`
+- a tunnel portal on the wrong layer — `p12risk` (found and fixed: the metro ramp)
+- a project estimate changing with nothing changed — `p12risk`
+- a sandbox year jump leaking resources — `p12risk`
+
+### Historic bugs kept as regression checks
+Four-layer map sizes (`mapsize`), platform extension underground and on viaducts (`metro`), undo restoring track roles (`fourtrack`), plan rollback in money and ledger (`planning`, `costquote`), bulldozer on tunnel and viaduct layers (`layers`), a second pair inside a project (`planning`), seed 18 platform isolation (`fuzz`).
+
+## Release gates 6.0.0
+In progress (run locally; dispatching `deep.yml` from this session is refused): full regression of every regular suite, 1000 save-fuzz cases + corpus, rail fuzzer seeds 1–40, `prodsave`, `qa`, `bench`, `perf`, `gallery`, `ai`, `aidecades`, `eralong` (60 years: PASS). Results are recorded here when they finish.
 
 ## Standing constraints
 | Rule | Status |
