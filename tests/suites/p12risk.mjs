@@ -81,6 +81,38 @@ export async function run({ browser, base }) {
   check(a.canList && !a.listErr && a.heritage.same && !a.heritage.canReno && a.heritage.renoErr, `a listed station keeps its look 60 years on and refuses renovation (${a.heritage.renoErr})`);
   check(!a.renoOther && a.cat.t0 === a.cat.t1 && a.cat.t1 === a.cat.t2, `renovation leaves the catenary alone: ${a.cat.t0} → ${a.cat.t1} → ${a.cat.t2} vertices`);
 
+  // ---- routing: freight next-hop chains fall in cost and end at a taker ----
+  // ---- (no transfer loops); metro sets never carry freight            ----
+  const rt = await page.evaluate(async () => {
+    const g = window.__tracklands.game, NW = g.network, C = await import('./src/config.js'), K = await import('./src/trains/Consist.js');
+    NW.invalidate(); NW.ensure();
+    let chains = 0, loops = 0, longest = 0;
+    for (const c of Object.keys(C.CARGO)) {
+      if (c === 'PASSENGERS') continue;
+      const acc = NW.toAcc(c);
+      for (const [k] of acc) {
+        let u = k, cost = Infinity, n = 0;
+        const seen = new Set();
+        while (u != null) {
+          const x = acc.get(u);
+          if (!x || seen.has(u) || x.cost >= cost && n) { if (x && (seen.has(u) || x.cost >= cost)) loops++; break; }
+          seen.add(u); cost = x.cost; n++;
+          if (!x.e) break;
+          u = x.e.to;
+        }
+        chains++; longest = Math.max(longest, n);
+      }
+    }
+    const metros = C.LOCOS.filter((m) => m.metro);
+    const wagon = Object.keys(K.WAGONS).find((id) => K.WAGONS[id].cls === 'freight');
+    const research = new Set(C.RESEARCH.map((r) => r.id));
+    const errs = metros.map((m) => K.validateConsist([{ k: 'L', id: m.id }, { k: 'W', id: wagon }], research));
+    const carries = metros.map((m) => (m.mu && m.mu.carries || []).join('+'));
+    return { chains, loops, longest, metros: metros.length, errs, carries };
+  });
+  check(rt.chains > 0 && rt.loops === 0, `freight routing: ${rt.chains} next-hop chains, each falling in cost to a taker (longest ${rt.longest} hops), no transfer loops`);
+  check(rt.metros > 0 && rt.errs.every((e) => e === 'err_mu_freight') && rt.carries.every((c) => c === 'PASSENGERS'), `${rt.metros} metro sets carry passengers only and refuse freight wagons (${[...new Set(rt.errs)].join(', ')})`);
+
   // ---- four tracks side by side: masts clear of every track ----
   const f = await page.evaluate(async () => {
     const g = window.__tracklands.game, net = g.net, RV = g.railView, N = g.mapSize, U = await import('./src/util.js');
