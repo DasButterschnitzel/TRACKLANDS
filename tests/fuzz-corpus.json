@@ -154,6 +154,30 @@
       "ops": [
         "huge:net.roles"
       ]
+    },
+    {
+      "id": "daily-no-snap",
+      "note": "daily challenges without their stats snapshot crashed the statistics (6.0.0 gate, case 365)",
+      "base": "v3",
+      "ops": [
+        "delete:economy.daily.snap"
+      ]
+    },
+    {
+      "id": "conn-garbage",
+      "note": "a track map that does not decode left stations standing on nothing (6.0.0 gate, case 859)",
+      "base": "v3",
+      "ops": [
+        "str:net.conn"
+      ]
+    },
+    {
+      "id": "conn-garbage-prod",
+      "note": "the same on the production save",
+      "base": "prod",
+      "ops": [
+        "str:net.conn"
+      ]
     }
   ]
 }

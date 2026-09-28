@@ -25,7 +25,7 @@ async function swipe(page, cdp, a, b, steps = 10, hold = 0) {
 }
 async function tap(page, cdp, a) { const t0 = now(); await T(cdp, 'touchStart', [a], t0); await page.waitForTimeout(50); clock = Math.max(clock, t0 + 0.08); await T(cdp, 'touchEnd', []); await page.waitForTimeout(80); }
 async function refocus(page) {
-  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.vel.set(0, 0); g.camera.focus(window.__focus[0], window.__focus[1], 20); });
+  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.vel.set(0, 0); g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); });
   await page.waitForFunction(() => { const c = window.__tracklands.game.camera, t = c.target, f = window.__focus; return !c.focusGoal && Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.1 && Math.abs(c.viewSize - c.zoomGoal) < 0.05; }, null, { polling: 100, timeout: 30000 });
 }
 const scr = (page, t) => page.evaluate((t) => { const p = window.__tracklands.game.input.tileScreen(t); return [p.x, p.y]; }, t);
@@ -52,7 +52,7 @@ export async function runT({ browser, base, dbg }) {
     for (let z = 20; z < N - 20; z++) for (let x = 14; x < N - 24; x++) {
       let free = true;
       for (let i = 0; i < 8 && free; i++) for (const dz of [-1, 0, 1]) { const t = (z + dz) * N + x + i; if (g.net.tileBlockedReason(t) || g.decor.at(t) || g.roads.hasRoad(t) || g.stations.placeError(t, 'depot')) free = false; }
-      if (free) { const a = z * N + x; window.__focus = [(x + 4) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); return a; }
+      if (free) { const a = z * N + x; window.__focus = [(x + 4) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); return a; }
     }
     return -1;
   });
@@ -66,7 +66,7 @@ export async function runT({ browser, base, dbg }) {
   let s1 = await state(page);
   check(s1.conn === s0.conn && !s1.drag && Math.hypot(s1.cam[0] - s0.cam[0], s1.cam[1] - s0.cam[1]) > 0.5, `track tool: a swipe pans the camera and builds nothing (moved ${Math.hypot(s1.cam[0] - s0.cam[0], s1.cam[1] - s0.cam[1]).toFixed(1)}, conn ${s0.conn}→${s1.conn})`);
   // re-centre
-  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.focus(window.__focus[0], window.__focus[1], 20); });
+  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); });
   await page.waitForFunction(() => { const t = window.__tracklands.game.camera.target, f = window.__focus; return Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.1; }, null, { polling: 100, timeout: 30000 });
   // 2. tap start, tap end: a plan, nothing built; Build commits
   a = await scr(page, run0); b = await scr(page, run0 + 5);
@@ -104,7 +104,7 @@ export async function runT({ browser, base, dbg }) {
   await swipe(page, cdp, onRail, [onRail[0] + 90, onRail[1] - 140]);
   const s5 = await state(page);
   check(s5.conn === s4.conn && !s5.drag, `a swipe that starts on track pans (conn ${s4.conn}→${s5.conn}, plan ${!!s5.drag})`);
-  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.focus(window.__focus[0], window.__focus[1], 20); });
+  await page.evaluate(() => { const g = window.__tracklands.game; g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); });
   await page.waitForFunction(() => { const t = window.__tracklands.game.camera.target, f = window.__focus; return Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.1; }, null, { polling: 100, timeout: 30000 });
   // 6. long press then drag starts a drawing; Cancel drops it
   const n = await page.evaluate(() => (window.__tracklands.game.mapSize || 64));
@@ -187,7 +187,7 @@ export async function runT({ browser, base, dbg }) {
       for (let z = 20; z < N - 20; z++) for (let x = 14; x < N - 24; x++) {
         let free = true;
         for (let i = 0; i < 6 && free; i++) if (g.net.tileBlockedReason(z * N + x + i) || g.decor.at(z * N + x + i)) free = false;
-        if (free) { window.__focus = [(x + 3) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); return z * N + x; }
+        if (free) { window.__focus = [(x + 3) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); return z * N + x; }
       }
       return -1;
     });

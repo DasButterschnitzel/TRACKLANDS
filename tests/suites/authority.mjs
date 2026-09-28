@@ -96,7 +96,7 @@ export async function run({ browser, base }) {
     g.authority.ensure(t).rating = 70;
     const b = t.buildings.find((x) => x.arch !== 'civic' && x.arch !== 'plaza');
     window.__focus = [((b.tile % 64) + 0.5) * 2, (Math.floor(b.tile / 64) + 0.5) * 2];
-    g.camera.focus(window.__focus[0], window.__focus[1], 16);
+    g.camera.focus(window.__focus[0], window.__focus[1], 16); for (let k = 0; k < 60; k++) g.camera.update(0.25);
     return b.tile;
   });
   await page.waitForFunction(() => { const t = window.__tracklands.game.camera.target, f = window.__focus; return Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.15; }, null, { polling: 100, timeout: 30000 });

@@ -117,7 +117,7 @@ export async function run({ browser, base }) {
   await page.click('#subbar [data-act=stopKind][data-arg=airport]');
   const spot = await page.evaluate(() => {
     const g = window.__tracklands.game, R = g.roads;
-    for (let i = 64 * 5; i < 64 * 58; i++) if (!R.stopError(i, 'airport')) { window.__focus = [((i % 64) + 0.5) * 2, (Math.floor(i / 64) + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); return i; }
+    for (let i = 64 * 5; i < 64 * 58; i++) if (!R.stopError(i, 'airport')) { window.__focus = [((i % 64) + 0.5) * 2, (Math.floor(i / 64) + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 20); for (let k = 0; k < 60; k++) g.camera.update(0.25); return i; }
     return -1;
   });
   let placed = false;

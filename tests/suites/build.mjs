@@ -52,7 +52,7 @@ export async function run({ browser, base }) {
         if (free) a = z * N + x;
       }
       window.__focus = [((a % N) + 3) * 2, (Math.floor(a / N) + 0.5) * 2];
-      g.camera.focus(window.__focus[0], window.__focus[1], 26);
+      g.camera.focus(window.__focus[0], window.__focus[1], 26); for (let k = 0; k < 60; k++) g.camera.update(0.25);
       return a;
     });
     // let the camera glide all the way to its target before measuring screen positions
@@ -127,7 +127,7 @@ export async function run({ browser, base }) {
       }
       if (best < 0) return -1;
       window.__focus = [((best % 64) + 0.5) * 2, (Math.floor(best / 64) + 0.5) * 2];
-      g.camera.focus(window.__focus[0], window.__focus[1], 22);
+      g.camera.focus(window.__focus[0], window.__focus[1], 22); for (let k = 0; k < 60; k++) g.camera.update(0.25);
       return best;
     });
     check(tile >= 0, `works: found track under a train on the production save (${tile})`);

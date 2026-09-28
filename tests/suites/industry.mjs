@@ -109,7 +109,7 @@ export async function run({ browser, base }) {
     const type = I.foundTypes()[0];
     for (let z = 4; z < 58; z++) for (let x = 4; x < 58; x++) {
       const t = z * 64 + x;
-      if (!I.foundError(t, type)) { window.__focus = [(x + 0.5) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 18); return { t, n: I.list.length }; }
+      if (!I.foundError(t, type)) { window.__focus = [(x + 0.5) * 2, (z + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 18); for (let k = 0; k < 60; k++) g.camera.update(0.25); return { t, n: I.list.length }; }
     }
     return null;
   });

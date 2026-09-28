@@ -31,7 +31,7 @@ async function cityWithStops(page, seed) {
     const mid = roads.find((i) => d(i, best[0]) >= 3 && d(i, best[1]) >= 3 && R.path(best[0], i) && R.path(i, best[1]));
     const A = R.addStop(best[0], 'bus'), B = R.addStop(best[1], 'bus'), C = mid != null ? R.addStop(mid, 'bus') : { stop: null };
     window.__focus = [((best[0] % N + best[1] % N) / 2 + 0.5) * 2, ((Math.floor(best[0] / N) + Math.floor(best[1] / N)) / 2 + 0.5) * 2];
-    g.camera.focus(window.__focus[0], window.__focus[1], 18);
+    g.camera.focus(window.__focus[0], window.__focus[1], 18); for (let k = 0; k < 60; k++) g.camera.update(0.25);
     return { town: t.id, pop: t.pop, A: A.stop && A.stop.id, B: B.stop && B.stop.id, C: C.stop && C.stop.id, dist: best[2] };
   });
 }

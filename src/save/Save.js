@@ -2,6 +2,7 @@
 // and migration, backups, export and import with validation.
 import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL, TRAIN_UPGRADES, WORLDGEN_VERSION } from '../config.js';
 import { normalizeTerrain } from '../world/Terrain.js';
+import { MAP_SIZES } from '../util.js';
 
 const DB = 'tracklands', STORE = 'saves', LS_KEY = 'tracklands.save', LS_BACKUP = 'tracklands.backup';
 
@@ -194,6 +195,12 @@ export function validate(d) {
   if (!d || typeof d !== 'object') return 'err_save_invalid';
   if (typeof d.seed !== 'number' || !isFinite(d.seed)) return 'err_save_invalid';
   if (!d.net || typeof d.net.conn !== 'string') return 'err_save_invalid';
+  // the track map must match the map size (a save that lost its track would
+  // start with stations standing on nothing)
+  const ms = MAP_SIZES.includes(d.mapSize | 0) ? d.mapSize | 0 : 64;
+  let connLen = -1;
+  try { connLen = atob(d.net.conn).length; } catch (e) { connLen = -1; }
+  if (connLen !== ms * ms) return 'err_save_invalid';
   if (!d.economy || !d.progression) return 'err_save_invalid';
   if ((d.saveVersion | 0) < 1) return 'err_save_version';
   return null;

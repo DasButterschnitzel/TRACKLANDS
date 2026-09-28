@@ -498,7 +498,11 @@ export class Economy {
     this.nextEvent = +d.nextEvent || 300;
     this.contracts = Array.isArray(d.contracts) ? d.contracts.filter((k) => k && k.type && k.amount > 0) : [];
     this.contractSeq = d.contractSeq || 1;
-    this.daily = d.daily && d.daily.list ? d.daily : null;
+    // (a damaged daily set is dropped and made again: it needs its list and
+    // the stats snapshot it counts from)
+    const dl = d.daily;
+    const okList = dl && Array.isArray(dl.list) && dl.list.every((x) => x && typeof x === 'object' && typeof x.stat === 'string' && Number.isFinite(x.target));
+    this.daily = okList && typeof dl.date === 'string' && dl.snap && typeof dl.snap === 'object' && !Array.isArray(dl.snap) ? dl : null;
     this.incomeLog = Array.isArray(d.incomeLog) ? d.incomeLog.slice(-15) : [];
     this.grantCooldown = +d.grantCooldown || 0;
   }

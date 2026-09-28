@@ -124,7 +124,7 @@ export async function run({ browser, base }) {
     const t = g.towns.list.find((x) => g.progression.regionUnlocked(x.region) && x.roadSet && x.roadSet.size);
     const street = [...t.roadSet].find((k) => !g.net.conn[k]);
     // an empty stretch west or east of the street
-    for (const dx of [3, -3, 4, -4]) { const b = street + dx; if (R.tileOk(b) && R.plan(street, b).ok) { window.__focus = [((street % N) + 0.5) * 2, (Math.floor(street / N) + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 18); return { a: street, b }; } }
+    for (const dx of [3, -3, 4, -4]) { const b = street + dx; if (R.tileOk(b) && R.plan(street, b).ok) { window.__focus = [((street % N) + 0.5) * 2, (Math.floor(street / N) + 0.5) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 18); for (let k = 0; k < 60; k++) g.camera.update(0.25); return { a: street, b }; } }
     return null;
   });
   if (ui) {

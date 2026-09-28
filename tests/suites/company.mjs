@@ -31,7 +31,7 @@ export async function run({ browser, base }) {
     return { tile: best, town: t.id, rating: g.authority.rating(t), value: g.ledger.companyValue().stations };
   });
   await page.click('#panel [data-act=hqPlace]');
-  await page.evaluate((tt) => { const g = window.__tracklands.game; window.__focus = [(tt % 64 + 1) * 2, (Math.floor(tt / 64) + 1) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 16); }, spot.tile);
+  await page.evaluate((tt) => { const g = window.__tracklands.game; window.__focus = [(tt % 64 + 1) * 2, (Math.floor(tt / 64) + 1) * 2]; g.camera.focus(window.__focus[0], window.__focus[1], 16); for (let k = 0; k < 60; k++) g.camera.update(0.25); }, spot.tile);
   await page.waitForFunction(() => { const t = window.__tracklands.game.camera.target, f = window.__focus; return Math.abs(t.x - f[0]) + Math.abs(t.z - f[1]) < 0.15; }, null, { polling: 100, timeout: 30000 });
   const p = await page.evaluate((tt) => { const g = window.__tracklands.game, cam = g.camera.camera; const x = ((tt % 64) + 0.5) * 2, z = (Math.floor(tt / 64) + 0.5) * 2; const v = new cam.position.constructor(x, g.world.view.heightAt(x, z), z).project(cam); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }, spot.tile);
   await page.mouse.move(p[0], p[1]);
