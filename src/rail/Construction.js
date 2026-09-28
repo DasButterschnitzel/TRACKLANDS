@@ -790,21 +790,22 @@ export class Construction {
   }
   applyPair(plan) {
     const g = this.game, net = g.net;
+    // (nested in a project build, the pair's one undo step joins the project's)
+    const outer = this._collect;
     this._collect = [];
     let es;
-    try { for (const p of plan.parts) this.applyTrack(p, net.tier[plan.line[0]] || this.tier, 'double'); } finally { es = this._collect; this._collect = null; }
-    // one undo step for the whole pair (the earliest state of a tile wins)
+    try { for (const p of plan.parts) this.applyTrack(p, net.tier[plan.line[0]] || this.tier, 'double'); } finally { es = this._collect; this._collect = outer; }
+    const [rOld, rNew] = plan.roles;
+    const joints = new Set([plan.line[0], plan.line[plan.line.length - 1]]);
+    // one undo step for the whole pair (the earliest state of a tile wins; undo gives the line its old roles back)
     if (!g.actor && es.length) {
       const prev = [];
       for (let k = es.length - 1; k >= 0; k--) prev.push(...es[k].prev);
-      this.pushUndo({ type: 'track', prev, cost: es.reduce((a, e) => a + e.cost, 0), newTiles: es.reduce((a, e) => a + e.newTiles, 0) });
+      const e = { type: 'track', prev, cost: es.reduce((a, x) => a + x.cost, 0), newTiles: es.reduce((a, x) => a + x.newTiles, 0) };
+      if (rOld || rNew) e.roles = plan.line.concat(plan.tiles).map((t) => [t, net.role[t]]);
+      this.pushUndo(e);
     }
-    const [rOld, rNew] = plan.roles;
     if (rOld || rNew) {
-      const joints = new Set([plan.line[0], plan.line[plan.line.length - 1]]);
-      // (undo gives the line its old roles back)
-      const top = this.undoStack[this.undoStack.length - 1];
-      if (!g.actor && top && top.type === 'track') top.roles = plan.line.concat(plan.tiles).map((t) => [t, net.role[t]]);
       for (const t of plan.line) if (!joints.has(t)) net.setRole(t, rOld);
       for (const t of plan.tiles) if (!joints.has(t)) net.setRole(t, rNew);
     }
@@ -1085,8 +1086,10 @@ export class Construction {
   // ---------- bulldozer ----------
   bulldozeTarget(tile) {
     const g = this.game;
-    if (tile < 0 || !g.progression.regionUnlocked(g.world.region[tile])) return null;
-    if (g.decor.at(tile)) return 'decor';
+    // (layered tiles: the ground under a tunnel or viaduct decides the region; only the surface has decor, buildings, roads and trees)
+    const b = baseTile(tile), surf = b === tile;
+    if (tile < 0 || !g.progression.regionUnlocked(g.world.region[b])) return null;
+    if (surf && g.decor.at(tile)) return 'decor';
     // another company's track, signals and stations are not the player's to remove
     if (g.net.foreign(tile)) return null;
     if (g.net.waypoints.has(tile)) return 'waypoint';
@@ -1094,6 +1097,7 @@ export class Construction {
     const sp = g.net.special.get(tile);
     if (sp) return sp.type;
     if (g.net.conn[tile]) return 'track';
+    if (!surf) return null;
     if (g.occupancy.blocked[tile] === 1 && g.authority && g.authority.buildingAt(tile)) return 'building';
     if (g.roads && g.roads.stopAt(tile)) return 'roadstop';
     if (g.roads && g.roads.bits[tile]) return 'road';

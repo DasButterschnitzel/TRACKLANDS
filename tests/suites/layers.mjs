@@ -99,6 +99,11 @@ export async function run({ browser, base }) {
     const mid = net.links.size;
     C.undo();
     out.undo = { before, mid, after: net.links.size, ug: net.conn[onLayer(T(22, 3), 1)], graph: net.validateGraph(5).length };
+    // the bulldozer works on the viaduct and tunnel layers (once found nothing there)
+    const vEnd = onLayer(T(15, -4), 3);
+    out.dozer = { tunnel: C.bulldozeTarget(onLayer(T(12, 0), 1)), viaduct: C.bulldozeTarget(vEnd) };
+    C.setLayer(3); C.setTool('bulldoze'); C.bulldoze(vEnd); C.setTool('select');
+    out.dozer.gone = !net.conn[vEnd]; out.dozer.graph = net.validateGraph(5).length;
     C.setLayer(0);
     return out;
   });
@@ -111,6 +116,7 @@ export async function run({ browser, base }) {
   check(r.depot && r.buy === 'ok' && r.trips >= 2 && r.seenLayers === '0,1' && r.ugArrivals >= 1, `a train runs through the portal: ${r.trips} trips, layers visited ${r.seenLayers}, ${r.ugArrivals} arrivals at the metro station (depot ${r.depot}, buy ${r.buy}, state ${r.tstate})`);
   check(r.cost, 'an underground station costs more than one on the surface');
   check(r.undo.mid === r.undo.before + 2 && r.undo.after === r.undo.before && !r.undo.ug && r.undo.graph === 0, `undo removes a tunnel with its portal (links ${r.undo.before} → ${r.undo.mid} → ${r.undo.after})`);
+  check(r.dozer.tunnel === 'track' && r.dozer.viaduct === 'track' && r.dozer.gone && r.dozer.graph === 0, `the bulldozer reaches tunnel and viaduct track and removes it (${JSON.stringify(r.dozer)})`);
   // save and load keep the layers
   const sv = await page.evaluate(async () => {
     const g = window.__tracklands.game, S = await import('./src/save/Save.js');

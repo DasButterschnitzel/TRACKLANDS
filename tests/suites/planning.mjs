@@ -121,6 +121,15 @@ export async function run({ browser, base }) {
       out.again = { ok: !!b5.ok, bits: connSum() - k5, err: b5.error || '' };
     }
     out.lib = B.all().length;
+    // ---- a project with a second-pair step builds and undoes as one (once crashed: nested undo collection) ----
+    const p6 = P.create('pair');
+    P.addStep({ op: 'pair', a: T(10, 1), b: T(20, 1), tier: 0, side: 1, roles: 'express', L: 0 }, p6);
+    const k6 = connSum(), u6 = C.undoStack.length;
+    let b6;
+    try { b6 = P.build(p6); } catch (e) { b6 = { error: 'threw ' + e.message }; }
+    out.pairStep = { ok: !!b6.ok, err: b6.error || '', bits: connSum() - k6, undo: C.undoStack.length - u6, role: net.roleOf(T(15, 2)) };
+    C.undo();
+    out.pairStep.after = connSum() - k6; out.pairStep.roleAfter = net.roleOf(T(15, 1)); out.pairStep.graph = net.validateGraph(5).length;
     // ---- saved with the game ----
     const keep = P.create('kept');
     P.addStep({ op: 'track', a: T(0, 0), b: T(8, 0), tier: 0, mode: 'single', L: 0 }, keep);
@@ -139,6 +148,7 @@ export async function run({ browser, base }) {
   check(r.bp.state === 'ok' && r.bp.built && r.bp.bits > 30 && r.bp.graph === 0, `a built-in passing loop placed as a plan and built (${r.bp.bits} track legs)` + (r.bp.bits !== 48 ? '\n' + r.grid.join('\n') : ''));
   check(Number.isInteger(r.cap) && r.cap >= 3 && r.io.im && r.io.name && r.io.bad.every(Boolean), `captured (${r.cap} runs), exported and imported; bad imports refused (${r.io.bad.join(', ')})`);
   check(r.again && r.again.ok && r.again.bits === r.bp.bits, `the captured loop placed elsewhere builds the same track (${r.again && r.again.bits} vs ${r.bp.bits} legs${r.again && r.again.err ? ', ' + r.again.err : ''})`);
+  check(r.pairStep.ok && r.pairStep.bits >= 16 && r.pairStep.undo === 1 && r.pairStep.role === 2 && r.pairStep.after === 0 && r.pairStep.roleAfter === 0 && r.pairStep.graph === 0, `a project with a second-pair step builds, and one undo takes it all back with its roles (${JSON.stringify(r.pairStep)})`);
   // save and load keep the projects
   const sv = await page.evaluate(async () => { const g = window.__tracklands.game, S = await import('./src/save/Save.js'); window.__psave = S.migrate(JSON.parse(JSON.stringify(g.serialize()))); return g.plans.list.map((p) => p.name + ':' + p.steps.length).join('|'); });
   await loadSave(page, await page.evaluate(() => window.__psave));

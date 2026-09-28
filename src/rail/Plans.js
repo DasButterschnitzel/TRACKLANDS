@@ -166,10 +166,10 @@ export class Plans {
         // take back what was built (newest first)
         for (let k = es.length - 1; k >= 0; k--) { C.undoStack.push(es[k]); C.undo(); }
       } else if (es.length) {
-        const prev = [];
-        for (let k = es.length - 1; k >= 0; k--) if (es[k].prev) prev.push(...es[k].prev);
+        const prev = [], roles = [];
+        for (let k = es.length - 1; k >= 0; k--) if (es[k].type === 'track') { prev.push(...es[k].prev); if (es[k].roles) roles.push(...es[k].roles); }
         for (const e of es) if (e.type !== 'track') C.pushUndo(e);
-        if (prev.length) C.pushUndo({ type: 'track', prev, cost: es.filter((e) => e.type === 'track').reduce((a, e) => a + e.cost, 0), newTiles: es.reduce((a, e) => a + (e.newTiles || 0), 0) });
+        if (prev.length) C.pushUndo({ type: 'track', prev, roles: roles.length ? roles : undefined, cost: es.filter((e) => e.type === 'track').reduce((a, e) => a + e.cost, 0), newTiles: es.reduce((a, e) => a + (e.newTiles || 0), 0) });
       }
     }
     this._dirty = true;
