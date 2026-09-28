@@ -6,6 +6,7 @@ import { fmt, escapeHtml as esc } from '../util.js';
 import { icon } from './icons.js';
 import { WEATHER_IDS } from '../world/Environment.js';
 import { ERA_BANDS, bandOf } from '../world/Eras.js';
+import { SEARCH_ALIASES } from './SearchAliases.js';
 import { VISUAL_ERAS, visualBand } from '../world/VisualEra.js';
 import { resolveTerrain } from '../world/Terrain.js';
 
@@ -21,8 +22,53 @@ const COMMANDS = [
   ['tool', 'signal', 'signal', 'tool_signal'], ['tool', 'bulldoze', 'bulldoze', 'tool_bulldoze'], ['tool', 'industry', 'factory', 'tool_industry'],
   ['overlay', 'profit', 'stats', 'ov_profit'], ['overlay', 'traffic', 'layers', 'ov_traffic'], ['overlay', 'towns', 'town', 'ov_towns'], ['overlay', 'industry', 'factory', 'ov_industry'],
   ['backups', '', 'save', 'backups'], ['panel', 'changelog', 'news', 'whats_new'], ['photo', '', 'camera', 'photo_mode'],
+  // Phase 11/12 systems (Phase 13): the kind shown is the fifth entry
+  ['panel', 'plans', 'plans', 'menu_plans'], ['planmode', '1', 'plans', 'plan_mode', 'tool'],
+  ['metro', '1', 'layers', 'find_cmd_metro', 'tool'], ['layerview', '', 'layers', 'find_cmd_underground', 'overlay'], ['metromap', '', 'map', 'find_cmd_metromap', 'panel'],
+  ['trackmode', 'pair', 'track', 'find_cmd_pair', 'tool'], ['trackmode', 'role', 'track', 'find_cmd_roles', 'tool'],
+  ['overlay', 'congestion', 'layers', 'ov_congestion'], ['tool', 'signal', 'signal', 'tool_signal'],
+  ['panel', 'research', 'research', 'menu_research'], ['panel', 'settings', 'settings', 'menu_settings'],
 ];
-const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+// search normalisation (Phase 13): lower case, no accents (ß as ss), hyphens
+// and punctuation as spaces; stems drop simple plural endings (EN/DE)
+export const norm = (s) => String(s || '').toLowerCase().replace(/ß/g, 'ss').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-_/.,:;!?()'"]+/g, ' ').replace(/\s+/g, ' ').trim();
+export const stem = (w) => (w.length > 5 && /(en|es)$/.test(w) ? w.slice(0, -2) : w.length > 4 && /[sen]$/.test(w) ? w.slice(0, -1) : w);
+// edit distance with a cap (typos: one for short words, two for long ones)
+export function editDistance(a, b, cap = 2) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] && i > 1 && j > 1) cur[j] = Math.min(cur[j], prev[j - 2] + 1);
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > cap) return cap + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// how well a query matches an entry: exact name 100, name prefix 90, alias
+// 85, alias prefix 75, every word found 60, every word's stem 55, every
+// word within a typo or two 40, else 0
+export function searchScore(q, name, aliases = [], extra = '') {
+  const n = norm(name);
+  if (!q) return 0;
+  if (n === q) return 100;
+  if (n.startsWith(q)) return 90;
+  if (aliases.includes(q)) return 85;
+  if (q.length >= 3 && aliases.some((a) => a.startsWith(q))) return 75;
+  const hay = `${n} ${norm(extra)} ${aliases.join(' ')}`;
+  const words = q.split(' ');
+  if (words.every((w) => hay.includes(w))) return 60;
+  const hw = hay.split(' ');
+  const hs = hw.map(stem);
+  if (words.every((w) => { const s = stem(w); return s.length >= 3 && hs.some((h) => h.startsWith(s) || (s.startsWith(h) && h.length >= 4)); })) return 55;
+  if (words.every((w) => w.length >= 4 && hw.some((h) => h.length >= 4 && h[0] === w[0] && editDistance(w, h, w.length >= 8 ? 2 : 1) <= (w.length >= 8 ? 2 : 1)))) return 40;
+  return 0;
+}
 
 export const ToolsUIMixin = {
   // everything with a name, by kind
@@ -36,15 +82,25 @@ export const ToolsUIMixin = {
     for (const t of g.trains.mine()) add('train', 'train', t.name, { type: 'train', id: t.id });
     for (const v of g.roads.vehicles) if (!v.owner) add('vehicle', 'bus', v.name, { type: 'roadveh', id: v.id });
     for (const l of g.roads.lines.list) add('line', 'route', l.name, { type: 'line', id: l.id });
-    for (const [act, arg, ic, key] of COMMANDS) out.push({ kind: 'command', ic, name: this.tr(key), cmd: { act, arg }, extra: this.tr('find_kind_' + act), key: norm(this.tr(key) + ' ' + key.replace(/_/g, ' ')) });
+    // commands with the everyday words of both languages (SearchAliases.js)
+    for (const [act, arg, ic, key, kind] of COMMANDS) {
+      const id = act + ':' + arg;
+      const aliases = [...(SEARCH_ALIASES.en[id] || []), ...(SEARCH_ALIASES.de[id] || [])].map(norm);
+      out.push({ kind: 'command', ic, name: this.tr(key), cmd: { act, arg }, extra: this.tr('find_kind_' + (kind || act)), aliases, key: norm(this.tr(key) + ' ' + key.replace(/_/g, ' ')) });
+    }
     return out;
   },
+  // Suggestions only: a result is never carried out by itself; the player
+  // chooses it (and a building tool still needs the drag on the map).
   searchResults(q) {
-    const k = norm(q).trim();
+    const k = norm(q);
     if (!k) return [];
-    const words = k.split(/\s+/);
-    return this.searchIndex().filter((r) => words.every((w) => r.key.includes(w)))
-      .sort((a, b) => (a.key.startsWith(k) ? 0 : 1) - (b.key.startsWith(k) ? 0 : 1) || (a.kind === 'command' ? 1 : 0) - (b.kind === 'command' ? 1 : 0) || a.name.localeCompare(b.name)).slice(0, 30);
+    const scored = [];
+    for (const r of this.searchIndex()) {
+      const sc = searchScore(k, r.name, r.aliases || [], r.cmd ? r.key : r.extra);
+      if (sc > 0) scored.push([sc, r]);
+    }
+    return scored.sort((a, b) => b[0] - a[0] || (a[1].kind === 'command' ? 1 : 0) - (b[1].kind === 'command' ? 1 : 0) || a[1].name.localeCompare(b[1].name)).slice(0, 30).map((x) => x[1]);
   },
   searchRows() {
     const q = this.searchQuery || '';
@@ -113,6 +169,11 @@ export const ToolsUIMixin = {
         else if (act === 'overlay') this.actions.overlay(arg);
         else if (act === 'backups') this.app.backupDialog();
         else if (act === 'photo') this.setPhoto(true);
+        else if (act === 'metro') { G.construction.setTool('track'); G.construction.setLayer(+arg || 1); for (let k = 0; k < 3 && !G.layerView.showsUnderground(); k++) G.layerView.cycle(); this.renderToolbar(); }
+        else if (act === 'layerview') { G.layerView.cycle(); this.renderToolbar(); }
+        else if (act === 'metromap') { this.mapFilter = 'metro'; this.openPanel('map'); }
+        else if (act === 'trackmode') { G.construction.setTool('track'); G.construction.trackMode = arg; this.renderToolbar(); }
+        else if (act === 'planmode') { if (G.plans && !G.plans.on) G.plans.setOn(true); if (!['track', 'station', 'depot'].includes(G.construction.tool)) G.construction.setTool('track'); this.renderToolbar(); }
       },
       findGo: (a) => { const [type, id] = a.split(':'); const sel = { type, id: +id }; g().select(sel); g().focusOn(sel, 14); if (window.innerWidth < 760) this.closePanel(); },
       bmAdd: () => { const b = this.addBookmark(); if (b) this.toast(this.tr('bm_added', { name: b.name }), 'good', 'pin'); re(); },
