@@ -125,6 +125,16 @@ export async function run({ browser, base }) {
   });
   check(l.portals > 0 && l.worst < 1.2, `${l.portals} tunnel portals (${l.fams.join(', ')}), all at ground level (worst ${l.worst.toFixed(2)} off the terrain)`);
   // (a metro ramp's portal used to be drawn at the sunken rail height: 1.5 below the grass, invisible)
+  // the upkeep breakdown shown in Finance is what the month then charges
+  const up = await page.evaluate(() => {
+    const g = window.__tracklands.game, ui = window.__tracklands.ui, E = g.economy;
+    const s = E.infraSums()[0], want = Math.round(s.track) + Math.round(s.station);
+    const c0 = E.coins; E.infraUpkeep(); const paid = Math.round(c0 - E.coins);
+    ui.openPanel('finance');
+    const el = document.getElementById('fin-infra');
+    return { want, paid, tip: el ? el.getAttribute('data-tip') : '', layers: s.layers.map(Math.round) };
+  });
+  check(up.want > 0 && up.paid === up.want && /Tunnel/.test(up.tip) && !/fin_|layer_/.test(up.tip), `infrastructure upkeep: ${up.paid}● charged = ${up.want}● shown; tooltip "${up.tip}"`);
   await loadSave(page, l.save);
   const m2 = await page.evaluate(async () => {
     const g = window.__tracklands.game, S = g.stations, V = await import('./src/world/VisualEra.js');

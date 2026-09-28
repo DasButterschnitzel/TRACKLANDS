@@ -75,18 +75,26 @@ export class Economy {
   // the monthly upkeep of tunnels, viaducts and underground or elevated
   // stations, per company (Phase 11): the player's goes to the ledger, each
   // rival pays its own. Returns {owner index: {track, station}} for the tests.
-  infraUpkeep() {
+  // what the month's upkeep of tunnels, deep lines, viaducts and their
+  // stations comes to, per owner (0 = the player) and per layer
+  infraSums() {
     const g = this.game, net = g.net, NN = N * N, U = COSTS.upkeep, sums = {};
     if (!net) return sums;
-    const add = (o, k, v) => { const s = sums[o] || (sums[o] = { track: 0, station: 0 }); s[k] += v; };
+    const get = (o) => sums[o] || (sums[o] = { track: 0, station: 0, layers: [0, 0, 0, 0], stLayers: [0, 0, 0, 0] });
     for (let L = 1; L < LAYERS; L++) {
       const rate = U.tile[L];
-      for (let i = L * NN, e = (L + 1) * NN; i < e; i++) if (net.conn[i] || net.special.has(i)) add(net.own[i], 'track', rate);
+      for (let i = L * NN, e = (L + 1) * NN; i < e; i++) if (net.conn[i] || net.special.has(i)) { const s = get(net.own[i]); s.track += rate; s.layers[L] += rate; }
     }
-    for (const s of g.stations.list) {
-      const L = layerOf(s.tile);
-      if (L) add(ownerIdx(s.owner), 'station', U.station[L] * Math.max(1, g.stations.allTiles(s).length) * (1 + (s.level || 0) * 0.25));
+    for (const st of g.stations.list) {
+      const L = layerOf(st.tile);
+      if (!L) continue;
+      const v = U.station[L] * Math.max(1, g.stations.allTiles(st).length) * (1 + (st.level || 0) * 0.25);
+      const s = get(ownerIdx(st.owner)); s.station += v; s.stLayers[L] += v;
     }
+    return sums;
+  }
+  infraUpkeep() {
+    const g = this.game, sums = this.infraSums();
     for (const [o, s] of Object.entries(sums)) {
       const r = +o ? g.rivals && g.rivals.byId('r' + o) : null;
       if (+o && !r) continue;

@@ -65,7 +65,7 @@ export const FinanceUIMixin = {
         ${kv('coin', pl(ytd.profit), 'fin_profit_ytd')}
         ${kv('train', this.money(L.transportRevenue()), 'fin_transport')}
         ${kv('trains', this.money(cur.exp.op_trains || 0), 'fin_opcost')}
-        ${kv('track', this.money((cur.exp.maint_track || 0) + (cur.exp.maint_station || 0)), 'fin_infra')}
+        ${kv('track', `<span data-tip="${this.infraTip()}" id="fin-infra">${this.money((cur.exp.maint_track || 0) + (cur.exp.maint_station || 0))}</span>`, 'fin_infra')}
         ${kv('builder', this.money((cur.exp.construction || 0) + (cur.exp.vehicles || 0) + (cur.exp.upgrades || 0)), 'fin_building')}
       </div>
       ${this.finLoanBox()}
@@ -190,6 +190,14 @@ export const FinanceUIMixin = {
     let xl = '';
     data.forEach((d, i) => { if (d.m % 12 === 0 || i === 0) xl += `<text x="${padL + i * bw + 2}" y="${H - 6}" class="flab">${this.monthName(d.m)}</text>`; });
     return `<svg class="fchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(this.tr('fin_m_' + metric))}">${grid}${bars}<line x1="${padL}" x2="${W}" y1="${zero}" y2="${zero}" class="fzero"/>${xl}</svg>`;
+  },
+  // the next month's infrastructure upkeep by layer (tooltip)
+  infraTip() {
+    const s = this.game.economy.infraSums()[0];
+    if (!s) return this.tr('fin_infra_none');
+    const parts = [];
+    for (const L of [1, 2, 3]) if (s.layers[L] || s.stLayers[L]) parts.push(`${this.tr('layer_' + L)}: ${fmt(Math.round(s.layers[L]))}● ${this.tr('fin_infra_track')} + ${fmt(Math.round(s.stLayers[L]))}● ${this.tr('fin_infra_stations')}`);
+    return `${this.tr('fin_infra_next')} ${fmt(Math.round(s.track + s.station))}● — ${parts.join(' · ')}`;
   },
   finHistory() {
     const m = this.finMetric || 'profit';
