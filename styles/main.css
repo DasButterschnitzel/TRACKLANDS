@@ -1045,3 +1045,10 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 .pill-row.amen .chip.on { background: var(--teal); color: #fff; border-color: var(--teal2); }
 .pill-row.amen .chip.on small { color: #fff; }
 .pill-row.amen .chip[disabled]:not(.on) { opacity: .6; }
+
+/* catalogue: describe what you need (Phase 13) */
+.cat-nl { display: flex; gap: 8px; margin: 6px 0; }
+.cat-nl .inp { flex: 1; min-width: 0; min-height: 44px; height: 44px; box-sizing: border-box; }
+.cat-nl .btn { min-height: 44px; }
+.cat-nl-result { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.cat-nl-result .chip { min-height: 32px; }

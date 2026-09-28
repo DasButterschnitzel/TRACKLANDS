@@ -23,10 +23,11 @@ const PAX = new Set(['PASSENGERS', 'MAIL']);
 const cargosOfGroups = (groups) => CARGO_IDS.filter((c) => groups.includes(CARGO[c].group));
 
 import { eraOfYear } from '../world/RailAI.js';
+import { parseCatalogQuery, parseConfidence } from './CatalogQuery.js';
 
 export const CatalogUIMixin = {
   catState() {
-    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, span: '', sort: 'level', cmp: [], tab: 'vehicles', n: PAGE };
+    if (!this._cat) this._cat = { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', energy: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, span: '', sort: 'level', cmp: [], tab: 'vehicles', n: PAGE, nlq: '', nl: null };
     return this._cat;
   },
 
@@ -77,12 +78,65 @@ export const CatalogUIMixin = {
     const cur = eraOfYear(this.game.ledger.year()), e = it.era || cur;
     return span === 'current' ? it.unlocked && e >= cur - 1 : e < cur - 1;
   },
+  // power type (Phase 13): steam, diesel, electric, high speed, maglev (locomotives and units)
+  catEnergyOk(it, e) {
+    if (!e) return true;
+    if (it.type !== 'L') return false;
+    const k = it.m.kind || '';
+    if (e === 'steam') return k.startsWith('steam');
+    if (e === 'diesel') return k === 'diesel';
+    if (e === 'electric') return !!it.electric && k !== 'maglev';
+    if (e === 'hs') return k === 'hst' || k === 'maglev' || it.m.duty === 'highspeed';
+    if (e === 'maglev') return k === 'maglev';
+    return true;
+  },
+  // a description in everyday words → the catalogue's own filters (CatalogQuery.js)
+  catLexicon() {
+    const names = (c) => [c, this.cargoName(c)];
+    return { makers: MAKERS, cargo: CARGO_IDS.map((c) => ({ id: c, names: names(c) })), eraOfYear };
+  },
+  catApplyNl(text) {
+    const c = this.catState();
+    const p = parseCatalogQuery(text, this.catLexicon());
+    const conf = parseConfidence(p);
+    c.nlq = String(text || '').slice(0, 80);
+    // start from nothing, then fill only what was understood
+    Object.assign(c, { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', energy: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, span: '', sort: 'level', n: PAGE });
+    if (conf === 0) { c.q = c.nlq.slice(0, 40); c.nl = { none: true, unknown: p.unknown }; return c; }
+    const f = p.filters;
+    for (const k of ['mode', 'role', 'energy', 'maker', 'cargo', 'sort']) if (f[k] != null) c[k] = f[k];
+    if (f.era != null) c.era = String(f.era);
+    if (f.unlocked) c.unlocked = true;
+    if (f.owned) c.owned = true;
+    c.nl = { used: p.used, unknown: p.unknown, year: p.year, conf };
+    return c;
+  },
+  catNlChips() {
+    const c = this.catState();
+    if (!c.nl) return '';
+    const chips = [];
+    if (c.nl.none) chips.push(`<span class="chip small">${this.tr('cat_nl_none')}</span>`);
+    else {
+      if (c.mode !== 'all') chips.push(c.mode === 'wagon' ? this.tr('tm_wagon') : this.tr('tm_' + c.mode));
+      if (c.role) chips.push(this.tr(c.role));
+      if (c.energy) chips.push(this.tr('cat_en_' + c.energy));
+      if (c.era) chips.push(`${c.nl.year ? this.tr('cat_nl_year', { y: Math.floor(c.nl.year / 10) * 10 }) + ' · ' : ''}${this.tr('era_' + c.era)}`);
+      if (c.maker) chips.push((MAKERS.find((m) => m.id === c.maker) || {}).name || c.maker);
+      if (c.cargo) chips.push(this.cargoName(c.cargo));
+      if (c.sort !== 'level') chips.push(this.tr('cat_nl_sort_' + c.sort));
+      if (c.unlocked) chips.push(this.tr('cat_only_unlocked'));
+      if (c.owned) chips.push(this.tr('cat_only_owned'));
+    }
+    const unk = (c.nl.unknown || []).length ? `<span class="muted small">${this.tr('cat_nl_unknown', { w: esc(c.nl.unknown.join(', ')) })}</span>` : '';
+    return `<div class="cat-nl-result" data-section="catalog-interpretation"><span class="small">${this.tr('cat_nl_as')}</span> ${chips.map((x) => (x.startsWith('<') ? x : `<span class="chip small on">${esc(x)}</span>`)).join(' ')} ${unk}
+      <button class="btn ghost small" data-act="catClear">${icon('close', 'mini')} ${this.tr('cat_clear_filters')}</button></div>`;
+  },
   catFiltered() {
     const c = this.catState(), P = this.game.progression;
     const q = c.q.trim().toLowerCase();
     let list = this.catItems().filter((it) => (c.mode === 'all' || it.mode === c.mode)
       && (!q || it.name.toLowerCase().includes(q) || this.tr(it.role).toLowerCase().includes(q) || it.makerName.toLowerCase().includes(q))
-      && (!c.maker || it.maker === c.maker)
+      && (!c.maker || it.maker === c.maker) && this.catEnergyOk(it, c.energy)
       && (!c.era || it.era === +c.era) && (!c.role || it.role === c.role)
       && (!c.cargo || it.carries.includes(c.cargo))
       && (!c.power || it.power >= c.power) && (!c.speed || it.speed >= c.speed)
@@ -217,12 +271,14 @@ export const CatalogUIMixin = {
     const roles = [...new Set(all.filter((it) => c.mode === 'all' || it.mode === c.mode).map((it) => it.role))];
     const opt = (v, cur, label) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${label}</option>`;
     const spans = `<div class="chips wrap" role="group" aria-label="${this.tr('cat_span')}">${['', 'current', 'historic', 'locked'].map((v) => `<button class="chip ${c.span === v ? 'on' : ''}" data-act="catSpan" data-arg="${v}">${this.tr('cat_span_' + (v || 'all'))}</button>`).join('')}</div>`;
-    const filters = `${spans}<div class="cat-filters">
+    const nl = `<form class="cat-nl" data-section="catalog-describe" onsubmit="return false"><input class="inp" type="search" enterkeyhint="search" placeholder="${this.tr('cat_nl')}" value="${esc(c.nlq)}" data-change="catNl" aria-label="${this.tr('cat_nl')}"/><button class="btn small" data-act="catNlApply">${icon('search', 'mini')} ${this.tr('cat_nl_apply')}</button></form>${this.catNlChips()}`;
+    const filters = `${nl}${spans}<div class="cat-filters">
       <input class="inp" type="search" placeholder="${this.tr('cat_search')}" value="${esc(c.q)}" data-input="catQuery" aria-label="${this.tr('cat_search')}"/>
       <select data-change="catEra" aria-label="${this.tr('cat_era')}">${opt('', c.era, this.tr('cat_era') + ': ' + this.tr('cat_all'))}${[1, 2, 3, 4, 5, 6].map((e) => opt(e, c.era, this.tr('era_' + e))).join('')}</select>
       <select data-change="catMaker" aria-label="${this.tr('cat_maker')}">${opt('', c.maker, this.tr('cat_maker') + ': ' + this.tr('cat_all'))}${MAKERS.filter((m) => all.some((it) => it.maker === m.id && (c.mode === 'all' || it.mode === c.mode))).map((m) => opt(m.id, c.maker, m.name)).join('')}</select>
       <select data-change="catRole" aria-label="${this.tr('cat_role')}">${opt('', c.role, this.tr('cat_role') + ': ' + this.tr('cat_all'))}${roles.map((r) => opt(r, c.role, this.tr(r))).join('')}</select>
       <select data-change="catCargo" aria-label="${this.tr('cat_cargo')}">${opt('', c.cargo, this.tr('cat_cargo') + ': ' + this.tr('cat_all'))}${CARGO_IDS.map((x) => opt(x, c.cargo, this.cargoName(x))).join('')}</select>
+      <select data-change="catEnergy" aria-label="${this.tr('cat_energy')}">${opt('', c.energy, this.tr('cat_energy') + ': ' + this.tr('cat_all'))}${['steam', 'diesel', 'electric', 'hs', 'maglev'].map((e) => opt(e, c.energy, this.tr('cat_en_' + e))).join('')}</select>
       <select data-change="catPower" aria-label="${this.tr('cat_k_power')}">${[0, 1000, 3000, 6000, 10000].map((v) => opt(v, c.power, v ? '≥ ' + fmt(v) + ' kW' : this.tr('cat_k_power') + ': ' + this.tr('cat_all'))).join('')}</select>
       <select data-change="catSpeed" aria-label="${this.tr('cat_k_speed')}">${[0, 80, 120, 160, 250].map((v) => opt(v, c.speed, v ? '≥ ' + this.spd(v) : this.tr('cat_k_speed') + ': ' + this.tr('cat_all'))).join('')}</select>
       <select data-change="catSort" aria-label="${this.tr('cat_sort')}">${['level', 'speed', 'power', 'cap', 'price', 'op'].map((k) => opt(k, c.sort, this.tr('cat_sort') + ': ' + this.tr(k === 'level' ? 'cat_k_level' : 'cat_k_' + k))).join('')}</select>
@@ -272,6 +328,8 @@ export const CatalogUIMixin = {
       catFav: (a) => { const F = this.game.progression.favs; if (F.has(a)) F.delete(a); else F.add(a); re(); },
       catCmpRemove: (a) => { c().cmp = c().cmp.filter((k) => k !== a); re(); },
       catCmpClear: () => { c().cmp = []; re(); },
+      catNlApply: () => { const el = document.querySelector('#panel .cat-nl input'); this.catApplyNl(el ? el.value : c().nlq); re(); },
+      catClear: () => { Object.assign(c(), { mode: 'all', q: '', era: '', role: '', cargo: '', maker: '', energy: '', power: 0, speed: 0, owned: false, unlocked: false, fav: false, span: '', sort: 'level', n: PAGE, nlq: '', nl: null }); re(); },
       catCompareWith: (a) => { const s = c(); if (!s.cmp.includes(a) && s.cmp.length < 4) s.cmp.push(a); s.tab = s.cmp.length >= 2 ? 'compare' : 'vehicles'; if (this.panel === 'collection') re(); else this.openPanel('collection'); },
     };
   },
@@ -289,6 +347,8 @@ export const CatalogUIMixin = {
         if (cnt) cnt.textContent = this.tr('cat_count', { n: list.length });
       },
       catEra: (el) => { c().era = el.value; c().n = PAGE; re(); },
+      catNl: (el) => { this.catApplyNl(el.value); re(); },
+      catEnergy: (el) => { c().energy = el.value; c().n = PAGE; re(); },
       catSpan: (a) => { c().span = a || ''; c().n = PAGE; re(); },
       catRole: (el) => { c().role = el.value; c().n = PAGE; re(); },
       catMaker: (el) => { c().maker = el.value; c().n = PAGE; re(); },
