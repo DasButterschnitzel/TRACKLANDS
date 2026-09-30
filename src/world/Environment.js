@@ -182,6 +182,9 @@ export class Environment {
     }
     const U = g.world.view && g.world.view.uniforms;
     if (U && U.uSnow) U.uSnow.value = S.weather ? this.snowCover : 0;
+    // models without the snow shader switch to a winter look (Phase 13)
+    const wl = !!S.weather && this.snowCover > 0.5;
+    if (wl !== this._winterLook) { this._winterLook = wl; if (g.roads && g.roads.setWinterLook) g.roads.setWinterLook(wl); }
 
     this._skyT -= dt;
     if (this._skyT <= 0) { this._skyT = 0.25; this.updateSky(false); }
@@ -193,7 +196,8 @@ export class Environment {
       m.position.z += dt * m.userData.speed * 0.5;
       if (m.position.x > N * TILE + 20) m.position.x = -20;
       if (m.position.z > N * TILE + 20) m.position.z = -20;
-      m.visible = S.graphics !== 'low';
+      // (by day only: under the moon they threw hard-edged patches, Phase 13 night gallery)
+      m.visible = S.graphics !== 'low' && this.night < 0.5;
     }
     // birds (daytime)
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), e = new THREE.Euler();

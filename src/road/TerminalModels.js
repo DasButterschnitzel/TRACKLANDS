@@ -10,11 +10,11 @@ const GLASS = 0x8fb8d8, DARK = 0x2a2f36, LAMP = 0xfff2c0;
 
 // ---------- airports ----------
 // (runway along x at z = 0, the landside toward +z; 5.6 × 4.6 tiles of ground)
-export function airportModel(fam, size = 1, cargo = false) {
+export function airportModel(fam, size = 1, cargo = false, winter = false) {
   const b = new ModelBuilder();
   const big = size >= 2, hub = size >= 3;
-  // ground and runway
-  const grass = fam === 'pioneer' ? 0x7f9a62 : 0x8a9a6a;
+  // ground and runway (under snow the grass is white; the runway is kept clear)
+  const grass = winter ? 0xe4eaee : fam === 'pioneer' ? 0x7f9a62 : 0x8a9a6a;
   b.box(5.6, 0.04, 4.6, grass, { y: -0.02 });
   const rwCol = fam === 'pioneer' ? 0x7d7a68 : fam === 'midcentury' ? 0x55585c : 0x4a4e54;
   b.box(5.6, 0.06, fam === 'pioneer' ? 0.9 : 1.2, rwCol, { y: 0.02 });
@@ -40,6 +40,7 @@ export function airportModel(fam, size = 1, cargo = false) {
       b.box(1.7, 0.5, 0.9, 0xe6dcc4, { x: T.x, z: T.z, y: 0.02 });
       b.box(1.8, 0.06, 1.0, 0x7a6a5a, { x: T.x, z: T.z, y: 0.52 });
       b.box(1.4, 0.16, 0.02, GLASS, { x: T.x, z: T.z - 0.46, y: 0.28, glow: true });
+      b.box(1.3, 0.14, 0.02, GLASS, { x: T.x, z: T.z + 0.46, y: 0.26, glow: true });   // landside windows (lit at night)
       b.box(0.36, 0.3, 0.36, 0xe6dcc4, { x: T.x + 0.5, z: T.z, y: 0.58 });
       b.box(0.44, 0.18, 0.44, GLASS, { x: T.x + 0.5, z: T.z, y: 0.88, glow: true });
       b.box(1.2, 0.48, 0.9, 0x8a9096, { x: 0.8, z: 1.75, y: 0.02 });
@@ -51,6 +52,7 @@ export function airportModel(fam, size = 1, cargo = false) {
       b.box(2.0, 0.6, 1.0, 0xb8b4aa, { x: T.x, z: T.z, y: 0.02 });
       b.box(2.1, 0.07, 1.1, 0x8a8680, { x: T.x, z: T.z, y: 0.62 });
       b.box(1.8, 0.12, 0.02, 0x3a4a5a, { x: T.x, z: T.z - 0.51, y: 0.36, glow: true });
+      b.box(1.7, 0.12, 0.02, 0x3a4a5a, { x: T.x, z: T.z + 0.51, y: 0.36, glow: true });
       for (const gx of big ? [-2.2, -1.4, -0.6] : [-1.8, -1.0]) b.box(0.12, 0.12, 0.5, 0xa8a49a, { x: gx, z: 1.05, y: 0.3 });
       b.cyl(0.13, 0.17, 1.6, 8, 0xc8c4ba, { x: 1.6, z: 1.7 });
       b.box(0.5, 0.3, 0.5, 0x3a4a5a, { x: 1.6, z: 1.7, y: 1.6, glow: true });
@@ -60,6 +62,7 @@ export function airportModel(fam, size = 1, cargo = false) {
       // glass and concrete, jet bridges, apron lights
       b.box(2.3, 0.62, 1.05, 0xd8dcde, { x: T.x, z: T.z, y: 0.02 });
       b.box(2.2, 0.36, 0.02, GLASS, { x: T.x, z: T.z - 0.53, y: 0.14, glow: true });
+      b.box(2.1, 0.3, 0.02, GLASS, { x: T.x, z: T.z + 0.53, y: 0.16, glow: true });
       b.box(2.45, 0.05, 1.2, 0x6a7078, { x: T.x, z: T.z, y: 0.64 });
       for (const gx of big ? [-2.3, -1.6, -0.9, -0.2] : [-1.9, -1.2, -0.5]) { b.box(0.1, 0.1, 0.55, 0xc8ccd0, { x: gx, z: 1.0, y: 0.34 }); b.box(0.06, 0.34, 0.06, 0x8a9096, { x: gx, z: 0.78, y: 0.02 }); }
       b.cyl(0.1, 0.14, 1.8, 8, 0xe8ecee, { x: 1.7, z: 1.7 });
@@ -70,6 +73,7 @@ export function airportModel(fam, size = 1, cargo = false) {
     default: // future: a long low hall under a wide roof with solar panels, a slender tower
       b.box(2.4, 0.5, 1.0, 0xe8eef0, { x: T.x, z: T.z, y: 0.02 });
       b.box(2.3, 0.4, 0.02, GLASS, { x: T.x, z: T.z - 0.51, y: 0.06, glow: true });
+      b.box(2.2, 0.34, 0.02, GLASS, { x: T.x, z: T.z + 0.51, y: 0.08, glow: true });
       b.box(2.8, 0.05, 1.4, 0xd8dee2, { x: T.x, z: T.z - 0.1, y: 0.52 });
       for (let k = -2; k <= 2; k++) b.box(0.44, 0.02, 0.9, 0x2a3a5a, { x: T.x + k * 0.52, z: T.z, y: 0.58 });
       b.box(2.4, 0.02, 0.22, 0x5a8a5a, { x: T.x, z: T.z + 0.55, y: 0.58 });

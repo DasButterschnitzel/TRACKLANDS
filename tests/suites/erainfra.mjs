@@ -147,6 +147,59 @@ export async function run({ browser, base }) {
     lines.push(`     ${y}: airport ${at.air}, port ${at.dock}`);
   }
 
+  // ---- weather and light (Phase 13): the 2010 airport, port and an electrified
+  // line with a level crossing by day, in snow, at night and on a winter night;
+  // measured, not only looked at: snow brightens the ground, night darkens it,
+  // the terminals' windows and the lamps glow at night
+  {
+    const site = await page.evaluate(async () => {
+      const g = window.__tracklands.game, R = g.roads, U = await import('./src/util.js');
+      for (const id of ['electric_rail']) g.progression.research.add(id);
+      g.economy.coins = 1e9; g.world.view.clouds.visible = false;
+      const air = R.stops.find((s) => s.kind === 'airport');
+      return { air: air ? air.tile : null, x: air ? U.tileCX(air.tile) : 0, z: air ? U.tileCZ(air.tile) : 0 };
+    });
+    const stats = async (b64) => page.evaluate(async (b64) => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height).data;
+      let lum = 0, white = 0, lit = 0, n = 0;
+      for (let i = 0; i < d.length; i += 16) {
+        const L = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        lum += L; n++;
+        if (d[i] > 205 && d[i + 1] > 205 && d[i + 2] > 205) white++;
+        if (L > 170 && d[i] > d[i + 2] + 20) lit++;
+      }
+      return { lum: Math.round(lum / n), white: Math.round((white / n) * 1000) / 10, lit };
+    }, b64);
+    const scenes = { day: { t: 0.42, snow: 0 }, snow: { t: 0.42, snow: 1 }, night: { t: 0.95, snow: 0 }, winter_night: { t: 0.95, snow: 1 } };
+    const res = {};
+    const shotKeys = Object.keys(scenes);
+    if (site.air != null) for (const [k, sc] of Object.entries(scenes)) {
+      await page.evaluate(([sc, tile]) => {
+        const g = window.__tracklands.game, E = g.env;
+        E.timeOfDay = sc.t; g.settings.dayNight = true; g.settings.weather = true;
+        E.weather = sc.snow ? 'snow' : 'clear'; E.snowCover = sc.snow; E.nextWeather = 1e6; E.cloudiness = 0;
+        g.speed = 0;
+        for (const id of ['#hud', '#labels']) { const e = document.querySelector(id); if (e) e.style.visibility = 'hidden'; }
+        window.__look(tile, 16);
+      }, [sc, site.air]);
+      await page.waitForTimeout(600);
+      res[k + '_clouds'] = await page.evaluate(() => window.__tracklands.game.env.cloudShadows.filter((m) => m.visible).length);
+      res[k + '_key'] = await page.evaluate((tile) => { const R = window.__tracklands.game.roads, s = R.stops.find((x) => x.tile === tile); return s ? R.termKey(s) : ''; }, site.air);
+      const buf = await page.screenshot({ path: path.join(out, `erainfra-${k}.png`) });
+      res[k] = await stats(buf.toString('base64'));
+    }
+    const R = res;
+    lines.push(`     scenes: ${Object.entries(R).filter(([k]) => shotKeys.includes(k)).map(([k, v]) => `${k} lum ${v.lum} white ${v.white}% lit ${v.lit}`).join(' · ')}`);
+    check(site.air != null && R.snow.white > R.day.white + 5 && R.night.lum < R.day.lum * 0.6 && R.winter_night.lum < R.snow.lum * 0.6, `snow whitens the ground (${R.day && R.day.white}% → ${R.snow && R.snow.white}% white), night darkens it (luminance ${R.day && R.day.lum} → ${R.night && R.night.lum})`);
+    check(R.night && R.night.lit >= 40 && R.winter_night.lit >= 40, `at night the terminal windows (both sides) and lamps glow (${R.night && R.night.lit} warm lit samples, winter night ${R.winter_night && R.winter_night.lit})`);
+    check(R.day_clouds > 0 && R.night_clouds === 0 && R.winter_night_clouds === 0, `cloud shadows by day only (day ${R.day_clouds}, night ${R.night_clouds}): no hard-edged patches under the moon`);
+    check(!/:w$/.test(R.day_key || '') && /:w$/.test(R.snow_key || '') && /:w$/.test(R.winter_night_key || ''), `under snow the airport grass turns white, the runway stays clear (${R.day_key} → ${R.snow_key})`);
+    await page.evaluate(() => { const g = window.__tracklands.game; g.env.timeOfDay = 0.42; g.env.weather = 'clear'; g.env.snowCover = 0; for (const id of ['#hud', '#labels']) { const e = document.querySelector(id); if (e) e.style.visibility = ''; } });
+  }
+
   // ---- an older save: sane defaults, nothing missing ----
   await loadSave(page, productionSave());
   const old = await page.evaluate(() => {

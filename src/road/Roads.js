@@ -1356,13 +1356,15 @@ export class Roads {
     if (top < n * 0.6) return 'mixed';
     return top === oil ? 'oil' : top === bulk ? 'bulk' : top === cont ? 'container' : 'general';
   }
-  termKey(s) { return `${s.kind}:${this.termFamily(s)}:${s.size || 1}:${this.termVariant(s)}`; }
+  // (winter: the airport grass under snow, Phase 13; the look only)
+  termKey(s) { return `${s.kind}:${this.termFamily(s)}:${s.size || 1}:${this.termVariant(s)}${s.kind === 'airport' && this.winterLook ? ':w' : ''}`; }
+  setWinterLook(on) { if (!!on === !!this.winterLook) return; this.winterLook = !!on; this.rebuildStopMesh(); }
   termMesh(s) {
     const key = this.termKey(s);
     let M = this.termMeshes.get(key);
     if (!M) {
-      const [kind, fam, size, v] = key.split(':');
-      const geo = kind === 'airport' ? airportModel(fam, +size, v === 'cargo') : portModel(fam, +size, v);
+      const [kind, fam, size, v, w] = key.split(':');
+      const geo = kind === 'airport' ? airportModel(fam, +size, v === 'cargo', w === 'w') : portModel(fam, +size, v);
       M = new THREE.InstancedMesh(geo, MATS, kind === 'airport' ? 12 : 30);
       M.count = 0; M.frustumCulled = false; M.castShadow = true; M.receiveShadow = true;
       this.termMeshes.set(key, M);
