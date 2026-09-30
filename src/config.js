@@ -153,11 +153,12 @@ export const COSTS = {
   viaduct: 80,          // per tile of elevated viaduct
   portal: 900, shaft: 1400, rampElev: 600,
   ugStation: 4.5, elevStation: 2.2,
-  bikePark: 180, parkRide: 900,          // station access amenities (Phase 11)   // station cost factors underground / on a viaduct
+  bikePark: 180, parkRide: 900,          // station access amenities (Phase 11)
+  lift: 1400, escalator: 2600,           // vertical transfer (Phase 13): lifts and escalators   // station cost factors underground / on a viaduct
   // monthly upkeep of the structures (Phase 11): per tile of shallow tunnel,
   // deep tunnel and viaduct, and per platform tile of a station below or
   // above the ground (pumps, ventilation, lifts, lighting). Surface track costs nothing.
-  upkeep: { tile: [0, 1.2, 2.4, 0.8], station: [0, 6, 10, 3] },
+  upkeep: { tile: [0, 1.2, 2.4, 0.8], station: [0, 6, 10, 3], lift: 8, escal: 14 },
   station: 150,
   stationUpgrade: [0, 400, 1500, 6000, 25000, 70000],
   stationUpgradeLevel: [1, 2, 6, 12, 20, 28], // company level needed for station level index
@@ -751,3 +752,12 @@ export const DAILY_POOL = [
 
 export const OFFLINE = { maxSeconds: 4 * 3600, efficiency: 0.6 };
 export const DAY_LENGTH = 720; // game seconds per full day
+
+// lifts and escalators (Phase 13): the seconds a change of level takes per
+// flight at a station that has them (stairs: 20 s); from which year each can
+// be built. They only matter where a station complex spans levels.
+export const VERTICAL = {
+  stairs: { flight: 20 },
+  lift: { flight: 12, from: 1890 },
+  escal: { flight: 7, from: 1920 },
+};

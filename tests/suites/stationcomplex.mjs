@@ -62,11 +62,69 @@ export async function run({ browser, base }) {
     const c0 = g.economy.coins;
     const e1 = S.buildAmenity(surf, 'bike'), e2 = S.buildAmenity(surf, 'pr'), e3 = S.buildAmenity(surf, 'bike');
     out.amen = { e1, e2, e3, paid: Math.round(c0 - g.economy.coins), cost: S.amenityCost('bike') + S.amenityCost('pr'), rad: S.radius(surf) - rad0, links: (surf.links.towns || []).length - links0 };
+    // lifts and escalators (Phase 13): only where levels meet; each shortens
+    // the change of level, costs once and has its own upkeep
+    const vw = () => { const c = g.network.complex(surf).find((x) => x.o === ug); return c ? c.walk : null; };
+    const V = { w0: vw(), levelsSurf: S.otherLevels(surf).length };
+    V.gate = S.list.every((s) => (S.amenityError(s, 'lift') === 'err_amen_one_level') === (S.otherLevels(s).length === 0 && !s.owner && s.service !== 'freight'));
+    V.single = S.list.filter((s) => !S.otherLevels(s).length).length;
+    // a station whose complex has nothing on another level (the complex seen as surface-only)
+    { const cx0 = g.network.complex; g.network.complex = (o) => cx0.call(g.network, o).filter((c) => U.layerOf(c.o.tile) === U.layerOf(o.tile)); V.oneLevel = S.amenityError(surf, 'lift') + '/' + S.amenityError(surf, 'escal'); g.network.complex = cx0; }
+    { const y0 = g.ledger.year; g.ledger.year = () => 1880; V.early = S.amenityError(surf, 'lift'); g.ledger.year = () => 1900; V.earlyEsc = S.amenityError(surf, 'escal'); g.ledger.year = y0; }
+    const cv0 = g.economy.coins, up0 = (g.economy.infraSums()[0] || {}).station || 0;
+    V.e1 = S.buildAmenity(surf, 'lift'); V.w1 = vw();
+    V.e2 = S.buildAmenity(surf, 'escal'); V.w2 = vw();
+    V.paid = Math.round(cv0 - g.economy.coins); V.cost = S.amenityCost('lift') + S.amenityCost('escal');
+    const sums = g.economy.infraSums()[0] || {};
+    V.vertical = sums.vertical || 0; V.upkeepAdded = Math.round((sums.station || 0) - up0);
+    V.flight = S.flightS(surf);
+    out.V = V;
     // the inspector
     g.select({ type: 'station', id: surf.id });
     await new Promise((res) => setTimeout(res, 60));
     const insp = document.body.innerHTML;
     out.insp = { complex: /class="pill-row complex"/.test(insp), amen: /data-act="stAmen"/.test(insp) };
+    const q = (sel) => document.querySelector('#inspector ' + sel);
+    out.insp.lift = (q('[data-field="amenity"][data-value="lift"]') || {}).dataset?.state || '';
+    out.insp.escal = (q('[data-field="amenity"][data-value="escal"]') || {}).dataset?.state || '';
+    out.insp.flight = +((q('[data-field="level-change"]') || {}).dataset?.value || 0);
+    // a rival railway (Phase 13 rules): lifts only at a busy station where
+    // levels meet, with healthy finances; renovation only for an important,
+    // long outdated station, never twice within six years, never changing capacity
+    g.rivals.start(8);
+    const rv = g.rivals.list.find((x) => x.rail), P = g.rivals.planner(rv);
+    const A = { rival: !!rv };
+    if (rv) {
+      rv.money = 5e6; rv.loan = 0; rv.hist = [{ y: 1950, profit: 20000 }]; rv.forSale = false;
+      ug.owner = rv.id; far.owner = rv.id;
+      P.vertical();                               // first look: the flow baseline only
+      A.first = S.hasAmenity(ug, 'lift') || S.hasAmenity(ug, 'escal');
+      ug.picked = (ug.picked || 0) + 3000; far.picked = (far.picked || 0) + 3000;
+      P.st.memory = {};
+      P.vertical();
+      A.ug = (ug.amen || []).join('+'); A.farV = (far.amen || []).filter((a) => a === 'lift' || a === 'escal').join('+'); A.farLevels = S.otherLevels(far).length;
+      A.log = P.st.log.filter((e) => e.kind === 'vertical').map((e) => e.text);
+      // quiet or poor: nothing
+      const ugAmen = (ug.amen || []).slice();
+      P.st.memory = {}; ug.picked += 10; P.vertical(); A.quiet = (ug.amen || []).join('+') === ugAmen.join('+');
+      rv.hist = [{ y: 1950, profit: -5 }]; ug.picked += 5000; P.st.memory = {}; P.vertical(); A.poor = (ug.amen || []).join('+') === ugAmen.join('+');
+      // renovation: an important old station, then the cooldown
+      rv.hist = [{ y: 1950, profit: 20000 }];
+      const yr = g.ledger.year; g.ledger.year = () => 2010;
+      ug.yb = 1935; ug.reno = 0; far.yb = 1935; far.reno = 0;
+      const cap = (s) => `${s.level}:${s.tracks.length}:${S.storage(s)}`;
+      const cap0 = cap(ug);
+      P.st.memory = {}; P.renovate();
+      const renFirst = [ug, far].filter((s) => s.reno === 2010 || s.heritage).length;
+      A.ren1 = renFirst; A.capSame = cap(ug) === cap0;
+      far.reno = 0; far.heritage = false; ug.reno = ug.reno === 2010 ? 2010 : 0;
+      P.renovate();                               // within the cooldown: nothing more
+      A.cool = [ug, far].filter((s) => s.reno === 2010 || s.heritage).length === renFirst;
+      A.renLog = P.st.log.filter((e) => e.kind === 'renovate' || e.kind === 'heritage').map((e) => e.text);
+      g.ledger.year = yr;
+      ug.owner = undefined; far.owner = undefined;
+    }
+    out.A = A;
     // the line diagram marks the metro stop
     const lm = g.lines.list().find((l) => l.stops.includes(ug.id));
     out.diag = lm ? g.ui.lineDiagram(lm, null) : '';
@@ -96,6 +154,14 @@ export async function run({ browser, base }) {
   check(r.hasUg && r.walk > 20, `the metro station belongs to the surface station's complex (${r.complex.join(', ')}; ${r.walk} s on foot with stairs)`);
   check(!r.amen.e1 && !r.amen.e2 && r.amen.e3 === 'err_done' && r.amen.paid === r.amen.cost && r.amen.rad === 1 && r.amen.links >= 0, `bike parking and park & ride: charged once (${r.amen.paid} ●), reach +${r.amen.rad}, towns +${r.amen.links}; a second one refused (${r.amen.e3})`);
   check(r.insp.complex && r.insp.amen, `the inspector shows the complex and the amenities (${JSON.stringify(r.insp)})`);
+  const V = r.V;
+  check(V.levelsSurf > 0 && V.gate && V.oneLevel === 'err_amen_one_level/err_amen_one_level' && V.early === 'err_amen_too_early' && V.earlyEsc === 'err_amen_too_early', `lifts and escalators only where levels meet (${V.levelsSurf} on another level here; a single-level complex refuses them: ${V.oneLevel}) and not before they exist`);
+  check(!V.e1 && !V.e2 && V.w0 > V.w1 && V.w1 > V.w2 && V.flight === 7, `the change of level gets quicker: stairs ${V.w0} s → lifts ${V.w1} s → escalators ${V.w2} s on foot to the metro`);
+  check(V.paid === V.cost && V.vertical === 22 && V.upkeepAdded === 22, `charged once (${V.paid} ●), upkeep ${V.vertical} ● a month in the station upkeep`);
+  check(r.insp.lift === 'built' && r.insp.escal === 'built' && r.insp.flight === 7, `the hub inspector shows them (lifts ${r.insp.lift}, escalators ${r.insp.escal}, ${r.insp.flight} s per level)`);
+  const A = r.A;
+  check(A.rival && !A.first && /lift|escal/.test(A.ug) && (A.farLevels > 0 || !A.farV) && A.quiet && A.poor, `a rival railway adds ${A.ug} at its busy metro station (${A.log.join('; ')}); none after a quiet year, none when it lost money${A.farLevels ? '' : ', none at a single-level station'}`);
+  check(A.ren1 === 1 && A.capSame && A.cool, `a rival renovates or lists one important old station (${A.renLog.join('; ')}); capacity unchanged; not again within six years`);
   check(/xm metro/.test(r.diag) && /xm walk/.test(r.diag), 'the line diagram marks the metro stop and walking interchanges');
   check(r.map.lines >= 2 && r.map.metro >= 1 && r.map.allSq >= 1 && r.map.metroHasUg && r.map.mainNoUg, `the network map: ${r.map.lines} lines, ${r.map.metro} metro; metro stations as squares; filters for railway and metro`);
   check(r.throat.ok && r.throat.ends === 3 && r.throat.graph === 0, `the terminus-throat blueprint builds three dead-end tracks (${r.throat.ends})`);

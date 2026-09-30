@@ -17,7 +17,7 @@ import { vehicleToken, resolvePaint, customToken, parseCustom, isPreset, STRIPES
 import { MATS } from '../core/ModelBuilder.js';
 import { OVERLAYS } from './Overlays.js';
 import { SPACING_CHOICES } from '../trains/Lines.js';
-import { STATION_SERVICES, AMENITIES } from '../rail/Stations.js';
+import { STATION_SERVICES, AMENITIES, VERTICAL_AMEN } from '../rail/Stations.js';
 import { ERA_BANDS, bandOf } from '../world/Eras.js';
 
 const esc = escapeHtml;
@@ -405,12 +405,18 @@ export const RailUIMixin = {
     const cx = g.network && g.network.complex ? g.network.complex(s) : [];
     const kindIcon = (o) => (o.road ? 'bus' : layerOf(o.tile) ? 'tunnel' : 'station');
     const list = cx.slice(0, 6).map((c) => `<button class="pill link" data-act="jump" data-arg="${c.o.road ? 'roadstop' : 'station'}:${c.o.id}" data-tip="${this.tr('walk_s', { n: c.walk })}">${icon(kindIcon(c.o), 'mini')} ${esc(c.o.name || '?')} <small>${Math.max(1, Math.round(c.walk / 60))} ${this.tr('min')}</small></button>`).join('');
-    const amen = s.owner || s.service === 'freight' ? '' : AMENITIES.map((a) => {
+    // lifts and escalators (Phase 13) only where the complex spans levels
+    const levels = s.owner || s.service === 'freight' ? [] : S.otherLevels(s);
+    const vHas = VERTICAL_AMEN.some((a) => S.hasAmenity(s, a));
+    const upk = (a) => (COSTS.upkeep[a] ? ' · ' + this.tr('amen_upkeep', { n: COSTS.upkeep[a] }) : '');
+    const amen = s.owner || s.service === 'freight' ? '' : AMENITIES.filter((a) => !VERTICAL_AMEN.includes(a) || levels.length || S.hasAmenity(s, a)).map((a) => {
       const has = S.hasAmenity(s, a), e = has ? null : S.amenityError(s, a);
-      return `<button class="chip small ${has ? 'on' : ''}" data-act="stAmen" data-arg="${s.id}:${a}" ${has || (e && e !== 'err_no_money') ? 'disabled' : ''} data-tip="${this.tr('amen_' + a + '_desc')}${e && !has ? ' · ' + this.tr(e) : ''}">${icon(a === 'pr' ? 'car' : 'bike', 'mini')}<b>${this.tr('amen_' + a)}</b>${has ? '' : `<small>${fmt(S.amenityCost(a))}●</small>`}</button>`;
+      return `<button class="chip small ${has ? 'on' : ''}" data-act="stAmen" data-arg="${s.id}:${a}" data-field="amenity" data-value="${a}" data-state="${has ? 'built' : e || 'available'}" aria-pressed="${has}" ${has || (e && e !== 'err_no_money') ? 'disabled' : ''} data-tip="${this.tr('amen_' + a + '_desc')}${upk(a)}${e && !has ? ' · ' + this.tr(e) : ''}">${icon({ pr: 'car', bike: 'bike', lift: 'lift', escal: 'escal' }[a], 'mini')}<b>${this.tr('amen_' + a)}</b>${has ? `<small>${this.tr('amen_have')}</small>` : `<small>${fmt(S.amenityCost(a))}●</small>`}</button>`;
     }).join('');
+    // how long a change of level takes here, and what it would take with the best
+    const flight = levels.length || vHas ? `<p class="small" data-field="level-change" data-value="${S.flightS(s)}">${icon(vHas ? (S.hasAmenity(s, 'escal') ? 'escal' : 'lift') : 'up', 'mini')} ${this.tr('st_flight', { s: S.flightS(s), n: levels.length })}</p>` : '';
     if (!list && !amen) return '';
-    return `${list ? `<h4>${this.tr('st_complex')}</h4><div class="pill-row complex">${list}</div>` : ''}${amen ? `<div class="pill-row amen">${amen}</div>` : ''}`;
+    return `${list ? `<h4>${this.tr('st_complex')}</h4><div class="pill-row complex">${list}</div>` : ''}${flight}${amen ? `<div class="pill-row amen" data-section="station-amenities">${amen}</div>` : ''}`;
   },
   // below or above the ground (Phase 11): the level, the platform
   // arrangement, the street entrance and what the structure costs each month

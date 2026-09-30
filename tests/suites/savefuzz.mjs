@@ -50,13 +50,17 @@ export function mutate(d, r) {
 
 // replay recorded mutations ("op:path.to.key") — used by the failure corpus
 export function applyOps(d, ops) {
-  for (const o of ops) {
+  for (let o of ops) {
+    // set:path=json replaces a value (Phase 13 targeted mutations)
+    let setTo;
+    if (o.startsWith('set:')) { const eq = o.indexOf('='); setTo = JSON.parse(o.slice(eq + 1)); o = o.slice(0, eq); }
     const i = o.indexOf(':'), op = o.slice(0, i), p = o.slice(i + 1).split('.').map((k) => (/^\d+$/.test(k) ? +k : k));
     let parent = d; for (const k of p.slice(0, -1)) parent = parent && parent[k];
     if (!parent || typeof parent !== 'object') throw new Error('corpus path not found: ' + o);
     const k = p[p.length - 1], v = parent[k];
     const set = { null: null, str: 'x', neg: -7, huge: 1e15, zero: 0, obj: {}, arr: [], bool: true }[op];
-    if (op === 'delete') { if (Array.isArray(parent)) parent.splice(k, 1); else delete parent[k]; }
+    if (op === 'set') parent[k] = setTo;
+    else if (op === 'delete') { if (Array.isArray(parent)) parent.splice(k, 1); else delete parent[k]; }
     else if (op === 'drop') v.splice(0, 1);
     else if (op === 'dup') v.push(JSON.parse(JSON.stringify(v[0])));
     else if (op === 'rev') v.reverse();
@@ -92,13 +96,20 @@ export async function run({ browser, base, quick, args }) {
     for (let i = 0; i < g.net.NN && n < 400; i++) if (g.net.conn[i]) { g.net.markBuilt(i, 1890 + (n % 150), g.net.tier[i] >= 2); n++; }
     g.economy.coins = 1e7;
     for (const kind of ['airport', 'dock']) for (let i = N * 6; i < N * N - N * 6; i += 3) if (!R.stopError(i, kind)) { const st = R.addStop(i, kind).stop; if (st) { st.yb = 1910; st.reno = 1975; } break; }
+    // (Phase 13: lifts, escalators and a listed station; rival railways with
+    // their passenger-flow memory)
+    const st0 = g.stations.list.find((s) => !s.owner);
+    if (st0) { st0.amen = ['bike', 'lift', 'escal']; st0.heritage = true; }
+    g.rivals.start(8);
+    for (const r of g.rivals.list) if (r.rail) { const P = g.rivals.planner(r); P.st.flow = st0 ? { [st0.id]: 1200 } : {}; P.st.memory = { vertical: 30, renovate: 50 }; }
     const d = JSON.parse(JSON.stringify(g.serialize()));
     return d;
   });
   const eraFields = !!(v3.net && v3.net.years) && JSON.stringify(v3).includes('"reno":1975');
+  const p13Fields = JSON.stringify(v3).includes('"escal"') && JSON.stringify(v3).includes('"flow":');
   errors.length = 0;
   const lines = [];
-  let bad = 0, started = 0, failed = 0, eraCases = 0;
+  let bad = 0, started = 0, failed = 0, eraCases = 0, p13Cases = 0;
   // the jobs: corpus entries first (cheap, known bugs), then the random cases
   const jobs = [...corpus.map((e) => ({ corpus: e })), ...Array.from({ length: N }, (_, c) => ({ caseNo: seed0 + c }))];
   for (const job of jobs) {
@@ -121,6 +132,19 @@ export async function run({ browser, base, quick, args }) {
         const tgt = r() < 0.5 && base0.net && base0.net.years && typeof base0.net.years === 'object' ? ['net.years', base0.net.years] : si >= 0 ? [`road.stops.${si}`, base0.road.stops[si]] : null;
         if (tgt) eraCases++;
         if (tgt) log.push(...mutate(tgt[1], r).map((o) => { const i = o.indexOf(':'); return `${o.slice(0, i)}:${tgt[0]}.${o.slice(i + 1)}`; }));
+      }
+      // every fourth case (another quarter) mutates a Phase 13 field directly:
+      // a station's amenities (lifts, escalators) or a rival railway's flow memory
+      if (!prodBase && caseNo % 4 === 3) {
+        const found = [];
+        const walk = (o, pth) => { if (!o || typeof o !== 'object' || found.length > 40) return; for (const k of Object.keys(o)) { if ((k === 'amen' && Array.isArray(o[k])) || (k === 'flow' && o[k] && typeof o[k] === 'object')) found.push([pth.concat(k).join('.'), o, k]); walk(o[k], pth.concat(k)); } };
+        walk(base0, []);
+        if (found.length) {
+          const [pth, parent, k] = found[Math.floor(r() * found.length)];
+          p13Cases++;
+          const junk = [['lift', 'lift', 'zzz', 7, null], 'escal', { lift: 1 }, [], ['escal', 'escal'], { 1: 'x', 2: -1e15, 3: null }, 1e15][Math.floor(r() * 7)];
+          parent[k] = junk; log.push(`set:${pth}=${JSON.stringify(junk)}`);
+        }
       }
       label = job.corpus ? `corpus "${job.corpus.id}" (case ${caseNo})` : `case ${caseNo}`;
     }
@@ -174,6 +198,8 @@ export async function run({ browser, base, quick, args }) {
     }
   }
   if (!eraFields) { bad++; lines.push('FAIL the generated save lacks the era fields (net.years, renovated terminals)'); }
+  if (!p13Fields) { bad++; lines.push('FAIL the generated save lacks the Phase 13 fields (lifts, escalators, rival flow memory)'); }
+  else lines.push(`     ${p13Cases} cases mutated lifts, escalators or a rival's flow memory directly`);
   lines.push(`cases ${N}${args.shard ? ` (shard ${args.shard}: ${seed0}–${seed0 + N - 1})` : ''}${corpus.length ? ` + ${corpus.length} corpus` : ''}: started ${started}, rejected with load-failed dialog ${failed}, bad ${bad}; ${eraCases} with a direct era-field mutation`);
   await ctx.close();
   return { ok: bad === 0, lines };

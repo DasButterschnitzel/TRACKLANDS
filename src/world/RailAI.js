@@ -56,7 +56,7 @@ export const AI_LEVELS = {
 export const AI_LEVEL_IDS = Object.keys(AI_LEVELS);
 
 const STAGES = ['discover', 'evaluate', 'design', 'budget', 'approve', 'construct', 'operate', 'review', 'retired'];
-const COOLDOWN = { train: 4, loop: 8, double: 18, platform: 10, track: 12, modern: 12, electrify: 24, retire: 24 };
+const COOLDOWN = { train: 4, loop: 8, double: 18, platform: 10, track: 12, modern: 12, electrify: 24, retire: 24, renovate: 72, vertical: 36 };
 const COURTESY = 2;
 const TRAIN_OP = 45;                        // a typical small train's running cost a game month                         // tiles kept free around the player's stations and depots
 
@@ -121,7 +121,7 @@ export class RailPlanner {
     for (const p of ops) this.observe(p);
     if (this.r.money > 0) for (const p of this.rng('ops').shuffle(ops.slice())) if (this.improve(p)) break;
     // yearly: review results, modernize the fleet
-    if (m % 12 === 0) { for (const p of ops) this.review(p); this.modernize(); this.renovate(); }
+    if (m % 12 === 0) { for (const p of ops) this.review(p); this.modernize(); this.renovate(); this.vertical(); }
     // strategic thinking (spread over companies by their index)
     if ((m + this.r.idx) % this.L.think === 0) this.think(m);
   }
@@ -839,17 +839,62 @@ export class RailPlanner {
     this.remember('modern', COOLDOWN.modern);
     this.note('modern', `replaces ${oldM.name} by ${newM.name} on ${this.endName(worst.p.a)} → ${this.endName(worst.p.b)}`, { project: worst.p.id });
   }
-  // one station a year is brought up to the day's style once it is two
-  // architectural eras behind (Eras.js), when there is money to spare
+  // a station is brought up to the day's style (Phase 13 rules): only one
+  // every six years; only with healthy finances (money well above the
+  // reserve, a profitable last year, not for sale); only an important
+  // station (among its three busiest, in use) that is two architectural eras
+  // behind (Eras.js). Renovation changes the look, never the capacity. Now
+  // and then a company keeps a very old station as it is instead (listed).
+  healthy() {
+    const r = this.r, last = r.hist && r.hist.length ? r.hist[r.hist.length - 1].profit : r.lastProfit;
+    return !r.forSale && r.money >= this.reserve() * 2 && (last || 0) > 0 && r.loan <= r.money;
+  }
+  importance(s) { return (s.picked || 0) + (s.delivered || 0) + 50 * (s.tracks ? s.tracks.length : 1) + 200 * (s.level || 0); }
   renovate() {
     const g = this.game, S = g.stations;
-    if (this.blocked('renovate') || this.r.money < this.reserve() * 2) return;
+    if (this.blocked('renovate') || !this.healthy()) return;
     const now = bandOf(this.year());
-    const st = S.list.filter((s) => s.owner === this.r.id && bandOf(S.lookYear(s)) <= now - 2).sort((a, b) => S.lookYear(a) - S.lookYear(b))[0];
-    if (!st) return;
+    const mine = S.list.filter((s) => s.owner === this.r.id).sort((a, b) => this.importance(b) - this.importance(a) || a.id - b.id);
+    const st = mine.slice(0, 3).find((s) => !s.heritage && (s.picked || 0) + (s.delivered || 0) > 0 && bandOf(S.lookYear(s)) <= now - 2);
+    if (!st) { this.remember('renovate', 12); return; }
+    // a very old look is sometimes kept for good (about one decision in five)
+    if (this.year() - S.lookYear(st) >= 60 && this.rng('heritage:' + st.id).next() < 0.2) {
+      st.heritage = true;
+      this.remember('renovate', COOLDOWN.renovate);
+      this.note('heritage', `keeps ${st.name} as it is (listed)`, {});
+      g.events.emit('stationListed', st);
+      return;
+    }
     const err = this.as(() => S.renovate(st));
-    this.remember('renovate', 12);
+    this.remember('renovate', err ? 12 : COOLDOWN.renovate);
     if (!err) this.note('renovate', `renovates ${st.name}`, {});
+  }
+  // lifts or escalators (Phase 13): only at a busy station where levels meet
+  // (a metro below, a viaduct above, the street), with healthy finances,
+  // one at a time
+  vertical() {
+    const g = this.game, S = g.stations;
+    if (this.blocked('vertical') || !this.healthy() || !S.otherLevels) return;
+    // (from a save: anything but a plain map of numbers starts afresh)
+    if (!this.st.flow || typeof this.st.flow !== 'object' || Array.isArray(this.st.flow)) this.st.flow = {};
+    const flow = this.st.flow;
+    let best = null;
+    for (const s of S.list) {
+      if (s.owner !== this.r.id) continue;
+      const tot = (s.picked || 0) + (s.delivered || 0), was = flow[s.id];
+      flow[s.id] = tot;
+      if (!Number.isFinite(was) || s.service === 'freight') continue;
+      const perYear = tot - was;
+      if (perYear < 900 || S.hasAmenity(s, 'escal')) continue;
+      if (!S.otherLevels(s).length) continue;
+      if (!best || perYear > best.n) best = { s, n: perYear };
+    }
+    for (const id in flow) if (!S.byId(+id)) delete flow[id];
+    if (!best) return;
+    const a = !S.hasAmenity(best.s, 'lift') && S.amenityError(best.s, 'escal') === 'err_amen_too_early' ? 'lift' : S.hasAmenity(best.s, 'lift') || best.n >= 2400 ? 'escal' : 'lift';
+    const err = this.as(() => S.buildAmenity(best.s, a));
+    this.remember('vertical', err ? 12 : COOLDOWN.vertical);
+    if (!err) this.note('vertical', `adds ${a === 'escal' ? 'escalators' : 'lifts'} at ${best.s.name} (${best.n} passengers a year)`, {});
   }
   electrify(p) {
     const g = this.game, S = g.stations;

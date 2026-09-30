@@ -87,6 +87,8 @@ export class Economy {
     }
     for (const st of g.stations.list) {
       const L = layerOf(st.tile);
+      // lifts and escalators (Phase 13): their own monthly upkeep, at any level
+      if (st.amen) for (const a of st.amen) if (U[a]) { const s = get(ownerIdx(st.owner)); s.station += U[a]; s.vertical = (s.vertical || 0) + U[a]; }
       if (!L) continue;
       const v = U.station[L] * Math.max(1, g.stations.allTiles(st).length) * (1 + (st.level || 0) * 0.25);
       const s = get(ownerIdx(st.owner)); s.station += v; s.stLayers[L] += v;

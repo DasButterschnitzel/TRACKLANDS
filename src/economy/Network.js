@@ -289,8 +289,12 @@ export class TransportNetwork {
     // platform, a viaduct and the street
     const FLIGHTS = [0, -1, -2, 1];
     const stairs = (a, b) => Math.abs(FLIGHTS[layerOf(this.nodes.get(a).tile)] - FLIGHTS[layerOf(this.nodes.get(b).tile)]);
+    // lifts and escalators (Phase 13): the better of the two ends sets the
+    // time per flight (road stops have the stairs)
+    const flight = (k) => { const o = this.nodes.get(k).o; return o.road || !S.flightS ? STAIRS_S : S.flightS(o); };
     const link = (a, b, d, mul = 1) => {
-      const w = (12 + WALK_S * d + STAIRS_S * stairs(a, b)) / mul;
+      const f = stairs(a, b);
+      const w = (12 + WALK_S * d + (f ? f * Math.min(flight(a), flight(b)) : 0)) / mul;
       this.edge(a, b, { svc: -1, mode: 'walk', ivt: w, wait: 0, dist: d, walk: true });
       this.edge(b, a, { svc: -1, mode: 'walk', ivt: w, wait: 0, dist: d, walk: true });
     };

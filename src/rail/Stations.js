@@ -8,11 +8,13 @@ import { cleanFin } from '../economy/Ledger.js';
 import { CargoFlows } from '../economy/Flows.js';
 import * as THREE from 'three';
 import { N, TILE, DX, DZ, opp, step, tx, tz, idx, inMap, cheb, tileCX, tileCZ , layerOf, baseTile, LAYERS} from '../util.js';
-import { STATION, COSTS, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen, STORE_CLASSES, STORE_BASE, CARGO_STORE, CONTAINER_CARGO, facilitySlots } from '../config.js';
+import { STATION, COSTS, VERTICAL, STATION_STYLES, CARGO, TOWN_ACCEPTS, INDUSTRIES, FACILITIES, PLATFORM_ROLES, LOCOS, WAGONS, CONSIST, locoLen, STORE_CLASSES, STORE_BASE, CARGO_STORE, CONTAINER_CARGO, facilitySlots } from '../config.js';
 import { ModelBuilder, meshFrom, shade } from '../core/ModelBuilder.js';
 import { K_NORMAL, K_UNDER, K_DEEP, K_ELEV } from './RailNetwork.js';
 // ground a station can stand on: open land, a metro box underground, a viaduct
-export const AMENITIES = ['bike', 'pr'];
+export const AMENITIES = ['bike', 'pr', 'lift', 'escal'];
+// the ones that change the level (Phase 13)
+export const VERTICAL_AMEN = ['lift', 'escal'];
 const STATION_KINDS_OK = new Set([K_NORMAL, K_UNDER, K_DEEP, K_ELEV]);
 import { t as tr } from '../i18n.js';
 import { stationComplexModel, depotModel, stationModel, metroEntrance } from './StationModels.js';
@@ -60,12 +62,26 @@ export class StationSystem {
   // access amenities (Phase 11): bike parking brings the streets around a
   // little closer, park & ride the towns a few tiles further out
   hasAmenity(stn, a) { return !!(stn.amen && stn.amen.includes(a)); }
-  amenityCost(a) { return Math.round((a === 'pr' ? COSTS.parkRide : COSTS.bikePark) * this.game.economy.costs.mul()); }
+  amenityCost(a) { return Math.round(({ pr: COSTS.parkRide, bike: COSTS.bikePark, lift: COSTS.lift, escal: COSTS.escalator }[a] || 0) * this.game.economy.costs.mul()); }
+  // lifts and escalators (Phase 13): only where the station complex spans
+  // levels (a metro platform below a surface station or a street stop, a
+  // viaduct above one) — elsewhere they would carry nobody anywhere
+  otherLevels(stn) {
+    const L = layerOf(stn.tile), N_ = this.game.network;
+    if (!N_ || !N_.complex) return [];
+    return N_.complex(stn).filter((c) => layerOf(c.o.tile) !== L);
+  }
+  // seconds per flight between levels here: escalators, a lift or the stairs
+  flightS(stn) { return this.hasAmenity(stn, 'escal') ? VERTICAL.escal.flight : this.hasAmenity(stn, 'lift') ? VERTICAL.lift.flight : VERTICAL.stairs.flight; }
   amenityError(stn, a) {
     if (!AMENITIES.includes(a)) return 'err_unknown';
     if (this.hasAmenity(stn, a)) return 'err_done';
     if (stn.service === 'freight') return 'err_amen_freight';
     if (a === 'pr' && this.isUnderground(stn) && stn.entrance < 0) return 'err_amen_no_street';
+    if (VERTICAL_AMEN.includes(a)) {
+      if (this.game.ledger && this.game.ledger.year() < VERTICAL[a].from) return 'err_amen_too_early';
+      if (!this.otherLevels(stn).length) return 'err_amen_one_level';
+    }
     if (!this.game.economy.canAfford(this.amenityCost(a))) return 'err_no_money';
     return null;
   }
