@@ -379,8 +379,14 @@ export class Input {
 
   onKey(e, down) {
     const tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    const k = e.key.toLowerCase();
+    const k = (e.key || '').toLowerCase();
+    // in a text field only Escape counts: it leaves the field and closes what is on top
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      if (k !== 'escape' || !down || !this.game.running) return;
+      e.target.blur();
+      if (!this.game.ui.closeTop()) this.game.construction.setTool('select');
+      return;
+    }
     if (down) this.keys.add(k); else { this.keys.delete(k); return; }
     const g = this.game;
     if (!g.running) return;

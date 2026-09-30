@@ -159,17 +159,17 @@ export class Construction {
       if (this.tool === 'station') this.showCoverage(tile);
     } else if (this.tool === 'decor') {
       const err = g.decor.placeError(tile, this.decor);
-      ok = !err; info = err ? g.ui.tr(err) : `${fmt(g.economy.costs.decor(DECORATIONS.find((d) => d.id === this.decor)))} ●`;
+      ok = !err; info = err ? g.ui.errLine(err) : `${fmt(g.economy.costs.decor(DECORATIONS.find((d) => d.id === this.decor)))} ●`;
     } else if (this.tool === 'signal') {
       const d = this.hoverP ? this.dirToward(tile, this.hoverP) : null;
       const err = d == null ? 'err_signal_no_track' : g.net.canPlaceSignal(tile, d);
       ok = !err;
       const cur = d != null ? g.net.signalAt(tile, d) : null;
-      info = err ? g.ui.tr(err) : cur ? g.ui.tr('hint_signal_cycle') : `${g.ui.tr('sig_' + this.signalType)} · ${fmt(g.economy.costs.signal())} ●`;
+      info = err ? g.ui.errLine(err) : cur ? g.ui.tr('hint_signal_cycle') : `${g.ui.tr('sig_' + this.signalType)} · ${fmt(g.economy.costs.signal())} ●`;
     } else if (this.tool === 'waypoint') {
       const has = g.net.waypoints.has(tile);
       const err = has ? null : this.waypointError(tile);
-      ok = !err; info = err ? g.ui.tr(err) : has ? g.ui.tr('hint_waypoint_remove') : `${fmt(g.economy.costs.waypoint())} ●`;
+      ok = !err; info = err ? g.ui.errLine(err) : has ? g.ui.tr('hint_waypoint_remove') : `${fmt(g.economy.costs.waypoint())} ●`;
     } else if (this.tool === 'bulldoze') {
       const what = this.bulldozeTarget(tile);
       ok = what != null;
@@ -181,7 +181,7 @@ export class Construction {
     } else if (this.tool === 'roadstop') {
       const err = g.roads.stopError(tile, this.stopKind || 'bus');
       const kind = this.stopKind || 'bus';
-      ok = !err; info = err ? g.ui.tr(err) : `${g.ui.tr('tool_roadstop_' + kind)} · ${fmt(g.roads.stopCost(kind))} ●`;
+      ok = !err; info = err ? g.ui.errLine(err) : `${g.ui.tr('tool_roadstop_' + kind)} · ${fmt(g.roads.stopCost(kind))} ●`;
       if (kind === 'airport') {
         // the 3x3 airfield around the pointer
         let k = 0;
@@ -198,7 +198,7 @@ export class Construction {
       else { ok = g.roads.tileOk(tile); info = ok ? g.ui.tr('hint_drag_road') : g.ui.tr('err_road_blocked'); }
     } else if (this.tool === 'track') {
       const r = g.net.tileBlockedReason(tile);
-      ok = !r; info = r ? g.ui.tr(r) : g.ui.tr('hint_drag_track');
+      ok = !r; info = r ? g.ui.errLine(r) : g.ui.tr('hint_drag_track');
     }
     this.ghost.count = 1;
     this.putQuad(this.ghost, 0, tile, ok ? (this.tool === 'bulldoze' ? 0xe0a33a : 0x3fc8b8) : 0xd0503f);
@@ -213,7 +213,7 @@ export class Construction {
     for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (inMap(x + dx, z + dz)) this.putQuad(this.ghost, k++, idx(x + dx, z + dz), err ? 0xd0503f : 0x3fc8b8);
     this.ghost.count = k; this.flush(this.ghost);
     const t = err ? null : g.company.nearestTown(tile);
-    g.ui.cursorInfo(err ? g.ui.tr(err) : `${g.ui.tr('hq_title')} · ${fmt(g.company.hqCost())} ●${t ? ' · ' + t.name : ''}`, !err);
+    g.ui.cursorInfo(err ? g.ui.errLine(err) : `${g.ui.tr('hq_title')} · ${fmt(g.company.hqCost())} ●${t ? ' · ' + t.name : ''}`, !err);
   }
   // fund a new industry: a 2x2 site with its corner at the tile
   foundKind() {
@@ -231,7 +231,7 @@ export class Construction {
     this.flush(this.ghost);
     const near = g.industries.nearTown(x, z);
     const warn = !err && near.town && near.gap < INDUSTRY_INVEST.townGap ? ' · ' + g.ui.tr('found_near_town', { name: near.town.name }) : '';
-    g.ui.cursorInfo(err ? g.ui.tr(err) : `${g.ui.tr('ind_' + type)} · ${fmt(g.industries.foundCost(type))} ●${warn}`, !err);
+    g.ui.cursorInfo(err ? g.ui.errLine(err) : `${g.ui.tr('ind_' + type)} · ${fmt(g.industries.foundCost(type))} ●${warn}`, !err);
   }
   placeFound(tile) {
     const g = this.game, type = this.foundKind();
@@ -556,7 +556,7 @@ export class Construction {
       if (!afford) s += ` · ${ui.tr('err_no_money')}`;
       if (this.trackCheck(plan)) s += ` · ${ui.tr('works_will_wait')}`;
       ui.cursorInfo(s, afford);
-    } else ui.cursorInfo(ui.tr(plan.reason || 'err_no_path'), false);
+    } else ui.cursorInfo(ui.errLine(plan.reason || 'err_no_path'), false);
   }
 
   // single track is cheaper; dragging double track over single track doubles it
@@ -717,7 +717,7 @@ export class Construction {
       for (const t of v.tiles.length ? v.tiles : [s.a ?? s.tile ?? (s.key >> 3)]) { if (k >= 400) break; this.putQuad(this.ghost, k++, t, v.error ? 0xd0503f : 0x6ad0ff); }
     }
     this.ghost.count = k; this.flush(this.ghost);
-    g.ui.cursorInfo(r.error ? g.ui.tr(r.error) : `${g.ui.tr(bp.name.startsWith('bp_') ? bp.name : 'bp_placed')} · ${fmt(cost)} ●${bad ? ' · ' + g.ui.tr('bp_blocked_n', { n: bad }) : ''}`, !r.error && !bad);
+    g.ui.cursorInfo(r.error ? g.ui.errLine(r.error) : `${g.ui.tr(bp.name.startsWith('bp_') ? bp.name : 'bp_placed')} · ${fmt(cost)} ●${bad ? ' · ' + g.ui.tr('bp_blocked_n', { n: bad }) : ''}`, !r.error && !bad);
   }
   placeBlueprint(tile) {
     const g = this.game, bp = g.blueprints.byId(this.bpId);
@@ -846,7 +846,7 @@ export class Construction {
       this.ghost.count = k; this.flush(this.ghost);
       const ui = g.ui;
       if (plan.ok) ui.cursorInfo(`${ui.tr('lane_len', { n: plan.tiles.length })} · ${fmt(plan.cost)} ●`, g.economy.canAfford(plan.cost));
-      else ui.cursorInfo(plan.reason === 'err_lane_permit' ? ui.tr('err_lane_permit_town', { town: plan.town, n: plan.need }) : ui.tr(plan.reason || 'err_road_no_path'), false);
+      else ui.cursorInfo(plan.reason === 'err_lane_permit' ? ui.tr('err_lane_permit_town', { town: plan.town, n: plan.need }) : ui.errLine(plan.reason || 'err_road_no_path'), false);
       return;
     }
     if (this.roadMode === 'tram') {

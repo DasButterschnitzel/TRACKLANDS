@@ -73,6 +73,18 @@ export async function run({ browser, base }) {
     return a;
   });
   check(m.tool === 'track' && m.layer === 1 && m.under && m.mode === 'pair' && m.map, `chosen results: metro → track tool on layer ${m.layer} with the underground view; four tracks → ${m.mode}; metro map → map panel filtered to the metro`);
+  // discovery: with an empty field FIND shows everyday examples; one only fills the field
+  const ex = await page.evaluate(() => {
+    const app = window.__tracklands, ui = app.ui, g = app.game;
+    ui.searchQuery = ''; ui.openPanel('search');
+    const chips = [...document.querySelectorAll('#panel [data-section="find-examples"] [data-act="findTry"]')].map((b) => b.dataset.arg);
+    const tool0 = g.construction.tool, coins0 = g.economy.coins, sel0 = JSON.stringify(g.selection);
+    ui.actions.findTry(chips[0]);
+    const r = { chips, q: ui.searchQuery, rows: document.querySelectorAll('#find-body .find-row').length, same: g.construction.tool === tool0 && g.economy.coins === coins0 && JSON.stringify(g.selection) === sel0 && ui.panel === 'search', gone: !document.querySelector('#panel [data-section="find-examples"]') };
+    ui.closePanel(); ui.searchQuery = '';
+    return r;
+  });
+  check(ex.chips.length >= 4 && ex.q === ex.chips[0] && ex.rows > 0 && ex.same && ex.gone, `empty FIND shows examples (${ex.chips.join(', ')}); “${ex.q}” only fills the field and lists ${ex.rows} results, nothing is carried out`);
   // normalisation is plain JavaScript (the same in every engine)
   const nrm = await page.evaluate(async () => { const T = await import('./src/ui/ToolsUI.js'); return [T.norm('U-Bahn-Karte'), T.norm('Straße'), T.norm('ABREIẞEN'), T.norm('Bahnhöfe'), T.stem('stations'), T.stem('bahnhoefe'), T.editDistance('bahnof', 'bahnhof')]; });
   check(nrm.join('|') === 'u bahn karte|strasse|abreissen|bahnhofe|station|bahnhoef|1', `normalisation: ${nrm.join(' | ')}`);

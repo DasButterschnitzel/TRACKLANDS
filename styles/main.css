@@ -396,7 +396,7 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
   .lvl-bar { display: none; }
   .res { min-width: 0; flex: none; padding: 0 9px 0 6px; font-size: .9em; gap: 4px; }
   .speeds { height: 40px; padding: 2px; }
-  .speeds .spd { min-width: 30px; height: 34px; font-size: .82em; }
+  .speeds .spd { min-width: 32px; height: 34px; font-size: .82em; }
   #topbar .icon-btn, .menu-btn, .lvl, .res { height: 40px; }
   #topbar .icon-btn, .menu-btn { width: 40px; }
   #save-dot { display: none; }
@@ -624,8 +624,10 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
   #topbar .icon-btn[data-arg=settings] { display: none; }
   #menu-rail .rail-btn[data-arg=settings] { display: grid; }
   #menu-rail.open .rail-btn[data-arg=settings] { display: flex; }
-  #topbar { gap: 4px; }
-  .speeds .spd { min-width: 28px; }
+  #topbar { gap: 3px; }
+  .res { padding: 0 7px 0 5px; }
+  /* (touch targets stay at least 32 px wide, Phase 14) */
+  .speeds .spd { min-width: 32px; }
   /* phones: pause, 1×, 4×, 8× (2× stays on wider screens and the , . keys) */
   .speeds .spd[data-arg="2"] { display: none; }
 }
@@ -988,7 +990,7 @@ table.cmp th[scope=row] { color: var(--ink2); font-weight: 600; white-space: now
 .sharebar i + i { border-left: 2px solid var(--panel, #fff); }
 .spd.throttled { box-shadow: inset 0 -2px 0 var(--warn, #e0a030); }
 /* save safety and changelog */
-.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+.linkbtn { background: none; border: 0; padding: 0 2px; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; min-height: 24px; display: inline-flex; align-items: center; }   /* (a 24 px target, Phase 14) */
 ul.changes, ul.health { margin: 4px 0 12px; padding-left: 20px; }
 ul.changes li, ul.health li { margin: 3px 0; }
 ul.health li.bad { color: var(--bad, #c0392b); }
@@ -1052,3 +1054,16 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 .cat-nl .btn { min-height: 44px; }
 .cat-nl-result { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
 .cat-nl-result .chip { min-height: 32px; }
+
+/* overlay legend (Phase 14): a swatch shows the colour and the pattern */
+.ov-legend { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: center; max-width: min(92vw, 640px); padding: 6px 12px; border-radius: 12px; background: rgba(24,30,40,.82); color: #f4f6f8; font-size: 12px; pointer-events: none; }
+.ov-legend .lg-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.lg-sw { width: 16px; height: 16px; border-radius: 3px; display: inline-block; border: 1px solid rgba(255,255,255,.55); background: var(--c); }
+.lg-sw.pat1 { background: repeating-linear-gradient(45deg, var(--c) 0 3px, transparent 3px 6px); }
+.lg-sw.pat2 { background: radial-gradient(circle, var(--c) 2px, transparent 2.5px) 0 0 / 5px 5px; }
+.lg-sw.pat3 { background: transparent; border: 3px solid var(--c); }
+.lg-sw.pat4 { background: conic-gradient(var(--c) 25%, transparent 0 50%, var(--c) 0 75%, transparent 0) 0 0 / 8px 8px; }
+/* an error's "what to do" line (Phase 14) */
+.toast .fix { display: block; margin-top: 2px; font-weight: 400; opacity: .92; font-size: .92em; }
+.adv-why { margin-top: 3px; } .adv-why summary { cursor: pointer; font-size: .86em; opacity: .85; min-height: 24px; display: flex; align-items: center; } .adv-why small { display: block; opacity: .9; }
+.find-try { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 4px; }

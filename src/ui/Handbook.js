@@ -26,6 +26,13 @@ export const HANDBOOK = [
   { id: 'terminals', icon: 'airport', n: 4 },
   { id: 'standing', icon: 'company', n: 5 },
   { id: 'fleetcare', icon: 'depot', n: 4 },
+  { id: 'metro', icon: 'tunnel', n: 4 },
+  { id: 'corridors', icon: 'track', n: 4 },
+  { id: 'planning', icon: 'builder', n: 4 },
+  { id: 'complexes', icon: 'station', n: 4 },
+  { id: 'eras', icon: 'weather', n: 4 },
+  { id: 'find', icon: 'search', n: 4 },
+  { id: 'access', icon: 'settings', n: 4 },
   { id: 'saves', icon: 'save', n: 4 },
   { id: 'shortcuts', icon: 'settings', n: 10 },
 ];

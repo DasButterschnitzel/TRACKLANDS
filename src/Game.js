@@ -370,7 +370,8 @@ export class Game {
       if (waiting < cap * 0.25) out.push({ key: 'adv_line_saturated', train: l.trains[0].id, p: { name: this.lines.name(l), n: l.trains.length } });
     }
     for (const t of this.trains.mine()) if (t.slowT > 40) { const o = this.trains.byId(t.slowAhead); if (o) out.push({ key: 'adv_slow_ahead', train: t.id, p: { name: t.name, other: o.name } }); }
-    for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, p: { n: inc.trains.length } });
+    // (where the incident has no place, the train it hit is the way to it)
+    for (const inc of this.trains.incidents.slice(-3)) if (this.time - inc.time < 600) out.push({ key: 'adv_deadlock', tile: inc.tile, train: inc.tile < 0 && this.trains.byId(inc.victim) ? inc.victim : undefined, p: { n: inc.trains.length } });
     for (const t of this.trains.mine()) if (t._st.rating === 'overloaded') out.push({ key: 'adv_overloaded', train: t.id, p: { name: t.name } });
     return out;
   }

@@ -10,6 +10,27 @@ import { CARGO } from '../config.js';
 export const OVERLAYS = ['traffic', 'signals', 'blocks', 'routes', 'congestion', 'cargo', 'electrification', 'station', 'towns', 'ratings', 'industry', 'lines', 'trackcheck', 'profit', 'owners', 'roles'];
 // bad → fair → good (the same scale for every overlay that grades something)
 const grade = (v) => (v < 0.35 ? 0xe04a3a : v < 0.6 ? 0xf0b040 : 0x3ac070);
+// … and the same meaning without colour (Phase 14): a pattern per class,
+// 0 solid, 1 stripes, 2 dots, 3 outline, 4 checks
+export const PAT = { solid: 0, stripes: 1, dots: 2, outline: 3, checks: 4 };
+const gradeP = (v) => (v < 0.35 ? PAT.stripes : v < 0.6 ? PAT.dots : PAT.solid);
+const GREY = 0x8a8f96;
+const ROLE_COLS = [0x8a8f96, 0x4ad07a, 0xe04a6a, 0xd08a3a];
+const TIER_COLS = [0x8a7a6a, 0x7a8aa0, 0x3a8af0, 0xd060f0];
+const ST_ROLE = { any: [0x4ad07a, PAT.solid], passenger: [0x4a9af0, PAT.dots], freight: [0xd08a3a, PAT.stripes], express: [0xe04a6a, PAT.checks], through: [0x9a9aa0, PAT.outline] };
+// the legend of each overlay: colour, pattern and what it means (keys)
+const GRADE_LG = [[0xe04a3a, PAT.stripes, 'lg_bad'], [0xf0b040, PAT.dots, 'lg_fair'], [0x3ac070, PAT.solid, 'lg_good']];
+export const OVERLAY_LEGEND = {
+  towns: GRADE_LG, ratings: GRADE_LG,
+  profit: [[GREY, PAT.outline, 'lg_none'], [0xe04a3a, PAT.stripes, 'lg_low'], [0xf0b040, PAT.dots, 'lg_mid'], [0x3ac070, PAT.solid, 'lg_high']],
+  industry: [[GREY, PAT.outline, 'lg_unserved'], [0xe04a3a, PAT.stripes, 'lg_bad'], [0xf0b040, PAT.dots, 'lg_fair'], [0x3ac070, PAT.solid, 'lg_good']],
+  congestion: [[0x3a8a5a, PAT.solid, 'lg_free'], [0xf0d040, PAT.outline, 'lg_little'], [0xf09030, PAT.dots, 'lg_some'], [0xe03a2a, PAT.stripes, 'lg_much']],
+  roles: ROLE_COLS.map((c, i) => [c, [PAT.solid, PAT.dots, PAT.checks, PAT.stripes][i], ['role_any', 'role_local', 'role_express', 'role_freight'][i]]),
+  electrification: TIER_COLS.map((c, i) => [c, [PAT.outline, PAT.dots, PAT.solid, PAT.checks][i], 'tier_' + ['standard', 'reinforced', 'electric', 'highspeed'][i]]),
+  station: Object.entries(ST_ROLE).map(([k, [c, p]]) => [c, p, 'role_p_' + k]),
+  signals: [[0xf0c040, PAT.checks, 'lg_junction'], [0x4ab0e0, PAT.solid, 'lg_block']],
+  blocks: [[0x6ad08a, PAT.solid, 'lg_free_block'], [0xf0c040, PAT.dots, 'lg_reserved'], [0xe04a3a, PAT.stripes, 'lg_occupied']],
+};
 const SECTION_COLS = [0x5ab0e0, 0x6ad08a, 0xb08ae0, 0x4ad0c0, 0x8ab0ff, 0xa0d060, 0xe08ac0, 0x60c0a0, 0x7a9ae0, 0xc0b0f0];
 const ROUTE_COLS = [0xffd24a, 0x4ad0ff, 0xff7a4a, 0x8aff6a, 0xd07aff, 0xff4a9a, 0x4affd0, 0xffffff];
 
@@ -18,7 +39,29 @@ export class Overlays {
     this.game = game;
     this.mode = null;
     const g = new THREE.PlaneGeometry(TILE * 0.9, TILE * 0.9); g.rotateX(-Math.PI / 2);
-    this.quads = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false }), N * N);
+    // (a pattern per tile, not colour alone: aPat, see PAT)
+    this.pat = new Float32Array(N * N);
+    g.setAttribute('aPat', new THREE.InstancedBufferAttribute(this.pat, 1));
+    this.quads = new THREE.InstancedMesh(g, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, uniforms: { opacity: { value: 0.55 } },
+      vertexShader: `attribute float aPat; varying vec2 vUv; varying vec3 vCol; varying float vPat;
+void main() { vUv = uv; vPat = aPat;
+#ifdef USE_INSTANCING_COLOR
+  vCol = instanceColor;
+#else
+  vCol = vec3(1.0);
+#endif
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform float opacity; varying vec2 vUv; varying vec3 vCol; varying float vPat;
+void main() { float a = opacity;
+  if (vPat > 0.5 && vPat < 1.5) { if (fract((vUv.x + vUv.y) * 3.0) < 0.5) a *= 0.22; }
+  else if (vPat > 1.5 && vPat < 2.5) { vec2 c = fract(vUv * 3.0) - 0.5; if (length(c) > 0.3) a *= 0.22; }
+  else if (vPat > 2.5 && vPat < 3.5) { vec2 e = min(vUv, 1.0 - vUv); if (min(e.x, e.y) > 0.15) a *= 0.18; }
+  else if (vPat > 3.5) { vec2 q = floor(vUv * 4.0); if (mod(q.x + q.y, 2.0) > 0.5) a *= 0.22; }
+  gl_FragColor = vec4(vCol, a);
+  #include <colorspace_fragment>
+}`,
+    }), N * N);
     this.quads.count = 0; this.quads.frustumCulled = false; this.quads.renderOrder = 4;
     this.quads.setColorAt(0, new THREE.Color(1, 1, 1));
     this.lineGeo = new THREE.BufferGeometry();
@@ -46,8 +89,9 @@ export class Overlays {
   }
   clear() { this.quads.count = 0; this.cols.count = 0; this.lineGeo.setAttribute('position', new THREE.Float32BufferAttribute([], 3)); this.lineGeo.setAttribute('color', new THREE.Float32BufferAttribute([], 3)); }
 
-  quad(k, tile, col, lift = 0.5) {
+  quad(k, tile, col, lift = 0.5, pat = 0) {
     const net = this.game.net;
+    this.pat[k] = pat;
     this._m.makeTranslation(tileCX(tile), net.railH(tile) + lift, tileCZ(tile));
     this.quads.setMatrixAt(k, this._m);
     this.quads.setColorAt(k, this._c.set(col));
@@ -80,7 +124,7 @@ export class Overlays {
           const s = sec[i];
           const base = s === -2 ? 0x9aa3ad : s === -3 ? 0xd8c7a0 : SECTION_COLS[(s * 2654435761 >>> 0) % SECTION_COLS.length];
           const col = bodies.has(i) ? 0xe04a3a : held ? 0xf0c040 : base;
-          this.quad(k++, i, col);
+          this.quad(k++, i, col, 0.5, bodies.has(i) ? PAT.stripes : held ? PAT.dots : PAT.solid);
         }
         break;
       }
@@ -90,8 +134,8 @@ export class Overlays {
         for (let i = 0; i < N * N; i++) {
           if (!net.conn[i]) continue;
           const v = net.waitHeat[i] / max;
-          if (v < 0.03) { this.quad(k++, i, 0x3a8a5a, 0.45); continue; }
-          this.quad(k++, i, v > 0.6 ? 0xe03a2a : v > 0.25 ? 0xf09030 : 0xf0d040);
+          if (v < 0.03) { this.quad(k++, i, 0x3a8a5a, 0.45, PAT.solid); continue; }
+          this.quad(k++, i, v > 0.6 ? 0xe03a2a : v > 0.25 ? 0xf09030 : 0xf0d040, 0.5, v > 0.6 ? PAT.stripes : v > 0.25 ? PAT.dots : PAT.outline);
         }
         break;
       }
@@ -104,18 +148,17 @@ export class Overlays {
       }
       case 'roles': {
         // track roles of four-track corridors (Phase 11), on every layer
-        const cols = [0x8a8f96, 0x4ad07a, 0xe04a6a, 0xd08a3a];
-        for (let i = 0; i < net.conn.length && k < N * N; i++) if (net.conn[i]) this.quad(k++, i, cols[net.roleOf(i)], net.role[i] ? 0.55 : 0.45);
+        const L = OVERLAY_LEGEND.roles;
+        for (let i = 0; i < net.conn.length && k < N * N; i++) if (net.conn[i]) { const r = net.roleOf(i); this.quad(k++, i, L[r][0], net.role[i] ? 0.55 : 0.45, L[r][1]); }
         break;
       }
       case 'electrification': {
-        const cols = [0x8a7a6a, 0x7a8aa0, 0x3a8af0, 0xd060f0];
-        for (let i = 0; i < N * N; i++) if (net.conn[i]) this.quad(k++, i, cols[net.tier[i]]);
+        const L = OVERLAY_LEGEND.electrification;
+        for (let i = 0; i < N * N; i++) if (net.conn[i]) { const e = L[net.tier[i]] || L[0]; this.quad(k++, i, e[0], 0.5, e[1]); }
         break;
       }
       case 'station': {
-        const roleCol = { any: 0x4ad07a, passenger: 0x4a9af0, freight: 0xd08a3a, express: 0xe04a6a, through: 0x9a9aa0 };
-        for (const s of g.stations.mine()) for (const tk of s.tracks) for (const t of tk.tiles) this.quad(k++, t, roleCol[tk.role] || 0xffffff);
+        for (const s of g.stations.mine()) for (const tk of s.tracks) for (const t of tk.tiles) { const r = ST_ROLE[tk.role] || [0xffffff, PAT.solid]; this.quad(k++, t, r[0], 0.5, r[1]); }
         for (const d of g.stations.myDepots()) this.quad(k++, d.tile, 0xe0a33a);
         for (const [t] of net.waypoints) this.quad(k++, t, 0xffffff);
         break;
@@ -123,9 +166,9 @@ export class Overlays {
       case 'towns': {
         for (const t of g.towns.list) {
           if (!g.progression.regionUnlocked(t.region)) continue;
-          const col = grade((g.authority ? g.authority.rating(t) : 50) / 100);
-          for (const i of t.roadSet || []) if (k < N * N) this.quad(k++, i, col, 0.35);
-          if (t.buildings) for (const b of t.buildings) if (k < N * N && b.tile != null) this.quad(k++, b.tile, col, 0.35);
+          const rv = (g.authority ? g.authority.rating(t) : 50) / 100, col = grade(rv), pat = gradeP(rv);
+          for (const i of t.roadSet || []) if (k < N * N) this.quad(k++, i, col, 0.35, pat);
+          if (t.buildings) for (const b of t.buildings) if (k < N * N && b.tile != null) this.quad(k++, b.tile, col, 0.35, pat);
         }
         break;
       }
@@ -137,7 +180,7 @@ export class Overlays {
           if (!cs.length || !R) continue;
           const v = Math.min(...cs.map((c) => R.rating(s, c)));
           const tiles = s.tracks ? s.tracks.flatMap((tk) => tk.tiles) : [s.tile];
-          for (const t of tiles) if (k < N * N) this.quad(k++, t, grade(v));
+          for (const t of tiles) if (k < N * N) this.quad(k++, t, grade(v), 0.5, gradeP(v));
         }
         break;
       }
@@ -147,7 +190,7 @@ export class Overlays {
         const list = g.analytics ? g.analytics.stopGrades() : [];
         for (const { s, v, rev } of list) {
           const tiles = s.tracks ? s.tracks.flatMap((tk) => tk.tiles) : g.roads && s.road ? g.roads.stopTiles(s) : [s.tile];
-          for (const t of tiles) if (k < N * N) this.quad(k++, t, rev > 0 ? grade(v) : 0x8a8f96);
+          for (const t of tiles) if (k < N * N) this.quad(k++, t, rev > 0 ? grade(v) : GREY, 0.5, rev > 0 ? gradeP(v) : PAT.outline);
           if (rev > 0 && n < this.cols.instanceMatrix.count) {
             this._m.makeScale(1.2, 0.2 + v * 4, 1.2).setPosition(tileCX(s.tile), Math.max(0, g.world.view.heightAt(tileCX(s.tile), tileCZ(s.tile))) + 1.2, tileCZ(s.tile));
             this.cols.setMatrixAt(n, this._m); this.cols.setColorAt(n, this._c.set(grade(v))); n++;
@@ -163,8 +206,9 @@ export class Overlays {
         const I = g.industries;
         for (const ind of I.list) {
           if (!g.progression.regionUnlocked(ind.region)) continue;
-          const col = I.linkedStations(ind).length ? grade(I.transportShare(ind)) : 0x8a8f96;
-          for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) this.quad(k++, (ind.z + dz) * N + ind.x + dx, col, 0.9);
+          const linked = I.linkedStations(ind).length, sh = linked ? I.transportShare(ind) : 0;
+          const col = linked ? grade(sh) : GREY, pat = linked ? gradeP(sh) : PAT.outline;
+          for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) this.quad(k++, (ind.z + dz) * N + ind.x + dx, col, 0.9, pat);
           if (ind.stake > 0 && n < this.cols.instanceMatrix.count) {
             this._m.makeScale(2.2, 0.3 + ind.stake * 3.2, 2.2).setPosition((ind.x + 1) * TILE, I.baseHeight(ind) + 2.6, (ind.z + 1) * TILE);
             this.cols.setMatrixAt(n, this._m); this.cols.setColorAt(n, this._c.set(0x3a7ae0)); n++;
@@ -190,8 +234,8 @@ export class Overlays {
       case 'signals': {
         for (let i = 0; i < N * N; i++) {
           if (!net.conn[i]) continue;
-          if (net.isJunction(i)) this.quad(k++, i, 0xf0c040, 0.45);
-          else if (net.runId[i] >= 0) this.quad(k++, i, 0x4ab0e0, 0.45);
+          if (net.isJunction(i)) this.quad(k++, i, 0xf0c040, 0.45, PAT.checks);
+          else if (net.runId[i] >= 0) this.quad(k++, i, 0x4ab0e0, 0.45, PAT.solid);
         }
         break;
       }
@@ -250,6 +294,7 @@ export class Overlays {
       default: break;
     }
     this.quads.count = k;
+    this.quads.geometry.attributes.aPat.needsUpdate = true;
     this.quads.instanceMatrix.needsUpdate = true;
     if (this.quads.instanceColor) this.quads.instanceColor.needsUpdate = true;
   }

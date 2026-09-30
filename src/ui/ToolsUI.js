@@ -113,6 +113,7 @@ export const ToolsUIMixin = {
     const g = this.game, B = g.bookmarks || [];
     const marks = B.map((b, i) => `<div class="fin-row"><button class="tag link" data-act="bmGo" data-arg="${i}">${icon('pin', 'mini')} ${esc(b.name)}</button><button class="icon-btn small" data-act="bmDel" data-arg="${i}" aria-label="${this.tr('bm_delete', { name: esc(b.name) })}">${icon('close')}</button></div>`).join('');
     return `<input class="search" type="search" id="find-q" placeholder="${this.tr('find_placeholder')}" aria-label="${this.tr('find_placeholder')}" value="${esc(this.searchQuery || '')}" data-input="findQuery" autocomplete="off"/>
+      ${this.searchQuery ? '' : `<div class="find-try" data-section="find-examples"><small class="muted">${this.tr('find_try')}</small> ${this.helpBtn('find')} ${this.tr('find_try_words').split('|').map((w) => `<button class="chip small" data-act="findTry" data-arg="${esc(w)}">${esc(w)}</button>`).join('')}</div>`}
       <div id="find-body" class="fin-list">${this.searchRows()}</div>
       <h3>${this.tr('bookmarks')}</h3>${marks || `<p class="muted small">${this.tr('bm_none')}</p>`}
       <div class="row wrap"><button class="btn small" data-act="bmAdd" ${B.length >= MAX_BOOKMARKS ? 'disabled' : ''}>${icon('plus', 'mini')} ${this.tr('bm_add')}</button></div>
@@ -161,6 +162,8 @@ export const ToolsUIMixin = {
     const g = () => this.game;
     const re = () => this.refreshPanel();
     return {
+      // an example only fills the field (Phase 14 discovery): nothing is carried out
+      findTry: (a) => { this.searchQuery = String(a).slice(0, 40); this.refreshPanel(); const q = document.getElementById('find-q'); if (q) q.focus(); },
       findCmd: (a) => {
         const [act, arg] = a.split(':'), G = g();
         this.closePanel();

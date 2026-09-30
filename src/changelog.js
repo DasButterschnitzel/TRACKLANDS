@@ -2,6 +2,29 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '6.1.0', date: '2026-10',
+    en: [
+      'FIND understands everyday English and German words, typos and accents: "money", "abreißen", "U-Bahn-Karte", "bahnof" — it suggests, you choose',
+      'The vehicle catalogue reads a description: "fast electric freight loco from the 60s" fills the filters, shown as chips you can clear',
+      'Lifts and escalators at stations where levels meet: quicker changes between metro, viaduct and street',
+      'Rival railways renovate only their important stations, rarely, and now and then keep an old one as a listed building',
+      'Snow on airport grass, lit terminal windows at night, no hard cloud shadows under the moon',
+      'Overlays and signals no longer rely on colour alone: patterns, a legend in words, and stop and clear lamps at different heights',
+      'Escape closes one thing at a time, also from a text field; errors say what to do next; the advisor explains its numbers',
+      'Faster towns: road traffic takes about a third less time per frame, with the same behaviour',
+    ],
+    de: [
+      'SUCHEN versteht Alltagswörter auf Deutsch und Englisch, Tippfehler und Umlaute: „Geld“, „demolish“, „U-Bahn-Karte“, „bahnof“ — es schlägt vor, du wählst',
+      'Der Fahrzeugkatalog liest eine Beschreibung: „schnelle elektrische Güterlok aus den 60ern“ füllt die Filter, als Chips, die du löschen kannst',
+      'Aufzüge und Rolltreppen an Bahnhöfen, wo Ebenen zusammentreffen: schnelleres Umsteigen zwischen U-Bahn, Viadukt und Straße',
+      'Konkurrenzbahnen renovieren nur ihre wichtigen Bahnhöfe, selten, und behalten ab und zu einen alten als Baudenkmal',
+      'Schnee auf dem Flugfeld, beleuchtete Terminalfenster bei Nacht, keine harten Wolkenschatten im Mondlicht',
+      'Overlays und Signale nicht mehr nur über Farbe: Muster, eine Legende in Worten und Halt- und Fahrtlampen auf verschiedener Höhe',
+      'Escape schließt eins nach dem anderen, auch aus einem Textfeld; Fehler sagen, was zu tun ist; der Berater erklärt seine Zahlen',
+      'Schnellere Städte: Der Straßenverkehr braucht etwa ein Drittel weniger Zeit pro Bild, bei gleichem Verhalten',
+    ],
+  },
+  {
     v: '6.0.0', date: '2026-09',
     en: [
       'Metro: underground and elevated railways on their own levels, with portals, street entrances, five metro sets, an underground view and a metro map',

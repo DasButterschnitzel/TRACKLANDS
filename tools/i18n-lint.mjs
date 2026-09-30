@@ -8,7 +8,7 @@ const NUM = (s) => [...String(s).replace(/\{\w+\}/g, ' ').matchAll(/\d+(?:[.,]\d
 const UNITS = ['km/h', 'mph', 'km', 'mi', '%', 't', 'kg'];
 const unitsOf = (s) => UNITS.filter((u) => new RegExp(`(^|[\\s\\d}])${u.replace('/', '\\/')}(?=$|[\\s.,;)])`).test(s)).join(',');
 const EN_NEG = /\b(not|cannot|can't|don't|doesn't|won't|never|no|none|without|nothing|isn't|aren't)\b/i;
-const DE_NEG = /(^|[^\p{L}])(nicht|kein\p{L}*|nie|niemals|ohne|nichts|weder|verboten|un\p{L}{4,})(?![\p{L}])/iu;
+const DE_NEG = /(^|[^\p{L}])(nicht|kein\p{L}*|nie|niemals|niemand\p{L}*|nirgend\p{L}*|ohne|nichts|weder|verboten|un\p{L}{4,})(?![\p{L}])/iu;
 const EN_WORDS = /\b(the|and|with|your|you|to|of|for|this|here|build|send|train|nearest|click|tap)\b/gi;
 // "Wählen Sie …", "Klicken Sie …": the formal imperative (the game says du);
 // a plain "Sie"/"Ihre" is often "they"/"their" and is not flagged

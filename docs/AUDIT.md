@@ -1,4 +1,4 @@
-# TRACKLANDS 6.0.0 — release audit (phases 1–12)
+# TRACKLANDS 6.1.0 — release audit (phases 1–14)
 
 Status per area. **PASS**: built, reachable in the game and covered by a named test suite that ran green for this release. **PARTIAL**: built, with a named part missing. **MISSING**: asked for and not built. **BROKEN**: built and not working. **HIDDEN**: built but not reachable by the player. **UNTESTED**: works in the headless browser but not checked on the named hardware. **NOT EXECUTED**: a job exists but has not run (no credentials). **DEFERRED**: deliberately not built, with a reason that still holds today (no fake option is shown for it). Every requirement of phases 1–12 was re-read for this audit; each PASS below is re-run on the 6.0.0 commit (see *Release gates 6.0.0*), and rows whose status changed since 5.0.0 say so. No row is BROKEN or HIDDEN.
 
@@ -207,9 +207,9 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Era gallery: 1900, 1935, 1960, 1985, 2005, 2025, 2060 × eight categories, no two consecutive years alike | PASS | `gallery` *(deep)* |
 | Era transitions and model caches: one instanced mesh per look, made on first use; 40 sandbox calendar jumps and four restarts leave no geometry or texture behind | PASS | `p12risk` |
 | Long game from 1900 for 60 years with two railway companies: early terminals keep their look, later ones look their age, stations opened across three quarter-centuries, renovation at most one station a year per company, heap +36 MB, save 175 KB, looks survive save/load | PASS | `eralong` *(deep; 30 years quick)* |
-| Snow, night and weather on the new models | UNTESTED | they use the shared materials the snow shader and lighting already cover; not reviewed in screenshots per weather |
+| Snow, night and weather on the new models | PASS (Phase 13) | `erainfra` renders day, snow, night and winter night and measures them; three issues found and fixed (see Phase 13) |
 | Rival companies: the same resolver for their stations; renovation only two eras behind and at most once a year; no heritage listing (a player's choice); at most one metro | PASS | `ai`, `metro`, `eralong` |
-| Rival terminal renovation | DEFERRED | rival companies do not build airports or ports |
+| Rival terminal renovation | PASS (Phase 13) | rivals own railway stations only (no airports or ports): renovation rules for their stations, see Phase 13 |
 | Sound: metro door chime on arrival and warning tone on departure, tunnel rumble loop (louder in the underground view), gulls and ship horns at harbours, jet engines at airports, renovation and project fanfares; still under the voice budget and a fixed loop pool | PASS | `audio` (every effect plays; harbour/airport/tunnel ambience; pooled loop) |
 | Background music: only files the player adds, with id, file, title, artist, era, mood and weight | PASS | `music`; no music is generated |
 | Sound on real speakers | PHYSICAL AUDIO: UNTESTED | no audio device in the container |
@@ -219,8 +219,8 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Infrastructure upkeep broken down by level (tooltip = what the month charges) | PASS | `p12risk` |
 | World information: year, today's building style, start year, terrain, climate, map size, seed | PASS | `erainfra` |
 | Freight routing never loops between transfers; metro sets carry passengers only and refuse freight wagons | PASS | `p12risk`, `network` |
-| Lifts and escalators | DEFERRED | optional in the specification; the walking model already charges stairs time per level (`metro`) |
-| Performance overlay (F3) counts per era family | PARTIAL | F3 shows draw calls, triangles and geometries overall, not per look |
+| Lifts and escalators | PASS (Phase 13) | see Phase 13 |
+| Performance overlay (F3) counts per era family | PASS (Phase 13) | F3 lists airport/port looks, stop looks, crossing families, catenary, portals, metro ramps and underground chunks (`bench`) |
 | Real devices, real GPUs | REAL DEVICE: UNTESTED | everything ran on SwiftShader and emulated touch |
 | Device cloud (BrowserStack) | NOT EXECUTED | no credentials configured |
 
@@ -237,6 +237,47 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 
 ### Historic bugs kept as regression checks
 Four-layer map sizes (`mapsize`), platform extension underground and on viaducts (`metro`), undo restoring track roles (`fourtrack`), plan rollback in money and ledger (`planning`, `costquote`), bulldozer on tunnel and viaduct layers (`layers`), a second pair inside a project (`planning`), seed 18 platform isolation (`fuzz`).
+
+## Phase 13 — measured performance, words the game understands, stations between levels
+| Area | Status | Evidence / reason |
+|---|---|---|
+| City traffic hot paths (junction refresh by version, reused edge buckets, cached stop index and density, flagged crossings, heat fade over touched tiles only) | PASS | render-free sim per frame 3.6 → 2.4 ms, traffic 1.33 → 0.9 ms (same machine, same run); behaviour identical: `trafficperf` fingerprints recorded on 6.0.0 (city 1932381902, 192² world 121268215) unchanged after every step |
+| Subsystem telemetry (trains, road, traffic, towns, industries, passengers, cargo, AI, weather, other) with p95/p99 | PASS | `bench` writes them per world into `tests/output/bench-<rev>.json`; F3 shows them live |
+| Benchmark states PASS / ABSOLUTE TARGET MISS[, NO REGRESSION] / REGRESSION / ENVIRONMENT INVALID, same-environment control, JSON history; the 8 ms budget unchanged | PASS | `bench` (state classification check), `tools/bench-compare.mjs` against 6.0.0 (`d9a0ef5`), see gates |
+| Deterministic traffic (no Math.random, wall clock, frame rate or network) | PASS | `trafficperf` runs the city twice and compares with the fixture |
+| FIND in everyday English and German (aliases, accents, ß, hyphens, plural stems, small typos, ranking, objects before commands on ties), never executes | PASS | `search` (28 queries × both interface languages, typos, no side effects, chosen commands) |
+| Catalogue description → the existing filters, chips, Clear filters, text search when nothing is understood, unknown words named, phone sizes | PASS | `catalogsearch` (9 EN/DE descriptions) |
+| Vehicle sound profile from data (`soundProfile`), content-pack field validated, model-id guessing removed | PASS | `audio`, `packs` |
+| Feature checks by semantic markers (`data-section` / `data-field`) instead of translated text | PASS | `audit`, `ai`, `metro` |
+| Deterministic localization QA: key parity, placeholders, keys named in code exist, mechanical checks (numbers, units, negation, English left in German, formal register) | PASS | `localization` (3,300+ keys, 0 findings) |
+| Optional semantic translation review (CI secret only, report only, sends key/English/German only, hash cache, calibration with 20 known-bad pairs, precision/recall) | NOT EXECUTED: LANGUAGE SEMANTIC REVIEW NOT CONFIGURED | no `TYPESAFE_API_KEY`/`TYPESAFE_API_URL` secret; the tool and its contract are tested against a local stand-in service (`localization`); the key name appears in no shipped file |
+| Lifts (12 s) and escalators (7 s) per change of level instead of 20 s on the stairs, only where the complex spans levels, cost and monthly upkeep, hub inspector | PASS | `stationcomplex` (walk 50 → 42 → 37 s, charged once, upkeep 22/month, refused on one level and before 1890/1920) |
+| Rival railways add them only at busy multi-level stations with healthy finances | PASS | `stationcomplex` (built at 3000 passengers a year; not after a quiet year, not while losing money) |
+| Rival station renovation: important stations only, healthy finances, six-year cooldown, capacity unchanged, now and then kept as heritage | PASS | `stationcomplex`, `eralong` (5 renovations in a century), `aidecades` |
+| Snow, night and winter-night scenes of the era infrastructure, measured | PASS (three fixes) | `erainfra`: airport grass stayed green under snow (winter look), terminals lit only their airside windows (landside strips), cloud-shadow bodies threw hard patches under the moon (day only) |
+| Save compatibility and fuzz for the new fields (amenities, heritage, rival flow memory) | PASS | `savefuzz` (a quarter of the cases mutate them; replayable `set:` corpus ops), `stationcomplex` (save/load) |
+| `setSetting('lang')` switches the language (the German search pass had silently run in English) | PASS (fixed in Phase 13) | `search` checks the interface language, `localization` |
+| Firefox: phone contexts without `isMobile` (unsupported there) | PASS (fixed in Phase 13) | browsers (firefox) job red on three heads until fixed in `openPage` |
+
+## Phase 14 — the player's side
+| Area | Status | Evidence / reason |
+|---|---|---|
+| Discovery: FIND shows everyday examples that only fill the field; handbook topics for metro, four-track corridors, planning, station complexes, eras, finding, accessibility | PASS | `search`, `helpui`, `localization` |
+| Problem → action: every problem in the transport overview can be shown or acted on (a deadlock without a place now leads to its train) | PASS (fixed in Phase 14) | `access` |
+| Finance → world: a train in the finance list opens it in the world | PASS | `access` |
+| Errors say what to do: a "what to do" line under the error and after the build hint, 48 texts in both languages | PASS | `access` |
+| Colour independence: every overlay class has its own pattern and a legend in words; light signals show stop and clear at different heights; amounts carry +/− | PASS | `access` |
+| Touch targets: ≥ 32 px in the top bar and tool strip, ≥ 24 px for every control in seven panels on a phone | PASS (fixed in Phase 14) | `access` (speed buttons were 28 px, the changelog link 16 px) |
+| Escape one layer at a time (dialog, popover, panel, tool), also from a text field; a cancelled question answers its caller | PASS (fixed in Phase 14) | `access` (the overlay menu ignored Escape; a cancelled confirm left its caller waiting forever) |
+| Modal dialogs: role, aria-modal, focus | PASS | `access` |
+| Station complex UI: other levels, walking times, time per level, amenities with cost and upkeep | PASS | `stationcomplex` |
+| The advisor explains its measure for every kind of advice and never builds, buys or changes anything | PASS | `access` (state unchanged over 20 runs and renders) |
+| Offline static play with the network off (new game, load, FIND, catalogue, metro, traffic, save), no console errors | PASS | `offline`; the release artifact is checked the same way with `STATIC_ROOT` |
+| Privacy: no request leaves the local origin; typed words never appear in a request | PASS | `offline` |
+| Long session and the 192 × 192 map; save size | PASS | `bench` (192²), `eralong` (a century: heap and save size bounded), `aidecades` |
+| Cross-browser | PASS | Chromium, Firefox and WebKit in CI (`xbrowser hardening terrain eras erainfra p12risk search catalogsearch access`) |
+| Real devices, real GPUs, speakers | REAL DEVICE: UNTESTED · REAL GPU: UNTESTED · PHYSICAL AUDIO: UNTESTED | headless SwiftShader and emulated touch only |
+| Device cloud (BrowserStack) | NOT EXECUTED | no credentials configured |
 
 ## Release gates 6.0.0
 Run locally on the 6.0.0 commits (dispatching `deep.yml` from this session is refused); CI (`tests.yml`, eight jobs incl. Chromium, Firefox and WebKit) green on every pushed head from `29ef398` on. This container renders at about **1 frame per second** (SwiftShader), so time-bound UI suites were run one at a time.

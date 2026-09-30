@@ -231,7 +231,7 @@ export const TransportUIMixin = {
       const ps = probs.filter((p) => p.sev === sev);
       return ps.length ? `<h4 class="psev ${sev}">${this.tr('tsev_' + sev)} (${ps.length})</h4>${ps.slice(0, 40).map((p) => this.tProbRow(p)).join('')}` : '';
     }).join('');
-    return `${groups}<p class="muted small">${this.tr('tm_problems_help')} ${this.helpBtn('overview')}</p>`;
+    return `<p class="muted small" data-field="advisor-note">${this.tr('adv_only_suggests')}</p>${groups}<p class="muted small">${this.tr('tm_problems_help')} ${this.helpBtn('overview')}</p>`;
   },
   probText(p) {
     const q = {};
@@ -241,7 +241,7 @@ export const TransportUIMixin = {
   tProbRow(p) {
     const jump = p.sel ? `<button class="icon-btn small" data-act="jump" data-arg="${p.sel}" aria-label="${this.tr('show')}">${icon('focus')}</button>` : p.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${p.tile}" aria-label="${this.tr('show')}">${icon('focus')}</button>` : '';
     const fix = p.act ? `<button class="btn small primary" data-act="tFix" data-arg="${p.act.act}|${esc(p.act.arg)}">${this.tr(p.act.label, { n: p.act.n || 1 })}</button>` : '';
-    return `<div class="adv tprob ${p.sev}" ${p.preview && p.preview.length ? `data-preview="${p.preview.join(',')}" data-ok="1"` : ''}>${icon(SEV_ICON[p.sev], 'mini')}<span>${icon(MODE_ICON[p.mode] || 'info', 'mini')} ${p.who ? `<b>${esc(p.who)}:</b> ` : ''}${this.probText(p)}</span>${fix}${jump}</div>`;
+    return `<div class="adv tprob ${p.sev}" ${p.preview && p.preview.length ? `data-preview="${p.preview.join(',')}" data-ok="1"` : ''}>${icon(SEV_ICON[p.sev], 'mini')}<span>${icon(MODE_ICON[p.mode] || 'info', 'mini')} ${p.who ? `<b>${esc(p.who)}:</b> ` : ''}${this.probText(p)}${this.whyBlock(p.key)}</span>${fix}${jump}</div>`;
   },
 
   // ---------- fleet ----------

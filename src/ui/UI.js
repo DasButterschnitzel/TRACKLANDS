@@ -7,7 +7,8 @@ import { ROAD_COSTS, ROAD_VEHICLES, ROAD_TYPES, ROAD_TYPE_IDS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, locoResearch, CREATOR_NAME, GAME_VERSION,
   LEGACY_LEVEL, TOWN_POP, INDUSTRY_LEVEL_THRESH, KMH_PER_TILE_S, locoLen,
 } from '../config.js';
-import { t as i18n, getLang, LANGS } from '../i18n.js';
+import { OVERLAY_LEGEND } from './Overlays.js';
+import { t as i18n, getLang, LANGS, has as hasKey } from '../i18n.js';
 import { icon, cargoIcon } from './icons.js';
 import { networkMapSVG } from './NetworkMap.js';
 import { locoModel } from '../trains/Trains.js';
@@ -212,6 +213,14 @@ export class UI {
     $('#menu-rail').innerHTML = items.map((k) => `<button class="rail-btn" data-act="panel" data-arg="${k}" data-tip="${this.tr('menu_' + k)}" aria-label="${this.tr('menu_' + k)}">${icon(k === 'finance' ? 'coin' : k)}<span>${this.tr('menu_' + k)}</span><i class="badge" id="badge-${k}" hidden></i></button>`).join('');
   }
 
+  // what the active overlay's colours and patterns mean (Phase 14: the
+  // pattern carries the meaning too, not colour alone)
+  overlayLegend(ov) {
+    const L = OVERLAY_LEGEND[ov];
+    if (!L) return '';
+    const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+    return `<div id="ov-legend" class="ov-legend" role="note" aria-label="${this.tr('ov_legend')}: ${this.tr('ov_' + ov)}" data-section="overlay-legend" data-overlay="${ov}">${L.map(([c, p, k]) => `<span class="lg-item" data-field="legend-item" data-pattern="${p}"><i class="lg-sw pat${p}" style="--c:${hex(c)}"></i>${this.tr(k)}</span>`).join('')}</div>`;
+  }
   renderToolbar() {
     const g = this.game; if (!g) return;
     const C = g.construction;
@@ -227,7 +236,7 @@ export class UI {
         <button class="tool small layerview ${g.layerView && g.layerView.mode !== 'surface' ? 'on' : ''}" data-act="layerView" data-tip="${this.tr('layer_view')}: ${this.tr('lv_' + (g.layerView ? g.layerView.mode : 'surface'))} (U)" aria-label="${this.tr('layer_view')}">${icon('tunnel')}<i class="lv-tag">${this.tr('lv_short_' + (g.layerView ? g.layerView.mode : 'surface'))}</i></button>
         <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')} (O)${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
         <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
-      </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>`;
+      </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>${ov ? this.overlayLegend(ov) : ''}`;
     if (menuOpen) this.renderOverlayMenu();
     // narrow screens: the tool strip scrolls; keep the active tool in view and
     // show which side has more tools
@@ -367,20 +376,25 @@ export class UI {
   }
 
   // ---------- toasts, banners, floating text ----------
-  toast(text, kind = 'info', ic = null) {
+  toast(text, kind = 'info', ic = null, sub = '') {
     const box = $('#toasts');
     // no stacks of identical messages
     for (const el of box.children) if (el.dataset.text === text && !el.classList.contains('out')) return;
     const el = document.createElement('div');
     el.className = 'toast ' + kind;
     el.dataset.text = text;
-    el.innerHTML = `${ic ? icon(ic) : kind === 'error' ? icon('warn') : icon('info')}<span>${esc(text)}</span>`;
+    el.innerHTML = `${ic ? icon(ic) : kind === 'error' ? icon('warn') : icon('info')}<span>${esc(text)}${sub ? `<small class="fix" data-field="error-fix">${esc(sub)}</small>` : ''}</span>`;
     el.setAttribute('role', 'status');
     box.appendChild(el);
     while (box.children.length > 3) box.firstChild.remove();
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, kind === 'error' ? 2600 : 3600);
   }
-  error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error'); this.app.audio.play(key && key.startsWith('err_permit') ? 'reject' : 'error'); }
+  // what an advice measured (Phase 14): a small "Why?" under it
+  whyBlock(key) { return hasKey(key + '_why') ? `<details class="adv-why" data-field="advice-why"><summary>${this.tr('adv_why')}</summary><small>${this.tr(key + '_why')}</small></details>` : ''; }
+  // an error says what happened and, where it can, what to do (Phase 14: the _fix text)
+  errFix(key) { const k = (key || 'err_generic') + '_fix'; return hasKey(k) ? this.tr(k) : ''; }
+  errLine(key, p) { const f = this.errFix(key); return this.tr(key || 'err_generic', p) + (f ? ' → ' + f : ''); }
+  error(key, p) { this.toast(this.tr(key || 'err_generic', p), 'error', null, this.errFix(key)); this.app.audio.play(key && key.startsWith('err_permit') ? 'reject' : 'error'); }
   hint(text) { this.toast(text, 'hint', 'info'); }
 
   // a new release is installed and waiting: offer to switch (never automatic mid-game)
@@ -715,6 +729,11 @@ export class UI {
     if (this.photoOn()) { this.setPhoto(false); return true; }
     const m = $('#modal-root');
     if (m.children.length) { const last = m.lastElementChild; if (last._cancel) last._cancel(); return true; }
+    // open popovers next (Phase 14: Escape closes whatever is on top, one layer at a time)
+    const om = $('#overlay-menu');
+    if (om && !om.hidden) { this.toggleOverlayMenu(); return true; }
+    const mr = $('#menu-rail');
+    if (mr && mr.classList.contains('open')) { mr.classList.remove('open'); return true; }
     if (this.panel) { this.closePanel(); return true; }
     if (this.inspectSel) { this.game.select(null); return true; }
     return false;

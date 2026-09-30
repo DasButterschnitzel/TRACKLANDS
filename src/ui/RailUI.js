@@ -273,10 +273,10 @@ export const RailUIMixin = {
     const adv = g.advisor();
     const advH = adv.length ? adv.slice(0, 8).map((a) => {
       const jump = a.station != null ? `station:${a.station}` : a.train != null ? `train:${a.train}` : null;
-      return `<div class="adv" ${a.preview && a.preview.length ? `data-preview="${a.preview.join(',')}" data-ok="1"` : ''}>${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
+      return `<div class="adv" ${a.preview && a.preview.length ? `data-preview="${a.preview.join(',')}" data-ok="1"` : ''}>${icon('advisor', 'mini')}<span>${a.name ? `<b>${esc(a.name)}:</b> ` : ''}${esc(this.tr(a.key, a.p || {}))}${this.whyBlock(a.key)}</span>${jump ? `<button class="icon-btn small" data-act="jump" data-arg="${jump}">${icon('focus')}</button>` : a.tile >= 0 ? `<button class="icon-btn small" data-act="jumpTile" data-arg="${a.tile}">${icon('focus')}</button>` : ''}</div>`;
     }).join('') : `<p class="muted small">${this.tr('adv_none')}</p>`;
     return `${head}
-      <h3>${icon('advisor', 'mini')} ${this.tr('advisor')} ${this.helpBtn('single')}</h3>${advH}
+      <h3>${icon('advisor', 'mini')} ${this.tr('advisor')} ${this.helpBtn('single')}</h3><p class="muted small" data-field="advisor-note">${this.tr('adv_only_suggests')}</p>${advH}
       <h3>${this.tr('trains')} (${g.trains.mine().length})</h3><div class="tlist">${rows || `<p class="muted">${this.tr('no_trains')}</p>`}</div>`;
   },
 
@@ -416,7 +416,7 @@ export const RailUIMixin = {
     // how long a change of level takes here, and what it would take with the best
     const flight = levels.length || vHas ? `<p class="small" data-field="level-change" data-value="${S.flightS(s)}">${icon(vHas ? (S.hasAmenity(s, 'escal') ? 'escal' : 'lift') : 'up', 'mini')} ${this.tr('st_flight', { s: S.flightS(s), n: levels.length })}</p>` : '';
     if (!list && !amen) return '';
-    return `${list ? `<h4>${this.tr('st_complex')}</h4><div class="pill-row complex">${list}</div>` : ''}${flight}${amen ? `<div class="pill-row amen" data-section="station-amenities">${amen}</div>` : ''}`;
+    return `${list ? `<h4>${this.tr('st_complex')} ${this.helpBtn('complexes')}</h4><div class="pill-row complex">${list}</div>` : ''}${flight}${amen ? `<div class="pill-row amen" data-section="station-amenities">${amen}</div>` : ''}`;
   },
   // below or above the ground (Phase 11): the level, the platform
   // arrangement, the street entrance and what the structure costs each month
@@ -569,7 +569,7 @@ export const RailUIMixin = {
       const e = has ? null : S.facilityError(s, f);
       return `<button class="chip ${has ? 'on' : ''} ${e && e !== 'err_no_money' ? 'locked' : ''}" data-act="stFacility" data-arg="${s.id}:${f}" ${has || e ? 'disabled' : ''} data-tip="${this.tr('fac_' + f + '_desc')}${e ? ' · ' + this.tr(e) : ''}"><b>${this.tr('fac_' + f)}</b><small>${FACILITIES[f].cargo.map((c) => cargoIcon(c, 'mini')).join('')}${has ? '' : ' ' + fmt(S.facilityCost()) + '●'}</small></button>`;
     }).join('');
-    const adv = S.advise(s).map((a) => `<div class="card warn small">${icon('advisor', 'mini')} ${esc(this.tr(a.key, a.p || {}))}</div>`).join('');
+    const adv = S.advise(s).map((a) => `<div class="card warn small">${icon('advisor', 'mini')} ${esc(this.tr(a.key, a.p || {}))}${this.whyBlock(a.key)}</div>`).join('');
     const supplies = [...(s.supplies || [])];
     const avgUtil = util.length ? util.reduce((a, b) => a + b, 0) / util.length : 0;
     return `<div class="pill-row"><span class="pill">${this.tr('skind_' + (s.kind || 'halt'))} · ${this.tr('level')} ${s.level + 1}/6</span><span class="pill">${this.tr('storage')} ${fmt(cap)}</span><span class="pill">${this.tr('load_rate')} ${STATION.loadRate[s.level]}/s</span></div>
@@ -658,8 +658,8 @@ export const RailUIMixin = {
 
   railActions() {
     const eraAct = {
-      renovateStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.renovate(st); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_renovated_toast', { name: st.name })); this.app.audio.play('renovate'); this.refreshPanel && this.refreshPanel(); } },
-      listStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.setHeritage(st, true); if (err) this.toast(this.tr(err), 'error'); else { this.toast(this.tr('st_listed_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
+      renovateStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.renovate(st); if (err) this.error(err); else { this.toast(this.tr('st_renovated_toast', { name: st.name })); this.app.audio.play('renovate'); this.refreshPanel && this.refreshPanel(); } },
+      listStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; const err = G.stations.setHeritage(st, true); if (err) this.error(err); else { this.toast(this.tr('st_listed_toast', { name: st.name })); this.refreshPanel && this.refreshPanel(); } },
       unlistStation: (a) => { const G = this.game, st = G.stations.byId(+a); if (!st) return; G.stations.setHeritage(st, false); this.refreshPanel && this.refreshPanel(); },
     };
     const g = () => this.game;

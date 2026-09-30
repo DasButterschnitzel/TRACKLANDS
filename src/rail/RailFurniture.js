@@ -11,6 +11,9 @@ const RED = 0xff4a3a, GREEN = 0x4ae07a, AMBER = 0xffc040, WHITE = 0xe8eef2;
 
 function inst(geo, mat, n) { const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); return m; }
 
+// light signals show stop and clear at different heights on the mast, not by
+// colour alone (Phase 14)
+export const LAMP_Y = { stop: 0.98, clear: 0.86 };
 export class RailFurniture {
   constructor(game) {
     this.game = game;
@@ -142,15 +145,16 @@ export class RailFurniture {
       }
       this.masts.setMatrixAt(nm++, _m);
       const col = asp === 'red' ? RED : sg.type === 'path' && asp === 'green' ? WHITE : GREEN;
-      lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.95, z - DZ[d] / len * 0.07, col);
-      if (sg.oneway) lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.82, z - DZ[d] / len * 0.07, AMBER);
+      // (not by colour alone, Phase 14: stop shows in the upper lamp, clear in the lower one)
+      lamp(x - DX[d] / len * 0.07, e.y + 0.05 + (asp === 'red' ? LAMP_Y.stop : LAMP_Y.clear), z - DZ[d] / len * 0.07, col);
+      if (sg.oneway) lamp(x - DX[d] / len * 0.07, e.y + 0.05 + 0.74, z - DZ[d] / len * 0.07, AMBER);
     }
     // automatic signals (station exits, junction approaches, single-track entries)
     if (this.showAuto) {
       if (refreshAspects || !this._auto) this._auto = this.autoSignals();
       for (const a of this._auto) {
         const hd = net.tileHolder(a.next);
-        lamp(a.x, a.y + 0.55, a.z, hd ? RED : GREEN);
+        lamp(a.x, a.y + (hd ? 0.62 : 0.5), a.z, hd ? RED : GREEN);   // (stop higher, clear lower)
       }
     }
     // waypoints
