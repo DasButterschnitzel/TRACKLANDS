@@ -14,13 +14,15 @@ const MIME = {
   '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8', '.ico': 'image/x-icon',
 };
 
-// Serve the repository root on a free local port (no caching).
+// Serve the repository root on a free local port (no caching). STATIC_ROOT
+// serves another folder instead (the unpacked release artifact).
+export const SERVE_ROOT = process.env.STATIC_ROOT ? path.resolve(process.env.STATIC_ROOT) : ROOT;
 export function startServer() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent((req.url || '/').split('?')[0]);
-      let file = path.join(ROOT, url === '/' ? 'index.html' : url);
-      if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
+      let file = path.join(SERVE_ROOT, url === '/' ? 'index.html' : url);
+      if (!file.startsWith(SERVE_ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       fs.createReadStream(file).pipe(res);
     });
