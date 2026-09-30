@@ -44,6 +44,8 @@ export async function devices() { if (!_pw) _pw = await import('playwright'); re
 
 // New page with error capture. errors[] collects page errors and console errors.
 export async function openPage(browser, base, ctxOpts = { viewport: { width: 1280, height: 800 } }, query = '') {
+  // Firefox has no mobile emulation (isMobile): keep the phone viewport and touch there
+  if (ENGINE === 'firefox' && ctxOpts && ctxOpts.isMobile) { ctxOpts = { ...ctxOpts }; delete ctxOpts.isMobile; }
   const ctx = await browser.newContext(ctxOpts);
   const page = await ctx.newPage();
   const errors = [];
