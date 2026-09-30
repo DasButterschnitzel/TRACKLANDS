@@ -279,6 +279,24 @@ Four-layer map sizes (`mapsize`), platform extension underground and on viaducts
 | Real devices, real GPUs, speakers | REAL DEVICE: UNTESTED · REAL GPU: UNTESTED · PHYSICAL AUDIO: UNTESTED | headless SwiftShader and emulated touch only |
 | Device cloud (BrowserStack) | NOT EXECUTED | no credentials configured |
 
+## Release gates 6.1.0
+Run locally on `74b97ac` (the Phase 14 commit; the only later change is the `access` suite closing its desktop page before the phone page, a test-harness fix for a CI runner timeout) — dispatching `deep.yml` from this session is refused. CI (`tests.yml`) on every push; the Firefox job was red on three heads until the harness stopped passing `isMobile` to Firefox (`3463774`). This container renders at about **1 frame per second** (SwiftShader); long runs were split to stay under the session's 30-minute job limit.
+
+| Gate | Result |
+|---|---|
+| Every regular suite (all 81, incl. the new `trafficperf`, `search`, `catalogsearch`, `localization`, `offline`, `access`) | PASS — run in blocks on the release code; `monkey` 3 seeds × desktop/phone/tablet, 600 steps each (0 NaN, 0 conflicts) |
+| Save fuzz, 1000 cases + 22 corpus entries | PASS — 1008 started, 14 rejected cleanly with the load-failed dialog, **0 bad**; 249 cases mutated lifts, escalators or a rival's flow memory directly. (A first attempt of shards 3–4 was cut off by the session's 30-minute job limit mid-run — every later case timed out on the closed browser; the rerun in separate jobs passed and cases 690–709 pass in sequence.) |
+| Rail fuzzer, seeds 1–40 | PASS (no gaps, overlaps, stuck trains or NaN) |
+| `prodsave` | PASS — 1,233 coins/min (band 900–2000) |
+| `qa`, `gallery`, `ai`, `trafficperf` | PASS (traffic fingerprints unchanged since 6.0.0) |
+| `perf` | PASS — 100 trains: tick average 0.19–0.25 ms, p99 ≤ 1.1 ms |
+| `aidecades` (50 years, four companies) | PASS — save 351 KB in 15 ms, no company closed |
+| `eralong` (a century from 1900) | PASS — 5 station renovations in 100 years, heap +36 MB, save 175 KB |
+| `bench` with the 6.0.0 control in the same environment (`tools/bench-compare.mjs`) | **PASS** in all three worlds: 64² 1.41 ms (control 1.70), 128² 2.10 ms (2.76), 192² 4.53 ms (5.48) against the unchanged 8 ms budget; the 192² p99 (46 ms) is town growth and monthly industry work, recorded, not hidden |
+| Offline static package | see the PR description (the release zip, served alone, played through `offline` with `STATIC_ROOT`) |
+| Three browsers | Chromium, Firefox, WebKit in CI |
+| Optional semantic translation review | NOT EXECUTED: LANGUAGE SEMANTIC REVIEW NOT CONFIGURED (no CI secret) |
+
 ## Release gates 6.0.0
 Run locally on the 6.0.0 commits (dispatching `deep.yml` from this session is refused); CI (`tests.yml`, eight jobs incl. Chromium, Firefox and WebKit) green on every pushed head from `29ef398` on. This container renders at about **1 frame per second** (SwiftShader), so time-bound UI suites were run one at a time.
 

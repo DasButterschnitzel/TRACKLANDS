@@ -116,6 +116,9 @@ export async function run({ browser, base }) {
   check(r.A.probsActionable, `problem → action: all ${r.A.probs} problems in the transport overview can be shown on the map or acted on`);
   check(E.fromField.hadField && E.fromField.panel == null && E.fromField.focusLeft, 'Escape in the FIND field leaves the field and closes FIND');
 
+  // (the desktop page closes first: its busy network must not starve the phone page on a slow runner)
+  const deskErrors = errors.slice();
+  await ctx.close();
   // touch targets on a phone
   const m = await openPage(browser, base, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   await startTestGame(m.page, 3030);
@@ -139,7 +142,6 @@ export async function run({ browser, base }) {
   check(!t.chrome.length, `phone: every top bar and tool strip control at least 32 px${t.chrome.length ? ': ' + t.chrome.map((x) => `${x.t} ${Math.round(x.w)}×${Math.round(x.h)}`).join(', ') : ''}`);
   check(!t.nSmall, `phone: ${t.n} controls in seven panels, none below 24 px${t.nSmall ? ` (${t.nSmall}): ` + t.small.map((x) => `${x.p}/${x.t} ${Math.round(x.w)}×${Math.round(x.h)}`).join(', ') : ''}`);
   await m.ctx.close();
-  if (errors.length || m.errors.length) { ok = false; lines.push('errors: ' + [...errors, ...m.errors].slice(0, 3).join(' | ')); }
-  await ctx.close();
+  if (deskErrors.length || m.errors.length) { ok = false; lines.push('errors: ' + [...deskErrors, ...m.errors].slice(0, 3).join(' | ')); }
   return { ok, lines };
 }
