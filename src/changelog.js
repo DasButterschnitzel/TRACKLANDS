@@ -2,6 +2,21 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '6.1.1', date: '2026-10',
+    en: [
+      'Start Journey begins a standard world with the tutorial at once; New game… holds every choice, with the expert settings folded away',
+      'The game-mode presets in New game, the FIND examples and unchosen filters are readable again; locked research shows what it needs clearly',
+      'On a phone the tool strip starts at Select instead of fading it out',
+      'Names from imported saves, blueprints, scenarios and content packs can no longer carry markup',
+    ],
+    de: [
+      'Reise beginnen startet sofort eine Standardwelt mit Einführung; Neues Spiel… enthält alle Wahlmöglichkeiten, die Experteneinstellungen eingeklappt',
+      'Die Spielmodi unter Neues Spiel, die Beispiele in SUCHEN und nicht gewählte Filter sind wieder lesbar; gesperrte Forschung zeigt klar, was sie braucht',
+      'Auf dem Handy beginnt die Werkzeugleiste bei Auswahl, statt sie auszublenden',
+      'Namen aus importierten Spielständen, Blaupausen, Szenarien und Inhaltspaketen können kein Markup mehr enthalten',
+    ],
+  },
+  {
     v: '6.1.0', date: '2026-10',
     en: [
       'FIND understands everyday English and German words, typos and accents: "money", "abreißen", "U-Bahn-Karte", "bahnof" — it suggests, you choose',
