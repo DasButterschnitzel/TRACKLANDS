@@ -2,3 +2,8 @@ node_modules
 tests/output/
 tests/dbg/
 .cache/
+trailer/captures/
+trailer/output/
+trailer/audio/sfx/
+trailer/cards/en/
+trailer/cards/de/
