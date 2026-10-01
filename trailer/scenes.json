@@ -960,6 +960,156 @@
           }
         ]
       }
+    },
+    {
+      "id": "s02-consist",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.38,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 182400; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off);",
+      "notes": "1930. A train put together in the train builder at the Greenfield depot and bought; it rolls out.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 131,
+            "z": 125,
+            "zoom": 6.5,
+            "az": 30,
+            "elev": 0.5
+          },
+          {
+            "x": 131.5,
+            "z": 125.5,
+            "zoom": 6,
+            "az": 36,
+            "elev": 0.47
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "ui.openBuilder({ depotId: 3, model: \"regent\" });"
+        },
+        {
+          "t": 1.2,
+          "click": "[data-act=bldCat][data-arg=pax]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 1.9,
+          "click": "[data-act=bldAdd][data-arg=\"W:coach\"]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 2.5,
+          "click": "[data-act=bldAdd][data-arg=\"W:coach\"]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 3.4,
+          "click": "[data-act=bldBuy]",
+          "park": [
+            700,
+            620
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s13-ui",
+      "save": "greenfield-2025.json.gz",
+      "duration": 7.6,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.45,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 3486200; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off);",
+      "notes": "2025. Tycoon panels: finance, transport, towns, the company and its competitors, the vehicle collection.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 122,
+            "z": 126,
+            "zoom": 12,
+            "az": 28,
+            "elev": 0.5
+          },
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 11,
+            "az": 36,
+            "elev": 0.48
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0,
+          "js": "ui.openPanel(\"finance\");"
+        },
+        {
+          "t": 1.5,
+          "js": "ui.openPanel(\"trains\");"
+        },
+        {
+          "t": 3,
+          "js": "ui.openPanel(\"lists\");"
+        },
+        {
+          "t": 4.5,
+          "js": "ui.openPanel(\"company\"); const b = document.querySelector(\"#panel .pbody\"); if (b) b.scrollTop = 1e5;"
+        },
+        {
+          "t": 6,
+          "js": "ui.openPanel(\"collection\");"
+        }
+      ]
+    },
+    {
+      "id": "s09-rival",
+      "save": "greenfield-2025.json.gz",
+      "duration": 4,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.45,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 3486200; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off); app.ui.rivalId = g.rivals.list[0].id; app.ui.openPanel(\"rival\");",
+      "notes": "2025. The competitor Northstar Railways with its lines; its blue trains at Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 118,
+            "z": 122,
+            "zoom": 8.5,
+            "az": 20,
+            "elev": 0.48
+          },
+          {
+            "x": 119,
+            "z": 123,
+            "zoom": 7.8,
+            "az": 28,
+            "elev": 0.45
+          }
+        ]
+      }
     }
   ]
 }

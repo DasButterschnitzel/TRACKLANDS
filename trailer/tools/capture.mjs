@@ -183,6 +183,8 @@ for (let f = 0; f < nFrames; f++) {
     }
     if (a.key) await page.keyboard.press(a.key);
     if (a.click) await page.click(a.click);
+    // park the pointer (a screen position) so no hover tip stays up after a click
+    if (a.park) await page.mouse.move(a.park[0], a.park[1], { steps: 1 });
   }
   await page.evaluate(async ([cam, due, t, dt]) => {
     const app = window.__tracklands, g = app.game, C = g.camera;
