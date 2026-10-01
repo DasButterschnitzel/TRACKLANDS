@@ -1,0 +1,135 @@
+#!/usr/bin/env node
+// TRACKLANDS test runner.
+//
+//   node tests/run.mjs                 all suites (release gate)
+//   node tests/run.mjs --quick         reduced sizes (for quick checks / CI)
+//   node tests/run.mjs rail seeds      only the named suites
+//   node tests/run.mjs fuzz --from=1 --to=60
+//   node tests/run.mjs monkey --steps=800 --seeds=1,2 --modes=phone
+//
+// Suites: unit worldgen rail seeds fuzz prodsave economy persist import pwa tutorial savefuzz monkey ui perf gallery
+// Needs Playwright's Chromium (npx playwright install chromium) or CHROMIUM_PATH.
+import { startServer, launchBrowser } from './lib.mjs';
+import * as unit from './suites/unit.mjs';
+import * as rail from './suites/rail.mjs';
+import { seeds, fuzz } from './suites/fuzz.mjs';
+import * as prodsave from './suites/prodsave.mjs';
+import * as persist from './suites/persist.mjs';
+import * as importexport from './suites/importexport.mjs';
+import * as tutorial from './suites/tutorial.mjs';
+import * as savefuzz from './suites/savefuzz.mjs';
+import * as monkey from './suites/monkey.mjs';
+import * as ui from './suites/ui.mjs';
+import * as perf from './suites/perf.mjs';
+import * as gallery from './suites/gallery.mjs';
+import * as economy from './suites/economy.mjs';
+import * as pwa from './suites/pwa.mjs';
+import * as worldgen from './suites/worldgen.mjs';
+import * as build from './suites/build.mjs';
+import * as finance from './suites/finance.mjs';
+import * as authority from './suites/authority.mjs';
+import * as towns from './suites/towns.mjs';
+import * as crossings from './suites/crossings.mjs';
+import * as roads from './suites/roads.mjs';
+import * as audio from './suites/audio.mjs';
+import * as industry from './suites/industry.mjs';
+import * as weather from './suites/weather.mjs';
+import * as news from './suites/news.mjs';
+import * as stationtypes from './suites/stationtypes.mjs';
+import * as transport from './suites/transport.mjs';
+import * as mapsize from './suites/mapsize.mjs';
+import * as terrain from './suites/terrain.mjs';
+import * as eras from './suites/eras.mjs';
+import * as layers from './suites/layers.mjs';
+import * as metro from './suites/metro.mjs';
+import * as fourtrack from './suites/fourtrack.mjs';
+import * as planning from './suites/planning.mjs';
+import * as stationcomplex from './suites/stationcomplex.mjs';
+import * as erainfra from './suites/erainfra.mjs';
+import * as p12risk from './suites/p12risk.mjs';
+import * as eralong from './suites/eralong.mjs';
+import * as trafficperf from './suites/trafficperf.mjs';
+import * as search from './suites/search.mjs';
+import * as catalogsearch from './suites/catalogsearch.mjs';
+import * as localization from './suites/localization.mjs';
+import * as offline from './suites/offline.mjs';
+import * as access from './suites/access.mjs';
+import * as security from './suites/security.mjs';
+import * as rcflow from './suites/rcflow.mjs';
+import * as costquote from './suites/costquote.mjs';
+import * as company from './suites/company.mjs';
+import * as scenarios from './suites/scenarios.mjs';
+import * as rivals from './suites/rivals.mjs';
+import * as touch from './suites/touch.mjs';
+import * as buses from './suites/buses.mjs';
+import * as overview from './suites/overview.mjs';
+import * as traffic from './suites/traffic.mjs';
+import * as cities from './suites/cities.mjs';
+import * as chains from './suites/chains.mjs';
+import * as rollingstock from './suites/rollingstock.mjs';
+import * as stress from './suites/stress.mjs';
+import * as audit from './suites/audit.mjs';
+import * as network from './suites/network.mjs';
+import * as urban from './suites/urban.mjs';
+import * as roadtypes from './suites/roadtypes.mjs';
+import * as terminals from './suites/terminals.mjs';
+import * as fleet from './suites/fleet.mjs';
+import * as standing from './suites/standing.mjs';
+import * as analysis from './suites/analysis.mjs';
+import * as competition from './suites/competition.mjs';
+import * as timectl from './suites/timectl.mjs';
+import * as tools from './suites/tools.mjs';
+import * as savesafety from './suites/savesafety.mjs';
+import * as music from './suites/music.mjs';
+import * as campaign from './suites/campaign.mjs';
+import * as helpui from './suites/helpui.mjs';
+import * as packs from './suites/packs.mjs';
+import * as branding from './suites/branding.mjs';
+import * as makers from './suites/makers.mjs';
+import * as bench from './suites/bench.mjs';
+import * as qa from './suites/qa.mjs';
+import * as xbrowser from './suites/xbrowser.mjs';
+import * as ai from './suites/ai.mjs';
+import * as aidecades from './suites/aidecades.mjs';
+import * as hardening from './suites/hardening.mjs';
+
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, terrain, eras, layers, metro, fourtrack, planning, stationcomplex, erainfra, p12risk, trafficperf, search, catalogsearch, localization, offline, access, security, rcflow, costquote, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, ai, aidecades, eralong, hardening, savefuzz, monkey, ui, perf, gallery];
+const argv = process.argv.slice(2);
+const args = {};
+const names = [];
+for (const a of argv) {
+  if (a.startsWith('--')) { const [k, v] = a.slice(2).split('='); args[k] = v === undefined ? true : v; } else names.push(a);
+}
+const quick = !!args.quick;
+const suites = names.length ? ALL.filter((s) => names.includes(s.name)) : ALL;
+if (names.length && suites.length !== names.length) { console.error('unknown suite in: ' + names.join(' ') + '\navailable: ' + ALL.map((s) => s.name).join(' ')); process.exit(2); }
+
+const { server, url } = await startServer();
+let browser = null;
+const results = [];
+for (const s of suites) {
+  const t0 = Date.now();
+  process.stdout.write(`\n▶ ${s.name}${quick ? ' (quick)' : ''}\n`);
+  let r;
+  try {
+    if (s.name !== 'unit' && !s.nodeOnly && !browser) browser = await launchBrowser();
+    r = await s.run({ browser, base: url, quick, args });
+  } catch (e) {
+    r = { ok: false, lines: ['EXCEPTION ' + (e && e.stack || e)] };
+  }
+  for (const l of r.lines) console.log('  ' + l);
+  // isolation: a suite that stopped early may leave pages with a running game
+  // behind; close them (and after an exception start a fresh browser) so they
+  // cannot slow down or wedge the suites after it
+  if (browser) {
+    for (const c of browser.contexts()) await c.close().catch(() => {});
+    if (!r.ok && r.lines.some((l) => l.startsWith('EXCEPTION'))) { await browser.close().catch(() => {}); browser = null; }
+  }
+  const secs = ((Date.now() - t0) / 1000).toFixed(0);
+  console.log(`  ${r.ok ? 'PASS' : 'FAIL'} ${s.name} (${secs}s)`);
+  results.push({ name: s.name, ok: r.ok, secs });
+}
+if (browser) await browser.close();
+server.close();
+console.log('\nSummary: ' + results.map((r) => `${r.ok ? '✓' : '✗'} ${r.name} ${r.secs}s`).join('   '));
+process.exit(results.every((r) => r.ok) ? 0 : 1);

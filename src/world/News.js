@@ -1,0 +1,117 @@
+// The company newspaper: short dated items about what happens in the world,
+// collected from game events. Each item has a kind (towns, industry, economy,
+// company, weather), an i18n key with parameters (names are stored as text,
+// so an item stays readable after its object is gone) and optionally the
+// object it is about, so the news panel can show it on the map.
+// Saved with the game (the last MAX items); 'unread' counts items since the
+// panel was last opened.
+import { REGIONS } from '../config.js';
+import { ERA_BANDS } from './Eras.js';
+
+const MAX = 80;
+export const NEWS_KINDS = ['towns', 'industry', 'economy', 'company', 'weather'];
+
+export class News {
+  constructor(game) {
+    this.game = game;
+    this.items = [];
+    this.seq = 1;
+    this.unread = 0;
+    this.rivalPlanM = {};
+    this.firsts = new Set();     // 'town:<id>', 'cargo:<C>': first arrivals already reported
+    this.best = 0;               // best monthly profit so far
+    this.mute = true;            // quiet while the game is being set up (Game unmutes)
+    this.wire(game.events);
+  }
+
+  add(kind, key, p = {}, ref = null) {
+    if (this.mute) return null;
+    const it = { id: this.seq++, t: this.game.time, kind, key, p, ref };
+    this.items.push(it);
+    if (this.items.length > MAX) this.items.splice(0, this.items.length - MAX);
+    this.unread++;
+    this.game.events.emit('news', it);
+    return it;
+  }
+
+  wire(E) {
+    const g = this.game;
+    const tname = (t) => t.name;
+    E.on('townLevel', (t) => this.add('towns', 'news_town_stage', { town: tname(t), stage: 'stage_' + g.towns.stageName(t) }, { type: 'town', id: t.id }));
+    E.on('townLandmark', (t, arch) => this.add('towns', 'news_town_landmark', { town: tname(t), what: 'bld_' + arch }, { type: 'town', id: t.id }));
+    E.on('industryLevel', (ind) => this.add('industry', 'news_ind_level', { name: g.industries.displayName(ind), level: 'ilvl_' + ind.level }, { type: 'industry', id: ind.id }));
+    E.on('industryFounded', (ind) => this.add('industry', 'news_ind_founded', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('eventStart', (ev) => this.add('economy', 'news_event', { ev: 'ev_' + ev.id }));
+    E.on('econCycle', (st) => this.add('economy', 'news_cycle_' + st, {}));
+    E.on('townEvent', (ev, t) => this.add('towns', 'news_town_event', { town: tname(t), ev: 'tev_' + ev.kind }, { type: 'town', id: t.id }));
+    E.on('districtEvolved', (t, from, to) => this.add('towns', 'news_district', { town: tname(t), from: 'dist_' + from, to: 'dist_' + to }, { type: 'town', id: t.id }));
+    E.on('regionUnlocked', (r) => this.add('company', 'news_region', { region: 'region_' + (REGIONS[r] ? REGIONS[r].id : r) }));
+    E.on('stationBuilt', (s) => { if (!s.owner) this.add('company', 'news_station', { name: s.name }, { type: 'station', id: s.id }); });
+    E.on('trainBrokeDown', (t) => this.add('company', 'news_breakdown', { name: t.name }, { type: 'train', id: t.id }));
+    E.on('industryClosing', (ind) => this.add('industry', 'news_ind_closing', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industryClosed', (ind) => this.add('industry', 'news_ind_closed', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industrySaved', (ind) => this.add('industry', 'news_ind_saved', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('industryReopened', (ind) => this.add('industry', 'news_ind_reopened', { name: g.industries.displayName(ind) }, { type: 'industry', id: ind.id }));
+    E.on('concessionGranted', (t) => this.add('economy', 'news_concession', { town: t.name }, { type: 'town', id: t.id }));
+    E.on('contractExpired', (k) => this.add('economy', 'news_contract_failed', {}));
+    E.on('eraChanged', (era) => this.add('economy', 'news_era', { era: 'era_' + era }));
+    E.on('eraBand', (b) => this.add('towns', 'news_era_band', { era: 'era_band_' + ERA_BANDS[b], what: 'era_band_' + ERA_BANDS[b] + '_desc' }));
+    E.on('stationRenovated', (s) => this.add('company', 'news_st_renovated', { name: s.name }, { type: 'station', id: s.id }));
+    E.on('stationListed', (s) => this.add('company', 'news_st_listed', { name: s.name }, { type: 'station', id: s.id }));
+    E.on('rivalFreight', (r, a, b, c) => this.add('economy', 'news_rival_freight', { rival: r.name, a: g.industries.displayName(a), b: g.industries.displayName(b), cargo: 'cargo_' + c }));
+    E.on('rivalForSale', (r) => this.add('economy', 'news_rival_for_sale', { rival: r.name }));
+    E.on('rivalAcquired', (r, x) => this.add('economy', 'news_rival_acquired', { rival: r.name, s: x.stops, v: x.vehicles }));
+    E.on('rivalLine', (r, a, b) => this.add('economy', 'news_rival_line', { rival: r.name, a: a.name, b: b.name }));
+    // railway companies: plans, openings, double track and closures, never
+    // more than one planning note per company a year (no notification spam)
+    E.on('rivalProject', (r, p, what) => {
+      const P = g.rivals.planner(r);
+      if (!P) return;
+      const m = g.ledger.monthIndex();
+      if (what === 'plan') { if (m - (this.rivalPlanM[r.id] ?? -99) < 12) return; this.rivalPlanM[r.id] = m; }
+      this.add('economy', 'news_rival_' + what, { rival: r.name, a: P.endName(p.a), b: P.endName(p.b) });
+    });
+    E.on('rivalClosed', (r) => this.add('economy', 'news_rival_closed', { rival: r.name }));
+    E.on('weather', (w) => { if (w === 'storm' || w === 'snow' || w === 'heatwave' || w === 'blizzard') this.add('weather', 'news_weather_' + w, {}); });
+    E.on('delivery', (d) => {
+      if (d.town && !this.firsts.has('town:' + d.town.id)) {
+        this.firsts.add('town:' + d.town.id);
+        this.add('towns', 'news_first_train', { town: d.town.name, cargo: d.cargo }, { type: 'town', id: d.town.id });
+      }
+      if (!this.firsts.has('cargo:' + d.cargo)) {
+        this.firsts.add('cargo:' + d.cargo);
+        if (d.cargo !== 'PASSENGERS') this.add('company', 'news_first_cargo', { cargo: d.cargo, name: d.station ? d.station.name : '' }, d.station ? { type: 'station', id: d.station.id } : null);
+      }
+    });
+    E.on('monthClosed', (c) => {
+      const L = g.ledger, p = L.profitOf(c).profit;
+      if (p > this.best && p > 500 && L.months.length > 1) this.add('company', 'news_record', { n: Math.round(p) });
+      this.best = Math.max(this.best, p);
+    });
+  }
+
+  // a save from before the newspaper: what is already served is not news
+  seedFromWorld() {
+    const g = this.game;
+    for (const s of [...g.stations.mine(), ...(g.roads ? g.roads.stops.filter((x) => !x.owner) : [])]) {
+      if (!((s.delivered || 0) + (s.picked || 0) > 0)) continue;
+      for (const id of (s.links && s.links.towns) || []) this.firsts.add('town:' + id);
+    }
+    for (const c of Object.keys(g.stats.data.cargo || {})) this.firsts.add('cargo:' + c);
+    for (const m of g.ledger.months) this.best = Math.max(this.best, g.ledger.profitOf(m).profit);
+  }
+
+  serialize() {
+    return { items: this.items.slice(-MAX), seq: this.seq, unread: Math.min(this.unread, MAX), firsts: [...this.firsts].slice(0, 500), best: Math.round(this.best) };
+  }
+  deserialize(d) {
+    if (!d || typeof d !== 'object') return;
+    const safeP = (p) => { const r = {}; if (p && typeof p === 'object') for (const [k, v] of Object.entries(p)) if (typeof v === 'string') r[k] = v.slice(0, 60); else if (typeof v === 'number' && isFinite(v)) r[k] = v; return r; };
+    this.items = (Array.isArray(d.items) ? d.items : []).filter((it) => it && typeof it.key === 'string' && NEWS_KINDS.includes(it.kind)).slice(-MAX)
+      .map((it) => ({ id: it.id | 0, t: +it.t || 0, kind: it.kind, key: it.key.slice(0, 40), p: safeP(it.p), ref: it.ref && typeof it.ref.type === 'string' && isFinite(it.ref.id) ? { type: it.ref.type, id: +it.ref.id } : null }));
+    this.seq = Math.max(d.seq | 0, 1, ...this.items.map((it) => it.id + 1));
+    this.unread = Math.max(0, Math.min(MAX, d.unread | 0));
+    this.firsts = new Set((Array.isArray(d.firsts) ? d.firsts : []).filter((x) => typeof x === 'string').slice(0, 500));
+    this.best = Math.max(0, +d.best || 0);
+  }
+}

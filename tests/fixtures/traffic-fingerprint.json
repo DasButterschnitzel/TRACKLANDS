@@ -1,0 +1,5 @@
+{
+  "note": "traffic behaviour fingerprints (tests/suites/trafficperf.mjs), recorded on 6.0.0 (d9a0ef5) before the Phase 13 traffic optimizations; update only after an intended change of behaviour",
+  "city": 1932381902,
+  "bench": 121268215
+}
