@@ -64,7 +64,10 @@ export async function run({ browser, base }) {
   check(r.partial.sort === 'speed' && r.partial.unknown === 'zorblax' && r.shown, `"fast zorblax": fastest first, "zorblax" reported as not understood`);
   check(r.cleared && r.sel, 'Clear filters resets everything; the power type is a normal dropdown too');
 
-  // a phone: the description field and chips are touch-sized
+  // a phone: the description field and chips are touch-sized (the desktop
+  // page is closed first: two rendering pages starve a slow CI runner and the
+  // phone game then missed its 60 s start)
+  await ctx.close();
   const m = await openPage(browser, base, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   await startTestGame(m.page, 2727);
   const ph = await m.page.evaluate(() => {
@@ -78,6 +81,5 @@ export async function run({ browser, base }) {
   check(ph.inp >= 40 && ph.clear >= 32 && ph.chip >= 30 && !ph.overflow, `phone: field ${Math.round(ph.inp)} px, clear button ${Math.round(ph.clear)} px, chips ${Math.round(ph.chip)} px, no sideways scroll`);
   await m.ctx.close();
   if (errors.length || m.errors.length) { ok = false; lines.push('errors: ' + [...errors, ...m.errors].slice(0, 3).join(' | ')); }
-  await ctx.close();
   return { ok, lines };
 }
