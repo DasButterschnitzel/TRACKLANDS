@@ -70,7 +70,9 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
 page.on('dialog', (d) => d.dismiss().catch(() => {}));
 await page.goto(url + '/index.html');
-await page.waitForFunction(() => window.__tracklands && window.__tracklands.renderer, null, { timeout: 90000 });
+// wait until the game has finished starting up (title shown): loading a
+// save earlier races the start-up, which then puts the title over the game
+await page.waitForFunction(() => window.__tracklands && window.__tracklands.renderer && window.__tracklands.title, null, { timeout: 90000 });
 
 // load the showcase save (a throwaway session: nothing is written back)
 const save = readSave(scene.save);
@@ -81,6 +83,10 @@ await page.evaluate((s) => {
   app.startGame({ save: s, test: true, paused: false });
 }, save);
 await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running, null, { timeout: 120000 });
+{
+  const bad = await page.evaluate((seed) => { const app = window.__tracklands; return app.title || !document.querySelector('#title').hidden ? 'title screen still up' : app.game.world.seed !== seed ? `wrong world (seed ${app.game.world.seed})` : null; }, save.seed);
+  if (bad) throw new Error('save not loaded cleanly: ' + bad);
+}
 
 // take over the frame loop, set the scene's light and weather, start the
 // offline sound engine on the frame clock

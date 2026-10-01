@@ -651,6 +651,315 @@
           }
         ]
       }
+    },
+    {
+      "id": "p1995",
+      "save": "greenfield-1995.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "s06-arrowline",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.4,
+      "weather": "clear",
+      "notes": "2025. Arrowline Coastal high-speed set leaving Wolfton for Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 284,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 140,
+            "elev": 0.36
+          },
+          {
+            "zoom": 7,
+            "az": 115,
+            "elev": 0.32
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-metro",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 11,
+      "ui": "clean",
+      "timeOfDay": 0.42,
+      "weather": "clear",
+      "setup": "for (let k = 0; k < 3 && !g.layerView.showsUnderground(); k++) g.layerView.cycle();",
+      "notes": "2025. Underground view: Greenfield Metro 3 (automatic) under the city.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 286,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7.5,
+            "az": 20,
+            "elev": 0.55
+          },
+          {
+            "zoom": 6.8,
+            "az": 35,
+            "elev": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-tram",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.43,
+      "weather": "clear",
+      "notes": "2025. The Wolfton Tram through the streets.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "veh": 4,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 4.6,
+            "az": 330,
+            "elev": 0.6
+          },
+          {
+            "zoom": 4.2,
+            "az": 345,
+            "elev": 0.55
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-bus",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.44,
+      "weather": "clear",
+      "notes": "2025. Greenfield Circle buses at Greenfield Central.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 121,
+            "z": 123,
+            "zoom": 6.5,
+            "az": -20,
+            "elev": 0.48
+          },
+          {
+            "x": 122,
+            "z": 124,
+            "zoom": 5.8,
+            "az": -8,
+            "elev": 0.44
+          }
+        ]
+      }
+    },
+    {
+      "id": "s08-takeoff",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 15,
+      "ui": "clean",
+      "timeOfDay": 0.46,
+      "weather": "clear",
+      "notes": "2025. A jetliner leaves Greenfield airport.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "veh": 7,
+          "stiff": 1.8
+        },
+        "keys": [
+          {
+            "zoom": 9,
+            "az": 200,
+            "elev": 0.4
+          },
+          {
+            "zoom": 10,
+            "az": 215,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s08-oil",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 37,
+      "ui": "clean",
+      "timeOfDay": 0.47,
+      "weather": "clear",
+      "notes": "2025. Oil Train 1 (goliath) with tank wagons.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 210,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7,
+            "az": -60,
+            "elev": 0.38
+          },
+          {
+            "zoom": 6.4,
+            "az": -40,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s09-fourtrack",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 14,
+      "ui": "clean",
+      "timeOfDay": 0.5,
+      "weather": "clear",
+      "notes": "2025. Northern Freight 3 on the four-track main line Greenfield–Wolfton.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 207,
+          "stiff": 2
+        },
+        "keys": [
+          {
+            "zoom": 9.5,
+            "az": 100,
+            "elev": 0.4
+          },
+          {
+            "zoom": 8.5,
+            "az": 120,
+            "elev": 0.36
+          }
+        ]
+      }
+    },
+    {
+      "id": "s10-mega",
+      "save": "greenfield-2025.json.gz",
+      "duration": 8,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.62,
+      "weather": "clear",
+      "notes": "2025. Greenfield in the afternoon, slow orbit over the city and Greenfield Central.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 15,
+            "az": 10,
+            "elev": 0.46
+          },
+          {
+            "x": 126,
+            "z": 128,
+            "zoom": 12.5,
+            "az": 50,
+            "elev": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "id": "s11-night",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.9,
+      "weather": "rain",
+      "notes": "2025. Greenfield at night in the rain.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 122,
+            "z": 126,
+            "zoom": 9,
+            "az": -30,
+            "elev": 0.42
+          },
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 8,
+            "az": -15,
+            "elev": 0.38
+          }
+        ]
+      }
+    },
+    {
+      "id": "s12-title",
+      "save": "greenfield-2025.json.gz",
+      "duration": 8,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.78,
+      "weather": "clear",
+      "notes": "2025. Wide dusk pull-out for the title.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 126,
+            "z": 130,
+            "zoom": 12,
+            "az": 40,
+            "elev": 0.5
+          },
+          {
+            "x": 128,
+            "z": 132,
+            "zoom": 28,
+            "az": 52,
+            "elev": 0.62
+          }
+        ]
+      }
     }
   ]
 }
