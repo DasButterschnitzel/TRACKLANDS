@@ -10,8 +10,9 @@ every sound comes from the game's own sound engine.
 | Path | What |
 |---|---|
 | `scenes.json` | Every shot: save, start time, light, weather, camera path, interface, actions, length. Capturing a scene again gives the same frames and sound. |
-| `edit.json` | The edit: shots in order with their in-points, lengths and transitions; text cards; sound accents. |
-| `cards/cards.json` | Text cards, English and German. `tools/cards.mjs` renders them as PNGs into `cards/en`, `cards/de` (not committed). |
+| `edit.json` | The main edit (about 92 s): shots in order with their in-points, lengths and transitions; text cards; sound accents. Cards and accents sit on a shot (`"shot"`, `"off"`), so retiming keeps them in place. |
+| `edit-30.json`, `edit-15.json`, `*-vertical.json` | Cutdowns: 30 s and 15 s, in 16:9 and 9:16 (each shot cropped to a 9:16 window, `"cx"` its centre). |
+| `cards/cards.json` | Text cards, English and German. `tools/cards.mjs` renders them as PNGs into `cards/en`, `cards/de` (and with `--vertical` into `cards/en-v`, `cards/de-v` for 9:16); not committed. |
 | `saves/` | Showcase saves of the world "Greenfield", one per era (1900, 1930, 1965, 1995, 2025). |
 | `tools/capture.mjs` | Renders one scene frame by frame and writes `captures/<scene>-<lang>.mp4` + `.wav` (not committed). |
 | `tools/camera.mjs` | Eased camera paths through keys, or a soft follow of a train, bus, tram, ship or aircraft. |
@@ -50,6 +51,14 @@ node trailer/tools/capture.mjs s02-build --lang=de    # interface shots per lang
 node trailer/tools/capture.mjs s01-dawn --probe=1,2   # timing only
 ```
 
+Interface shots are captured once per language (`--lang=en`, `--lang=de`):
+the game runs in that language, only the text cards differ otherwise. Clicks
+are real clicks on the game's buttons; the pointer is parked away afterwards
+(`"park"`) so no hover tip stays up. Shots that show the coin balance set it
+to a plausible amount for that point in the game (the showcase company is
+topped up with builder money, see below); the finance history is shifted by
+the same amount so the panels stay consistent.
+
 Settings for captures: graphics high, shadows high, no performance overlay,
 no tutorial or tips, no camera shake. Clean shots use the game's photo mode
 with the world labels hidden; game notifications are hidden in all shots.
@@ -82,6 +91,23 @@ of hours of play (all disclosed):
   look exactly as a grown town looks in the game. Buildings put up while the
   years run carry their real year and era look.
 
+### Found while capturing
+
+Capturing the 2025 world showed trains standing still for good with "no
+route". The cause was a real game bug: a lost train was put back at the
+nearest station of *any* company and *any* level, so rival trains landed on
+the player's platforms, main-line trains in metro tunnels, and trains on
+platforms no line reaches. It is fixed in `src/trains/Trains.js`
+(`recoverTrain`: own company, the route's own network, a platform the train
+can use) with the regression suite `tests/suites/recovery.mjs`, committed on
+its own; the saves were then rebuilt. A remaining train that briefly shows
+"no route" in the 2025 save finds its way again within a minute (all
+platforms were taken for a moment), which is normal play.
+
+Not shown: the ship routes. The only water the showcase map offers between
+towns runs along the map edge, and no camera angle avoids showing the edge
+of the world, so the trailer shows buses, trams, metro and aircraft instead.
+
 ```sh
 node trailer/tools/build-world.mjs --phases=A                                # 1900
 node trailer/tools/build-world.mjs --from=greenfield-1900.json.gz --phases=B --stills
@@ -108,6 +134,15 @@ mega shot, title), so a track can be cut to them.
 - `.mp4`: H.264 High, CRF 16, AAC 320 kb/s.
 - `.webm`: VP9 + Opus.
 - `<lang>` is `en`, `de` or `clean` (no text cards).
+- Cutdowns: `tracklands-cutdown-30-*`, `tracklands-cutdown-15-*`, and the
+  same with `-vertical` (1080×1920).
+
+```sh
+node trailer/tools/cards.mjs && node trailer/tools/cards.mjs --vertical
+for l in en de clean; do node trailer/tools/assemble.mjs --lang=$l; done
+node trailer/tools/encode.mjs trailer/output/tracklands-trailer-en.mov --webm
+node trailer/tools/assemble.mjs --edit=edit-30-vertical.json --lang=de
+```
 
 Sound is normalised to −14 LUFS with true peak ≤ −1.5 dBTP.
 
