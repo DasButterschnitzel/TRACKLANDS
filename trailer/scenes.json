@@ -147,6 +147,24 @@
           }
         ]
       }
+    },
+    {
+      "id": "p2025",
+      "save": "greenfield-2025.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
     }
   ]
 }

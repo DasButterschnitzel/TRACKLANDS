@@ -184,9 +184,15 @@ for (let f = 0; f < nFrames; f++) {
     // camera: a follow target is the vehicle's position plus the path's offset
     let x = Number.isFinite(cam.x) ? cam.x : C.target.x, z = Number.isFinite(cam.z) ? cam.z : C.target.z;
     if (cam.follow) {
-      const tr = cam.follow.train != null ? g.trains.byId(cam.follow.train) : null;
-      const p = tr && tr.visual ? tr.visual.cars[Math.min(cam.follow.car || 0, tr.visual.cars.length - 1)].mesh.position : null;
-      if (!p) throw new Error('follow: no train ' + cam.follow.train);
+      let p = null;
+      if (cam.follow.train != null) {
+        const tr = g.trains.byId(cam.follow.train);
+        p = tr && tr.visual ? tr.visual.cars[Math.min(cam.follow.car || 0, tr.visual.cars.length - 1)].mesh.position : null;
+      } else if (cam.follow.veh != null) {
+        const v = g.roads.vehicles.find((x) => x.id === cam.follow.veh);
+        p = v ? g.roads.vehPos(v, {}) : null;
+      }
+      if (!p) throw new Error('follow: nothing to follow ' + JSON.stringify(cam.follow));
       {
         // a soft follow (critically damped) so the camera never jerks
         const k = window.__fx == null ? 1 : 1 - Math.exp(-dt * (cam.follow.stiff || 3));
@@ -205,11 +211,12 @@ for (let f = 0; f < nFrames; f++) {
   }, [cam, due, t, 1 / fps]);
   if (probe) {
     if (f === 0) await page.evaluate(() => { const r = window.__tracklands.renderer; r.render = () => {}; });
-    if (f % fps === 0) console.log(await page.evaluate(([t, ids]) => {
+    if (f % fps === 0) console.log(await page.evaluate(([t, ids, args2]) => {
       const g = window.__tracklands.game;
       const tr = g.trains.trains.filter((x) => !ids.length || ids.includes(x.id)).map((x) => { const p = x.visual && x.visual.cars[0].mesh.position; return `${x.id}:${x.name.split(' ')[0]}:${x.state}@${p ? (p.x / 2).toFixed(1) + ',' + (p.z / 2).toFixed(1) : '-'}`; });
-      return `t=${t.toFixed(0)} ` + tr.join(' | ');
-    }, [t, String(args.probe === true ? '' : args.probe).split(',').filter(Boolean).map(Number)]));
+      const rv = args2.veh ? g.roads.vehicles.filter((v) => !v.owner && (args2.veh === true || args2.veh.includes(v.kind || ''))).map((v) => { const q = g.roads.vehPos(v, {}); return `v${v.id}:${v.model}:${v.state || ''}@${(q.x / 2).toFixed(1)},${(q.z / 2).toFixed(1)}${q.y > 2 ? '^' + q.y.toFixed(1) : ''}`; }) : [];
+      return `t=${t.toFixed(0)} ` + tr.join(' | ') + (rv.length ? ' || ' + rv.join(' | ') : '');
+    }, [t, String(args.probe === true ? '' : args.probe).split(',').filter(Boolean).map(Number), { veh: args.veh || false }]));
     continue;
   }
   await page.screenshot({ path: path.join(frameDir, `f${String(f).padStart(5, '0')}.png`) });
