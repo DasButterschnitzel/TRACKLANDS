@@ -2,5 +2,190 @@
   "fps": 60,
   "width": 1920,
   "height": 1080,
-  "scenes": []
+  "scenes": [
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.45
+          }
+        ]
+      },
+      "id": "t-26-45",
+      "timeOfDay": 0.26
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.64
+          }
+        ]
+      },
+      "id": "t-26-64",
+      "timeOfDay": 0.26
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.45
+          }
+        ]
+      },
+      "id": "t-30-45",
+      "timeOfDay": 0.3
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.64
+          }
+        ]
+      },
+      "id": "t-30-64",
+      "timeOfDay": 0.3
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.45
+          }
+        ]
+      },
+      "id": "t-34-45",
+      "timeOfDay": 0.34
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.64
+          }
+        ]
+      },
+      "id": "t-34-64",
+      "timeOfDay": 0.34
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.45
+          }
+        ]
+      },
+      "id": "t-42-45",
+      "timeOfDay": 0.42
+    },
+    {
+      "save": "greenfield-1900.json.gz",
+      "duration": 1,
+      "warmup": 20,
+      "ui": "clean",
+      "weather": "clear",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 3
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 30,
+            "elev": 0.64
+          }
+        ]
+      },
+      "id": "t-42-64",
+      "timeOfDay": 0.42
+    }
+  ]
 }

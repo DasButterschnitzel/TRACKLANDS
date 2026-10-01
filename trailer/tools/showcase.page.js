@@ -96,13 +96,13 @@ export function line(A, B, tier = 0, mode = 'double') {
   return best;
 }
 
-export function depotNear(stn) {
+export function depotNear(stn, rMax = 8, electric = false) {
   const G = g(), net = G.net, S = G.stations;
-  for (let r = 1; r <= 5; r++) for (const base of S.allTiles(stn)) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+  for (let r = 1; r <= rMax; r++) for (const base of S.allTiles(stn)) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
     const t = idx(tx(base) + dx, tz(base) + dz);
     if (t < 0 || net.conn[t] || S.placeError(t, 'depot')) continue;
     let adj = false;
-    for (const d of [0, 2, 4, 6]) { const j = step(t, d); if (j >= 0 && net.conn[j] && net.degree(j) < 3 && !net.special.has(j)) adj = true; }
+    for (const d of [0, 2, 4, 6]) { const j = step(t, d); if (j >= 0 && net.conn[j] && net.degree(j) < 3 && !net.special.has(j) && (!electric || net.tier[j] >= 2)) adj = true; }
     if (!adj) continue;
     const res = S.buildDepot(t);
     if (res.depot && net.conn[t]) return res.depot;
@@ -208,4 +208,115 @@ export function busLine(t, n, name, model, buses, near = null) {
   for (let k = 0; k < buses; k++) { const v = R.buy(model, stops[k % stops.length], null, L).vehicle; if (v) R.lines.assign(v, L); }
   note(`bus line ${name}: ${stops.length} stops, ${buses} × ${model}`);
   return L;
+}
+
+// ---------- four-track: a second pair beside the middle of a line ----------
+export function pair(A, B, roles = 'express', side = 1) {
+  const G = g(), Cn = G.construction;
+  const r = Cn.trackOp(facingEnd(A, B), facingEnd(B, A), G.net.tier[A.tile], 'double', true);
+  const tiles = r.tiles || [];
+  if (tiles.length < 14) throw new Error(note('pair: line too short ' + tiles.length));
+  // (built in a moment when no train is on the stretch, as a player would wait)
+  for (let k = 0; k < 4000; k++) {
+    for (const sd of [side, -side]) {
+      Cn.pairSide = sd; Cn.pairRoles = roles;
+      const a = tiles[3], b = tiles[tiles.length - 4];
+      const res = Cn.trackOp(a, b, G.net.tier[a], 'pair');
+      if (!res.error) { note(`four-track ${A.name} → ${B.name}: ${res.tiles.length} tiles (side ${sd}, after ${k} steps)`); return res; }
+      if (k === 0) note('pair side ' + sd + ': ' + res.error);
+    }
+    G.tick(1 / 10);
+  }
+  return null;
+}
+
+// ---------- metro: a surface depot stub, a portal, an underground line ----------
+export function metro(t, n, name) {
+  const G = g(), S = G.stations, Cn = G.construction, net = G.net;
+  const free = (x, z) => { const i = idx(x, z); return x > 2 && z > 2 && x < N - 3 && z < N - 3 && G.world.type[i] === 0 && !G.occupancy.blocked[i] && !net.conn[i] && !G.roads.hasRoad(i) && G.world.mtn[i] < 0.05; };
+  for (const [ax, dirs] of [[0, [1, -1]], [2, [1, -1]]]) for (const dir of dirs) for (let off = -3; off <= 3; off++) for (let back = 7; back <= 13; back++) {
+    // surface stub outside the town, the line under its centre
+    const sx = ax === 0 ? t.x - dir * back : t.x + off, sz = ax === 0 ? t.z + off : t.z - dir * back;
+    const step = (k) => ax === 0 ? [sx + dir * k, sz] : [sx, sz + dir * k];
+    let ok = true;
+    for (let k = 0; k < 5 && ok; k++) { const [x, z] = step(k); if (!free(x, z)) ok = false; }
+    if (!ok) continue;
+    const [x0, z0] = step(0), [x4, z4] = step(4), [xe, ze] = step(4 + 2 * back);
+    if (xe < 4 || ze < 4 || xe > N - 5 || ze > N - 5) continue;
+    Cn.setLayer(0);
+    const r0 = Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double', true);
+    Cn.setLayer(1);
+    const r1 = Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', true, 1);
+    Cn.setLayer(0);
+    if (r0.error || r1.error) continue;
+    Cn.setLayer(0); Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double');
+    Cn.setLayer(1); Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', false, 1); Cn.setLayer(0);
+    const stns = [];
+    const span = 2 * back;
+    for (let k = 0; k < n; k++) {
+      const at = 4 + Math.round(2 + (span - 4) * (k / Math.max(1, n - 1)));
+      const [x, z] = step(at);
+      const tile = onLayer(idx(x, z), 1);
+      const res = S.build(tile, ax);
+      if (res.error) { note('metro station: ' + res.error); continue; }
+      S.extendPlatform(res.station, 0, 1); S.extendPlatform(res.station, 0, 0);
+      res.station.name = name[k] || `${t.name} Metro ${k + 1}`;
+      stns.push(res.station);
+    }
+    let dep = null;
+    for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (let k = 0; k < 3 && !dep; k++) { const [x, z] = step(k + 1); const tt = idx(x + (ax === 0 ? 0 : dx), z + (ax === 0 ? dz : 0)); const d = S.buildDepot(tt); if (d.depot && net.conn[tt]) dep = d.depot; else if (d.depot) S.removeDepot(d.depot); }
+    note(`metro ${t.name}: ${stns.length} stations, depot ${!!dep}`);
+    return { stns, dep };
+  }
+  throw new Error(note('no metro corridor at ' + t.name));
+}
+
+// ---------- tram ----------
+export function tram(t, name, model, n) {
+  const G = g(), R = G.roads;
+  const st = [...t.roadSet].filter((i) => !G.net.conn[i]);
+  let best = null;
+  for (let a = 0; a < st.length; a++) for (let b = st.length - 1; b > a; b--) {
+    const d = cheb(st[a], st[b]);
+    if (d < 6 || (best && d <= best.d)) continue;
+    const p = R.planTram(st[a], st[b]);
+    if (p.ok) best = { a: st[a], b: st[b], p, d };
+  }
+  if (!best) throw new Error(note('no tram route at ' + t.name));
+  R.buildTram(best.p);
+  const A = R.addStop(best.a, 'tram').stop, B = R.addStop(best.b, 'tram').stop;
+  const L = R.lines.create({ kind: 'tram', stops: [A.id, B.id], name }).line;
+  for (let k = 0; k < n; k++) { const v = R.buy(model, k % 2 ? B : A, null, L).vehicle; if (v) R.lines.assign(v, L); }
+  note(`tram ${name}: ${best.d} tiles, ${n} × ${model}`);
+  return L;
+}
+
+// ---------- ships and aircraft ----------
+export function docks(near1, near2, model, n, name) {
+  const G = g(), R = G.roads, S = G.stations;
+  const shore = (t) => { const out = []; for (let dz = -10; dz <= 10; dz++) for (let dx = -10; dx <= 10; dx++) { const i = idx(t.x + dx, t.z + dz); if (i >= 0 && !R.stopError(i, 'dock')) out.push(i); } return out.sort((a, b) => cheb(a, idx(t.x, t.z)) - cheb(b, idx(t.x, t.z))); };
+  const sa = shore(near1), sb = shore(near2);
+  for (const a of sa.slice(0, 30)) for (const b of sb.slice(0, 30)) {
+    if (cheb(a, b) < 8 || !R.waterPath(a, b)) continue;
+    const A = R.addStop(a, 'dock').stop, B = R.addStop(b, 'dock').stop;
+    if (!A || !B) continue;
+    const L = R.lines.create({ kind: 'dock', stops: [A.id, B.id], name }).line;
+    for (let k = 0; k < n; k++) { const v = R.buy(model, k % 2 ? B : A, null, L).vehicle; if (v) R.lines.assign(v, L); }
+    note(`ships ${name}: ${n} × ${model}`);
+    void S;
+    return { A, B, L };
+  }
+  throw new Error(note('no dock pair'));
+}
+export function airports(t1, t2, model, n, name) {
+  const G = g(), R = G.roads;
+  const site = (t) => { for (let r = 3; r <= 14; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; const i = idx(t.x + dx, t.z + dz); if (i >= 0 && !R.stopError(i, 'airport')) return i; } return -1; };
+  const a = site(t1), b = site(t2);
+  if (a < 0 || b < 0) throw new Error(note('no airport site'));
+  const A = R.addStop(a, 'airport').stop, B = R.addStop(b, 'airport').stop;
+  for (const s of [A, B]) for (let k = 0; k < 2; k++) R.upgradeAirport(s);
+  const L = R.lines.create({ kind: 'airport', stops: [A.id, B.id], name }).line;
+  for (let k = 0; k < n; k++) { const v = R.buy(model, k % 2 ? B : A, null, L).vehicle; if (v) R.lines.assign(v, L); }
+  note(`airports ${t1.name} ↔ ${t2.name}: ${n} × ${model} (sizes ${A.size}/${B.size})`);
+  return { A, B, L };
 }

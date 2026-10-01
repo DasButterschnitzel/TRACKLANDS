@@ -130,6 +130,7 @@ await page.evaluate(async ([sc, dur]) => {
   document.body.classList.toggle('photo-nolabels', sc.ui === 'clean');
   // trailer captures never show the performance overlay or developer panels
   g.settings.perfHud = false;
+  if (!sc.toasts) { const st = document.createElement('style'); st.textContent = '#toasts, .toast { display: none !important; }'; document.head.appendChild(st); }
   window.__trailerSetup = sc.setup ? new Function('g', 'app', sc.setup) : null;
   if (window.__trailerSetup) await window.__trailerSetup(g, app);
 }, [scene, dur]);
@@ -154,7 +155,26 @@ for (let f = 0; f < nFrames; f++) {
   const t = f / fps;
   const cam = evalCamera(scene.camera, t, scene.duration);
   const due = [];
-  while (ai < actions.length && actions[ai].t <= t + 1e-6) due.push(actions[ai++].js);
+  while (ai < actions.length && actions[ai].t <= t + 1e-6) {
+    const a = actions[ai++];
+    if (a.js) due.push(a.js);
+    // real input: the mouse on a tile (projected to the screen) or a key
+    if (a.mouse) {
+      const [px, py] = await page.evaluate(([x, z, L]) => {
+        const g = window.__tracklands.game, THREE = g.camera.camera.constructor;
+        void THREE;
+        const wx = (x + 0.5) * 2, wz = (z + 0.5) * 2, wy = L ? 0 : g.world.view.heightAt(wx, wz);
+        const v = g.camera.camera.position.clone().set(wx, wy, wz).project(g.camera.camera);
+        return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)];
+      }, [a.tile[0], a.tile[1], a.layer || 0]);
+      if (a.mouse === 'move') await page.mouse.move(px, py, { steps: 1 });
+      else if (a.mouse === 'down') { await page.mouse.move(px, py); await page.mouse.down(); }
+      else if (a.mouse === 'up') { await page.mouse.move(px, py); await page.mouse.up(); }
+      else if (a.mouse === 'click') await page.mouse.click(px, py);
+    }
+    if (a.key) await page.keyboard.press(a.key);
+    if (a.click) await page.click(a.click);
+  }
   await page.evaluate(async ([cam, due, t, dt]) => {
     const app = window.__tracklands, g = app.game, C = g.camera;
     for (const js of due) await new Function('g', 'app', 'ui', js)(g, app, g.ui);

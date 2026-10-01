@@ -130,6 +130,40 @@ export async function phaseC() {
   return { save: 'greenfield-1965.json.gz', stills: [['gf', x, z, 16, 45, 1], ['gf-wide', x + 6, z + 6, 34, 45, 0], ['river', (wt.x + cu.x) + 1, (wt.z + cu.z) + 1, 20, 45, 0], ['mtn', sb.x * 2 + 8, sb.z * 2, 22, 45, 0]] };
 }
 
+// 1965-1995: the four-track corridor with its express pair, the metro under
+// Greenfield, trams, ships on the river, an airport, the oil trains
+export async function phaseD() {
+  S.unlockAll();
+  const G = g();
+  const gf = town('Greenfield'), wt = town('Wolfton'), cu = town('Copperholm'), gc = town('Goldcrest');
+  const GC = byName('Greenfield Central'), B = byName('Wolfton'), E = byName('Copperholm');
+  grow(gf, 5, 40); grow(wt, 4, 30); grow(cu, 3, 20);
+  S.widen(B, 3, 5); S.level(B, 3); S.level(GC, 4);
+  try { S.pair(GC, B, 'express'); } catch (e) { say('pair: ' + e.message); }
+  const dep = S.depotNear(GC, 10, true);
+  S.train(dep, 'falcon', [GC, B, E], { name: 'Greenfield Express' });
+  S.train(dep, 'citylink', [GC, B], { name: 'Wolfton Shuttle' });
+  S.train(dep, 'ironvolt', [E, B, GC], { name: 'Northern Freight 3', cargos: ['GOODS', 'STEEL'] });
+  // metro
+  try {
+    const M = S.metro(gf, 3, ['Market Square', 'Greenfield Central (Metro)', 'Riverside']);
+    if (M.dep) for (let k = 0; k < 2; k++) S.train(M.dep, 'metro_classic_c', [M.stns[0], M.stns[M.stns.length - 1]], { name: `Greenfield Metro ${k + 1}` });
+  } catch (e) { say('metro: ' + e.message); }
+  try { S.tram(wt, 'Wolfton Tram', 'tram', 2); } catch (e) { say('tram: ' + e.message); }
+  try { S.docks(wt, cu, 'river_barge', 2, 'River Barges'); } catch (e) { say('docks: ' + e.message); }
+  try { S.airports(gf, town('Mosscrest') || cu, 'jetliner', 2, 'Greenfield Air'); } catch (e) { say('air: ' + e.message); }
+  // oil, again with a wider depot search
+  try {
+    const O = byName('Redwater Oil Siding'), P = byName('Westmarsh Refinery');
+    if (O && P) { const d3 = S.depotNear(O, 12); for (let k = 0; k < 2; k++) S.train(d3, 'goliath', [O, P], { name: `Oil Train ${k + 1}`, cargos: ['OIL'], load: true }); }
+  } catch (e) { say('oil: ' + e.message); }
+  await runYears(15);
+  grow(gf, 5, 30); grow(gc, 2, 10);
+  await runYears(15);
+  const [x, z] = W2(gf);
+  return { save: 'greenfield-1995.json.gz', stills: [['gf', x, z, 16, 45, 1], ['gf-wide', x + 6, z + 6, 34, 45, 0], ['corridor', x + 12, z + 12, 14, 45, 0]] };
+}
+
 export async function phaseQ() {
   const G = g(), C = await import('/src/config.js');
   const gf = town('Greenfield');
