@@ -35,6 +35,8 @@ const fps = +(args.fps || manifest.fps || 60);
 const W = manifest.width || 1920, H = manifest.height || 1080;
 const total = Math.round(scene.duration * fps);
 const nFrames = args.still ? 1 : Math.min(total, +(args.frames || total));
+// --probe: the same run without drawing; logs vehicles once a second (for timing shots)
+const probe = !!args.probe;
 const outDir = path.join(TR, 'captures');
 const frameDir = path.join(process.env.TRAILER_TMP || '/tmp/trailer-frames', `${id}-${lang}`);
 fs.mkdirSync(outDir, { recursive: true });
@@ -201,12 +203,23 @@ for (let f = 0; f < nFrames; f++) {
     window.__vt = t;
     g._frame(dt);
   }, [cam, due, t, 1 / fps]);
+  if (probe) {
+    if (f === 0) await page.evaluate(() => { const r = window.__tracklands.renderer; r.render = () => {}; });
+    if (f % fps === 0) console.log(await page.evaluate(([t, ids]) => {
+      const g = window.__tracklands.game;
+      const tr = g.trains.trains.filter((x) => !ids.length || ids.includes(x.id)).map((x) => { const p = x.visual && x.visual.cars[0].mesh.position; return `${x.id}:${x.name.split(' ')[0]}:${x.state}@${p ? (p.x / 2).toFixed(1) + ',' + (p.z / 2).toFixed(1) : '-'}`; });
+      return `t=${t.toFixed(0)} ` + tr.join(' | ');
+    }, [t, String(args.probe === true ? '' : args.probe).split(',').filter(Boolean).map(Number)]));
+    continue;
+  }
   await page.screenshot({ path: path.join(frameDir, `f${String(f).padStart(5, '0')}.png`) });
   if (f % 30 === 0) process.stdout.write(`\r${id}-${lang}: frame ${f + 1}/${nFrames} (${((Date.now() - t0) / 1000 / (f + 1)).toFixed(2)} s/frame)   `);
 }
 process.stdout.write('\n');
 
-if (args.still) {
+if (probe) {
+  // nothing to write
+} else if (args.still) {
   fs.copyFileSync(path.join(frameDir, 'f00000.png'), path.join(outDir, `${id}-${lang}.png`));
 } else {
   // the sound of the clip

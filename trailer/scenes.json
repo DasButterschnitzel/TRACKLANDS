@@ -4,188 +4,33 @@
   "height": 1080,
   "scenes": [
     {
+      "id": "s01-dawn",
       "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
+      "duration": 7,
+      "warmup": 6.5,
       "ui": "clean",
+      "timeOfDay": 0.27,
       "weather": "clear",
+      "notes": "1900. Morning. The Greenfield Local (steam) comes out of the trees and stops at Wolfton by the river. Slow crane down and in.",
       "camera": {
         "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
         "keys": [
           {
-            "zoom": 8,
-            "az": 30,
+            "x": 146,
+            "z": 141,
+            "zoom": 11.5,
+            "az": 24,
+            "elev": 0.56
+          },
+          {
+            "x": 153,
+            "z": 147,
+            "zoom": 8.2,
+            "az": 34,
             "elev": 0.45
           }
         ]
-      },
-      "id": "t-26-45",
-      "timeOfDay": 0.26
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.64
-          }
-        ]
-      },
-      "id": "t-26-64",
-      "timeOfDay": 0.26
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.45
-          }
-        ]
-      },
-      "id": "t-30-45",
-      "timeOfDay": 0.3
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.64
-          }
-        ]
-      },
-      "id": "t-30-64",
-      "timeOfDay": 0.3
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.45
-          }
-        ]
-      },
-      "id": "t-34-45",
-      "timeOfDay": 0.34
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.64
-          }
-        ]
-      },
-      "id": "t-34-64",
-      "timeOfDay": 0.34
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.45
-          }
-        ]
-      },
-      "id": "t-42-45",
-      "timeOfDay": 0.42
-    },
-    {
-      "save": "greenfield-1900.json.gz",
-      "duration": 1,
-      "warmup": 20,
-      "ui": "clean",
-      "weather": "clear",
-      "camera": {
-        "ease": "inOut",
-        "follow": {
-          "train": 1,
-          "stiff": 3
-        },
-        "keys": [
-          {
-            "zoom": 8,
-            "az": 30,
-            "elev": 0.64
-          }
-        ]
-      },
-      "id": "t-42-64",
-      "timeOfDay": 0.42
+      }
     }
   ]
 }
