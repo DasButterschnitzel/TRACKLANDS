@@ -316,8 +316,8 @@
           "t": 2.2,
           "mouse": "move",
           "tile": [
-            85.0,
-            85.0
+            85,
+            85
           ]
         },
         {
@@ -412,7 +412,7 @@
           "t": 1.05,
           "mouse": "move",
           "tile": [
-            93.0,
+            93,
             88
           ]
         },
@@ -444,7 +444,7 @@
           "t": 1.45,
           "mouse": "move",
           "tile": [
-            94.0,
+            94,
             88
           ]
         },
@@ -469,6 +469,42 @@
           "key": "Escape"
         }
       ]
+    },
+    {
+      "id": "p1930",
+      "save": "greenfield-1930.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "p1965",
+      "save": "greenfield-1965.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
     }
   ]
 }
