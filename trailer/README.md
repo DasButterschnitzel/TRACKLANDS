@@ -144,7 +144,7 @@ node trailer/tools/encode.mjs trailer/output/tracklands-trailer-en.mov --webm
 node trailer/tools/assemble.mjs --edit=edit-30-vertical.json --lang=de
 ```
 
-Sound is normalised to −14 LUFS with true peak ≤ −1.5 dBTP.
+Sound is normalised to about −14 LUFS (two-pass loudnorm after a gentle peak limiter) with the true peak at or below −1.5 dBTP after encoding.
 
 ## Requirements
 

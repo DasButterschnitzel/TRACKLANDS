@@ -14,16 +14,20 @@ const src = args.find((a) => !a.startsWith('--'));
 const webmOnly = args.includes('--webm-only');
 const webm = webmOnly || args.includes('--webm');
 const base = src.replace(/\.mov$/, '');
-const TARGET = 'I=-14:TP=-1.5:LRA=11';
+const TARGET = 'I=-14:TP=-2:LRA=11';
+// a gentle peak limiter first (single transients such as a whistle onset
+// would otherwise cap the linear gain below the target), and -2 dBTP inside
+// so the true peak stays at or below -1.5 dBTP after AAC/Opus encoding
+const PRE = 'alimiter=limit=0.5:attack=4:release=80:level=disabled,';
 
 function loudness(file) {
-  const p = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', `loudnorm=${TARGET}:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' });
+  const p = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', `${file === src ? PRE : ''}loudnorm=${TARGET}:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' });
   return JSON.parse((p.stderr || '').match(/\{[^{}]*"input_i"[^{}]*\}/)[0]);
 }
 
 const m = loudness(src);
 console.log(`loudness in: ${m.input_i} LUFS, true peak ${m.input_tp} dBTP`);
-const af = `loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`;
+const af = `${PRE}loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`;
 const color = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
 
 const mp4 = base + '.mp4';
