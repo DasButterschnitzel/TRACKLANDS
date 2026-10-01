@@ -294,9 +294,10 @@ export function tram(t, name, model, n) {
 // ---------- ships and aircraft ----------
 export function docks(near1, near2, model, n, name) {
   const G = g(), R = G.roads, S = G.stations;
-  const shore = (t) => { const out = []; for (let dz = -10; dz <= 10; dz++) for (let dx = -10; dx <= 10; dx++) { const i = idx(t.x + dx, t.z + dz); if (i >= 0 && !R.stopError(i, 'dock')) out.push(i); } return out.sort((a, b) => cheb(a, idx(t.x, t.z)) - cheb(b, idx(t.x, t.z))); };
+  const shore = (t) => { const out = []; for (let dz = -18; dz <= 18; dz++) for (let dx = -18; dx <= 18; dx++) { const i = idx(t.x + dx, t.z + dz); if (i >= 0 && !R.stopError(i, 'dock')) out.push(i); } return out.sort((a, b) => cheb(a, idx(t.x, t.z)) - cheb(b, idx(t.x, t.z))); };
   const sa = shore(near1), sb = shore(near2);
-  for (const a of sa.slice(0, 30)) for (const b of sb.slice(0, 30)) {
+  note(`dock sites: ${sa.length} near ${near1.name}, ${sb.length} near ${near2.name}`);
+  for (const a of sa.slice(0, 60)) for (const b of sb.slice(0, 60)) {
     if (cheb(a, b) < 8 || !R.waterPath(a, b)) continue;
     const A = R.addStop(a, 'dock').stop, B = R.addStop(b, 'dock').stop;
     if (!A || !B) continue;

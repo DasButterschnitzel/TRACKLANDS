@@ -164,6 +164,26 @@ export async function phaseD() {
   return { save: 'greenfield-1995.json.gz', stills: [['gf', x, z, 16, 45, 1], ['gf-wide', x + 6, z + 6, 34, 45, 0], ['corridor', x + 12, z + 12, 14, 45, 0]] };
 }
 
+// 1995-2025: the metropolis — high-speed trains on the express pair, an
+// automatic metro, the ships, the city at its largest
+export async function phaseE() {
+  S.unlockAll();
+  const G = g();
+  const gf = town('Greenfield'), wt = town('Wolfton'), cu = town('Copperholm'), wf = town('Wolffall');
+  const GC = byName('Greenfield Central'), B = byName('Wolfton'), E = byName('Copperholm');
+  grow(gf, 6, 120); grow(wt, 5, 60); grow(cu, 4, 40); grow(wf, 3, 20);
+  S.level(GC, 5);
+  try { const d = S.depotNear(E, 10, true); S.train(d, 'arrowline_300', [GC, B, E], { name: 'Arrowline Coastal' }); S.train(d, 'meridian', [E, B, GC], { name: 'Heartland Sprinter' }); } catch (e) { say('hst: ' + e.message); }
+  try { const md = G.stations.myDepots().find((d) => G.trains.trains.some((t) => t.depotId === d.id && G.trains.isMetro(t))); const ms = G.stations.mine().filter((s) => G.stations.isUnderground(s)); if (md && ms.length > 1) S.train(md, 'metro_auto', [ms[0], ms[ms.length - 1]], { name: 'Greenfield Metro 3' }); } catch (e) { say('metro: ' + e.message); }
+  try { S.docks(wt, cu, 'river_barge', 2, 'River Barges'); } catch (e) { say('docks river: ' + e.message); }
+  try { S.docks(town('Stonebrook') || wf, town('Ashwell') || wf, 'container_ship', 2, 'Coastal Containers'); } catch (e) { say('docks coast: ' + e.message); }
+  await runYears(15);
+  grow(gf, 6, 80); grow(wt, 5, 40);
+  await runYears(15);
+  const [x, z] = W2(gf);
+  return { save: 'greenfield-2025.json.gz', stills: [['gf', x, z, 16, 45, 1], ['gf-wide', x + 6, z + 6, 34, 45, 0], ['mega', x + 8, z + 6, 22, 60, 0]] };
+}
+
 export async function phaseQ() {
   const G = g(), C = await import('/src/config.js');
   const gf = town('Greenfield');

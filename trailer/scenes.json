@@ -31,6 +31,122 @@
           }
         ]
       }
+    },
+    {
+      "id": "s04-grow-1900",
+      "save": "greenfield-1900.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1930",
+      "save": "greenfield-1930.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1965",
+      "save": "greenfield-1965.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1995",
+      "save": "greenfield-1995.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
     }
   ]
 }
