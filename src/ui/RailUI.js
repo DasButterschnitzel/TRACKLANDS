@@ -4,7 +4,7 @@
 // facilities, statistics) and the overlay menu.
 import * as THREE from 'three';
 import { facilitySlots, COSTS } from '../config.js';
-import { TILE, fmt, escapeHtml, clamp, tileCX, tileCZ, layerOf } from '../util.js';
+import { TILE, fmt, escapeHtml, cleanText, clamp, tileCX, tileCZ, layerOf } from '../util.js';
 import {
   CARGO, CARGO_IDS, LOCOS, WAGONS, WAGON_IDS, STATION, FACILITIES, PLATFORM_ROLES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, KMH_PER_TILE_S, CONSIST, wagonsFor, locoLen,
 } from '../config.js';
@@ -813,7 +813,7 @@ export const RailUIMixin = {
     const g = () => this.game;
     const stop = (el) => { const t = g().trains.byId(+el.dataset.id); return t ? t.route[+el.dataset.i] : null; };
     return {
-      bldName: (el) => { if (this.bld) this.bld.name = el.value.slice(0, 28); },
+      bldName: (el) => { if (this.bld) this.bld.name = cleanText(el.value, 28); },
       // typing keeps the focus: only the palette is redrawn
       bldQuery: (el) => {
         if (!this.bld) return;

@@ -2,7 +2,7 @@
 // and migration, backups, export and import with validation.
 import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL, TRAIN_UPGRADES, WORLDGEN_VERSION } from '../config.js';
 import { normalizeTerrain } from '../world/Terrain.js';
-import { MAP_SIZES } from '../util.js';
+import { MAP_SIZES, scrubNames } from '../util.js';
 
 const DB = 'tracklands', STORE = 'saves', LS_KEY = 'tracklands.save', LS_BACKUP = 'tracklands.backup';
 
@@ -91,6 +91,7 @@ const numMap = (o) => {
 const withId = (arr) => (Array.isArray(arr) ? arr.filter((e) => isObj(e) && fin(e.id)) : []);
 export function sanitize(d) {
   if (!isObj(d)) return d;
+  scrubNames(d);
   const S = d.stations;
   if (isObj(S)) {
     S.stations = withId(S.stations).filter((s) => fin(s.tile));
@@ -210,8 +211,11 @@ export function exportText(d) {
   const json = JSON.stringify(d);
   return 'TRKL1:' + btoa(unescape(encodeURIComponent(json)));
 }
+// (a save is a few MB at most; anything far larger is not one)
+export const MAX_IMPORT = 32 * 1024 * 1024;
 export function importText(text) {
   text = String(text || '').trim();
+  if (text.length > MAX_IMPORT) return null;
   try {
     if (text.startsWith('TRKL1:')) return JSON.parse(decodeURIComponent(escape(atob(text.slice(6)))));
     return JSON.parse(text);

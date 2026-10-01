@@ -15,6 +15,7 @@
 import { ROAD_VEHICLES, CARGO, SOUND_PROFILES, SOUND_KIND } from '../config.js';
 import { BUS_SHAPES } from '../road/RoadModels.js';
 import { cleanScenario } from '../world/Scenarios.js';
+import { cleanText } from '../util.js';
 
 const BASE = 'assets/packs/';
 const KINDS = ['bus', 'truck', 'tram', 'dock', 'airport'];
@@ -61,7 +62,7 @@ export function vehicleErrors(v) {
 // a checked vehicle as the game uses it
 function toModel(pack, v) {
   const m = {
-    id: `${pack}.${v.id}`, name: v.name, kind: v.kind, cap: v.cap, speed: v.speed, price: v.price, op: v.op,
+    id: `${pack}.${v.id}`, name: cleanText(v.name, 48), kind: v.kind, cap: v.cap, speed: v.speed, price: v.price, op: v.op,
     level: v.level || 1, color: v.color ? parseInt(v.color.slice(1), 16) : 0xd8d8d8, pack,
   };
   if (v.groups) m.groups = v.groups.slice(); else { m.pax = true; m.mail = v.mail || 0; }
@@ -78,7 +79,7 @@ export function checkPack(d, file = '') {
   const res = { id: '', name: '', version: '', file, vehicles: [], scenarios: [], errors: [] };
   if (!d || typeof d !== 'object') { res.errors.push({ where: file, what: 'not_object' }); return res; }
   if (typeof d.id !== 'string' || !ID.test(d.id)) { res.errors.push({ where: file, what: 'bad:id' }); return res; }
-  res.id = d.id; res.name = typeof d.name === 'string' ? d.name.slice(0, 48) : d.id; res.version = typeof d.version === 'string' ? d.version.slice(0, 16) : '';
+  res.id = d.id; res.name = typeof d.name === 'string' ? cleanText(d.name, 48) : d.id; res.version = typeof d.version === 'string' ? d.version.slice(0, 16) : '';
   const seen = new Set();
   (Array.isArray(d.vehicles) ? d.vehicles : []).slice(0, 200).forEach((v, i) => {
     const errs = vehicleErrors(v);

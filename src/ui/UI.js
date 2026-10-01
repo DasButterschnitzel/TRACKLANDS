@@ -1,7 +1,7 @@
 // DOM user interface: HUD, toolbars, panels, inspector, world labels, toasts,
 // modals, tooltips and the debug overlay. All strings come from i18n.
 import * as THREE from 'three';
-import { N, TILE, fmt, fmtTime, escapeHtml, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
+import { N, TILE, fmt, fmtTime, escapeHtml, cleanText, tileCX, tileCZ, tx, tz, idx, clamp } from '../util.js';
 import { ROAD_COSTS, ROAD_VEHICLES, ROAD_TYPES, ROAD_TYPE_IDS,
   CARGO, CARGO_IDS, bestModes, LOCOS, RESEARCH, RESEARCH_CATS, REGIONS, OBJECTIVES, ACHIEVEMENTS, LIVERIES, STATION_STYLES, DECORATIONS,
   TRACK_TIERS, WAGONS, TOWN_ACCEPTS, INDUSTRIES, TRAIN_UPGRADES, TRAIN_UPGRADE_MAX, STATION, COSTS, ERA_RESEARCH, locoResearch, CREATOR_NAME, GAME_VERSION,
@@ -1410,7 +1410,7 @@ export class UI {
     return new Promise((res) => {
       const w = this.modal(`<p>${esc(text)}</p><input class="inp" maxlength="28" value="${esc(value || '')}"/><div class="row end"><button class="btn ghost" data-mbtn="no">${this.tr('cancel')}</button><button class="btn primary" data-mbtn="yes">${this.tr('ok')}</button></div>`, { onCancel: () => res(null) });
       const inp = w.querySelector('input');
-      const ok = () => { w.remove(); res(inp.value.trim()); };
+      const ok = () => { w.remove(); res(cleanText(inp.value.trim(), 40)); };
       w.querySelector('[data-mbtn=no]').onclick = () => { w.remove(); res(null); };
       w.querySelector('[data-mbtn=yes]').onclick = ok;
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
@@ -1579,7 +1579,7 @@ export class UI {
       ...this.catalogInputs(),
       logoShape: (el) => { const C = this.game.company; C.logo = cleanLogo({ ...C.logo, shape: el.value }); C.buildVisual(); this.refreshPanel(); },
       logoSymbol: (el) => { const C = this.game.company; C.logo = cleanLogo({ ...C.logo, symbol: el.value }); C.buildVisual(); this.refreshPanel(); },
-      companyName: (el) => { const v = el.value.trim().slice(0, 32); if (v && this.game) { this.game.company.name = v; this.game.company.buildVisual(); this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); this.refreshPanel(); } },
+      companyName: (el) => { const v = cleanText(el.value.trim(), 32); if (v && this.game) { this.game.company.name = v; this.game.company.buildVisual(); this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); this.refreshPanel(); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingNum: (el) => { const v = parseInt(el.value, 10); if (Number.isFinite(v)) this.app.setSetting(el.dataset.key, v); },
       settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },

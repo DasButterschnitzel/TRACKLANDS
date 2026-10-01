@@ -18,7 +18,7 @@
 // gold in the first half of the time allowed, silver in the first three
 // quarters, bronze later. Medals are kept in this browser.
 import { CARGO, DIFFICULTY } from '../config.js';
-import { MAP_SIZES } from '../util.js';
+import { MAP_SIZES, scrubNames } from '../util.js';
 
 export const GOAL_KINDS = ['value', 'passengers', 'cargo', 'towns', 'profit', 'trains', 'reputation', 'lines'];
 export const MEDALS = ['bronze', 'silver', 'gold'];
@@ -46,6 +46,7 @@ export const SCENARIOS = [
 // a scenario from the editor or an import: keep only what the game understands
 export function cleanScenario(s) {
   if (!s || typeof s !== 'object') return null;
+  scrubNames(s);
   const num = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : d);
   const goals = (Array.isArray(s.goals) ? s.goals : []).slice(0, 6).map((g) => {
     if (!g || !GOAL_KINDS.includes(g.k)) return null;

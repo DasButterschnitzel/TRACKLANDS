@@ -4,7 +4,7 @@
 // revenue estimated before anything is bought), the line inspector (stops,
 // pattern, colour, name, vehicles, frequency, wait, capacity, demand, status
 // and a suggestion) and the line parts of the stop and vehicle inspectors.
-import { fmt, escapeHtml as esc } from '../util.js';
+import { fmt, escapeHtml as esc, cleanText } from '../util.js';
 import { icon } from './icons.js';
 import { ROAD_VEHICLES } from '../config.js';
 import { roadModel } from '../road/Roads.js';
@@ -208,7 +208,7 @@ export const LineUIMixin = {
       lineLivery: (el) => { const l = L().byId(+el.dataset.id); if (l) l.livery = el.checked; this.renderInspector(); },
       lineAuto: (el) => { const l = L().byId(+el.dataset.id); if (l) l.auto = el.checked; this.renderInspector(); },
       roadLineSpacing: (el) => { const l = L().byId(+el.dataset.id); const v = +el.value; if (l && LINE_SPACING.includes(v)) { l.spacing = v; l.gaps = []; } this.renderInspector(); },
-      lineName: (el) => { const l = L().byId(+el.dataset.id); const v = el.value.trim().slice(0, 24); if (l && v) { l.name = v; L().changed(); } this.renderInspector(); },
+      lineName: (el) => { const l = L().byId(+el.dataset.id); const v = cleanText(el.value.trim(), 24); if (l && v) { l.name = v; L().changed(); } this.renderInspector(); },
       lineModelSel: (el) => { const l = L().byId(+el.dataset.id); if (l) l.model = el.value; this.renderInspector(); },
       heritage: (el) => {
         const g = this.game, [k, id] = String(el.dataset.id).split(':');

@@ -138,6 +138,25 @@ export function dateKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Player-written and imported names never carry markup: the characters that
+// could open a tag or leave an attribute are dropped where text comes in
+// (rename fields, imported saves, blueprints, scenarios and content packs).
+export function cleanText(s, max = 64) {
+  return String(s == null ? '' : s).replace(/[<>"`\u0000-\u001f\u007f]/g, '').slice(0, max);
+}
+// walk an imported object and clean every string held under a name-like key
+const NAME_KEY = /(^|_)(name|title|label|caption)s?$/i;
+export function scrubNames(o, depth = 0) {
+  if (!o || typeof o !== 'object' || depth > 12) return o;
+  if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) { const v = o[i]; if (v && typeof v === 'object') scrubNames(v, depth + 1); } return o; }
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (typeof v === 'string') { if (NAME_KEY.test(k) && /[<>"`\u0000-\u001f\u007f]/.test(v)) o[k] = cleanText(v, 200); }
+    else if (v && typeof v === 'object') scrubNames(v, depth + 1);
+  }
+  return o;
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

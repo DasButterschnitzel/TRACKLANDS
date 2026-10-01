@@ -6,7 +6,7 @@
 // PROJECT). The library lives in the browser (versioned), can be exported
 // and imported as plain JSON: numbers and short strings only, nothing that
 // runs.
-import { N, DX, DZ, tx, tz, idx, inMap, layerOf, onLayer, baseTile } from '../util.js';
+import { N, DX, DZ, tx, tz, idx, inMap, layerOf, onLayer, baseTile, scrubNames } from '../util.js';
 
 export const BP_VERSION = 1;
 const KEY = 'tracklands.blueprints';
@@ -26,6 +26,7 @@ const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null
 // only well-formed numbers survive; anything else rejects the blueprint
 export function cleanBlueprint(b) {
   if (!b || typeof b !== 'object') return null;
+  scrubNames(b);
   const span = (a, n) => Array.isArray(a) && a.length === n && a.every((v, k) => (k === 4 ? int(v, 0, 3) : int(v, -MAX_SPAN, MAX_SPAN)) != null);
   const runs = Array.isArray(b.runs) ? b.runs.filter((r) => span(r, 5) && (r[0] !== r[2] || r[1] !== r[3])).slice(0, MAX_RUNS) : [];
   if (!runs.length) return null;
