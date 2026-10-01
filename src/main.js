@@ -250,12 +250,12 @@ class App {
     $('#title').innerHTML = `<div class="title-card">
       <h1 class="logo">TRACK<span>LANDS</span></h1><p class="tagline">${t('tagline')}</p>
       <div class="title-btns">
-        ${has ? `<button class="btn primary big" data-t="continue">${t('continue')}${info}</button>` : `<button class="btn primary big" data-t="new">${t('start_journey')}</button>`}
-        ${has ? `<button class="btn big" data-t="new">${t('new_game')}</button>` : `<button class="btn big" data-t="new">${t('new_game_custom')}</button>`}
-        <button class="btn" data-t="quick">${icon('play')} ${t('quick_start')}</button>
+        ${has ? `<button class="btn primary big" data-t="continue">${t('continue')}${info}</button>` : `<button class="btn primary big" data-t="quick">${t('start_journey')}<small>${t('start_journey_hint')}</small></button>`}
+        <button class="btn big" data-t="new">${t('new_game_custom')}</button>
+        ${has ? `<button class="btn" data-t="quick">${icon('play')} ${t('quick_start')}</button>` : ''}
         <button class="btn" data-t="scenarios">${icon('objectives')} ${t('scenarios')}</button>
         <button class="btn" data-t="settings">${icon('settings')} ${t('settings')}</button>
-        <button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>
+        ${has ? `<button class="btn" data-t="stats">${icon('stats')} ${t('menu_stats')}</button>` : ''}
         <button class="btn" data-t="credits">${t('credits')}</button>
         <button class="btn ghost" data-t="backups">${icon('save')} ${t('backups')}</button>
       </div><p class="muted small ver"><button class="linkbtn" data-t="changelog">v${GAME_VERSION} · ${t('whats_new')}</button></p></div>`;
@@ -325,8 +325,7 @@ class App {
     const seed = String(Math.floor(Math.random() * 1e9));
     const w = this.ui.modal(`<h2>${t('new_game')}</h2>
       ${this.save ? `<p class="card warn">${icon('warn')} ${t('new_game_overwrite')}</p>` : ''}
-      <div class="presets row wrap">${Object.keys(GAME_PRESETS).map((k) => `<button class="chip" data-preset="${k}" data-tip="${t('preset_' + k + '_desc')}"><b>${t('preset_' + k)}</b><small>${t('preset_' + k + '_desc')}</small></button>`).join('')}</div>
-      <label class="set"><span>${t('world_seed')}</span><span class="row"><input class="inp" id="ng-seed" value="${seed}" maxlength="24"/><button class="btn ghost" id="ng-rand">${t('random')}</button></span></label>
+      <div class="presets row wrap">${Object.keys(GAME_PRESETS).map((k) => `<button class="chip${k === 'classic' ? ' on' : ''}" data-preset="${k}" data-tip="${t('preset_' + k + '_desc')}"><b>${t('preset_' + k)}</b><small>${t('preset_' + k + '_desc')}</small></button>`).join('')}</div>
       <div class="diffs">${Object.keys(DIFFICULTY).map((d) => `<label class="diff"><input type="radio" name="diff" value="${d}" ${d === 'standard' ? 'checked' : ''}/><b>${t('diff_' + d)}</b><small>${t('diff_' + d + '_desc')}</small></label>`).join('')}</div>
       <h3>${t('ng_world')}</h3>
       <div class="diffs ng-size">${MAP_SIZES.map((n) => `<label class="diff"><input type="radio" name="size" value="${n}" ${n === 64 ? 'checked' : ''}/><b>${t('size_' + n)}</b><small>${t('size_' + n + '_desc')}</small></label>`).join('')}</div>
@@ -338,20 +337,23 @@ class App {
         ${['passes', 'smart'].map((k) => `<label class="set"><span>${t('tp_' + k)}</span><input type="checkbox" data-tp="${k}"/></label>`).join('')}</div>
         <p class="muted small">${t('ng_terrain_adv_help')}</p>
         <button class="btn ghost small" id="ng-treset">${t('ng_terrain_reset')}</button>
+        <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
+        <p class="muted small">${t('ng_heightmap_help')}</p>
       </details>
       <p class="card warn" id="ng-mega" hidden>${icon('warn')} ${t('ng_mega_warn')}</p>
       <label class="set"><span>${t('ng_start_year')}</span><select id="ng-year">${[1900, 1930, 1950, 1970, 1990].map((y) => `<option value="${y}" ${y === 1950 ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
-      <label class="set"><span>${t('ng_heightmap')}</span><input type="file" id="ng-hmap" accept="image/*" aria-label="${t('ng_heightmap')}"/></label>
-      <p class="muted small">${t('ng_heightmap_help')}</p>
       <label class="set"><span>${t('ng_rivals')}</span><select id="ng-rivals">${RIVAL_COUNTS.map((n) => `<option value="${n}" ${n === 1 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <details class="ng-more"><summary>${t('ng_rivals_more')}</summary>
         <label class="set"><span>${t('ng_rival_timing')}</span><select id="ng-rtiming">${RIVAL_TIMINGS.map((o) => `<option value="${o}">${t('rival_timing_' + o)}</option>`).join('')}</select></label>
         <label class="set"><span>${t('ng_ai_level')}</span><select id="ng-ailevel">${AI_LEVEL_IDS.map((o) => `<option value="${o}" ${o === 'standard' ? 'selected' : ''}>${t('ai_level_' + o)}</option>`).join('')}</select></label>
         <p class="muted small">${t('ng_rivals_help')}</p>
       </details>
-      <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
-      <label class="set"><span>${t('ind_rule')}</span><select id="ng-ind">${['off', 'on'].map((o) => `<option value="${o}">${t('ind_rule_' + o)}</option>`).join('')}</select></label>
-      ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><div class="ng-pinfo"><small class="muted">${t('map_preview')}</small><div id="ng-tstats" class="small"></div><button class="btn ghost small" id="ng-regen">${t('ng_regen')}</button></div></div>`}
+      <details class="ng-more" id="ng-rules"><summary>${t('ng_more_rules')}</summary>
+        <label class="set"><span>${t('rel_mode')}</span><select id="ng-rel">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${o === 'relaxed' ? 'selected' : ''}>${t('rel_' + o)}</option>`).join('')}</select></label>
+        <label class="set"><span>${t('ind_rule')}</span><select id="ng-ind">${['off', 'on'].map((o) => `<option value="${o}">${t('ind_rule_' + o)}</option>`).join('')}</select></label>
+      </details>
+      ${this.game ? '' : `<div class="ng-preview"><canvas id="ng-map" width="64" height="64" aria-label="${t('map_preview')}"></canvas><div class="ng-pinfo"><small class="muted">${t('map_preview')}</small><div id="ng-tstats" class="small"></div></div></div>`}
+      <label class="set"><span>${t('world_seed')}</span><span class="row"><input class="inp" id="ng-seed" value="${seed}" maxlength="24"/><button class="btn ghost" id="ng-rand">${t('random')}</button></span></label>
       <div class="row end"><button class="btn ghost" data-mbtn="no">${t('cancel')}</button><button class="btn primary" data-mbtn="go">${t('start_journey')}</button></div>`, { onCancel: () => {} });
     // the map preview follows the seed and the size
     const seedNum = () => { const raw = w.querySelector('#ng-seed').value.trim() || seed; return /^\d+$/.test(raw) ? parseInt(raw, 10) % 4294967296 : hashStr(raw); };
@@ -389,8 +391,6 @@ class App {
     w.querySelectorAll('[data-tp]').forEach((el) => el.addEventListener(el.type === 'range' ? 'input' : 'change', () => { tOut(); preview(); }));
     w.querySelector('#ng-treset').onclick = () => { tFill(); preview(); };
     tFill();
-    const regen = w.querySelector('#ng-regen');
-    if (regen) regen.onclick = () => { w.querySelector('#ng-seed').value = String(Math.floor(Math.random() * 1e9)); preview(); };
     w.querySelector('#ng-seed').addEventListener('input', preview);
     w.querySelectorAll('input[name=size]').forEach((r) => r.addEventListener('change', preview));
     preview();

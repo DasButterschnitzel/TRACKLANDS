@@ -356,11 +356,12 @@ body.photo-nolabels #labels, body.photo-nolabels #floats { display: none !import
 /* ---------- title & loading ---------- */
 #title { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; padding: 5vw; background: linear-gradient(90deg, rgba(20,28,40,.55), rgba(20,28,40,0) 60%); }
 .title-card { max-width: 420px; width: 100%; color: #fff; }
-.logo { font-size: clamp(44px, 8vw, 84px); margin: 0; font-weight: 900; letter-spacing: .06em; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.35); }
+.logo { font-size: clamp(30px, 10.5vw, 84px); margin: 0; font-weight: 900; letter-spacing: .06em; line-height: 1; text-shadow: 0 4px 0 rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.35); }
 .logo span { color: #7fe0d0; }
 .tagline { font-size: 1.1em; opacity: .95; margin: 10px 0 26px; text-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .title-btns { display: flex; flex-direction: column; gap: 10px; }
 .title-btns .btn:not(.primary) { background: rgba(246,241,231,.92); color: var(--ink); }
+.title-card .ver .linkbtn { color: #fff; opacity: .9; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
 #loading { position: fixed; inset: 0; z-index: 100; background: #1f2a3a; display: grid; place-items: center; color: #fff; transition: opacity .6s; }
 #loading.done { opacity: 0; pointer-events: none; }
 .load-logo { font-size: 42px; font-weight: 900; letter-spacing: .08em; }
@@ -998,6 +999,9 @@ ul.health li.warn { color: var(--warn, #b07a10); }
 /* new game: presets and map preview; campaign medals */
 .presets { gap: 6px; margin: 4px 0 8px; }
 .presets .chip { flex: 1 1 140px; text-align: left; flex-direction: column; align-items: flex-start; height: auto; padding: 8px 10px; }
+.modal .presets .chip { background: #fff; color: var(--ink); border: 1px solid var(--line); white-space: normal; }
+.modal .presets .chip.on { background: #fff; box-shadow: inset 0 0 0 2px var(--teal); border-color: var(--teal); }
+.title-btns .btn.primary small { display: block; font-weight: 500; opacity: .9; font-size: .78em; margin-top: 2px; }
 .ng-preview { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
 .ng-preview canvas { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 8px; box-shadow: var(--shadow); background: #6a8; }
 .medal { display: inline-block; font-size: 1.1em; line-height: 1; }
