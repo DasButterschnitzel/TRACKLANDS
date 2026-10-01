@@ -116,6 +116,37 @@ export async function run({ browser, base }) {
   check(r.A.probsActionable, `problem → action: all ${r.A.probs} problems in the transport overview can be shown on the map or acted on`);
   check(E.fromField.hadField && E.fromField.panel == null && E.fromField.focusLeft, 'Escape in the FIND field leaves the field and closes FIND');
 
+  // text contrast (Phase 15): every enabled text in the panels a player
+  // reads first is readable on its own background (the FIND examples and
+  // the game-mode presets were white on the light sheet; unchosen filters
+  // and locked research were faded like disabled controls)
+  const ct = await page.evaluate(async () => {
+    const ui = window.__tracklands.ui;
+    const lum = (c) => { const m = c.match(/[\d.]+/g); if (!m) return null; const [r, g, b, a = 1] = m.map(Number); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return { L: 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b), a }; };
+    const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.backgroundImage !== 'none') return null; const l = lum(cs.backgroundColor); if (l && l.a > 0.5) return l.L; } return 1; };
+    const low = [];
+    let n = 0;
+    for (const p of ['search', 'research', 'collection', 'finance', 'trains', 'company', 'settings', 'newgame']) {
+      ui.closePanel();
+      if (p === 'newgame') window.__tracklands.newGameDialog(); else ui.openPanel(p);
+      await new Promise((res) => setTimeout(res, 700));
+      document.getAnimations().forEach((a) => { try { a.finish(); } catch (e) { /* infinite */ } });
+      for (const el of document.querySelectorAll(p === 'newgame' ? '.modal-wrap *' : '#panel *')) {
+        if (![...el.childNodes].some((x) => x.nodeType === 3 && x.textContent.trim())) continue;
+        if (el.closest('button:disabled, [disabled], [aria-disabled=true]')) continue;
+        const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+        const cs = getComputedStyle(el), fg = lum(cs.color), bg = bgOf(el);
+        if (!fg || bg == null) continue;
+        let op = 1; for (let e = el; e; e = e.parentElement) op *= +getComputedStyle(e).opacity;
+        const fl = fg.L * fg.a * op + bg * (1 - fg.a * op), cr = (Math.max(fl, bg) + 0.05) / (Math.min(fl, bg) + 0.05);
+        n++;
+        if (cr < 2.2) low.push(`${p}: "${el.textContent.trim().slice(0, 20)}" ${cr.toFixed(1)}`);
+      }
+    }
+    ui.closePanel(); document.querySelectorAll('.modal-wrap').forEach((m) => m.remove());
+    return { n, low };
+  });
+  check(ct.n > 200 && !ct.low.length, `text contrast: ${ct.n} enabled texts in seven panels and the new-game dialog, none below 2.2:1${ct.low.length ? ` (${ct.low.length}): ` + ct.low.slice(0, 6).join(', ') : ''}`);
   // (the desktop page closes first: its busy network must not starve the phone page on a slow runner)
   const deskErrors = errors.slice();
   await ctx.close();

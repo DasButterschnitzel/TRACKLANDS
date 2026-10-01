@@ -140,6 +140,7 @@ body.building #topbar .speeds { opacity: .7; }
 .tag.link { cursor: pointer; margin: 2px; border: 1px solid var(--line); }
 .tag.link:hover { background: #fff; }
 .tag.locked { opacity: .55; }
+.tag.good { color: #23683f; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .icons { display: flex; flex-wrap: wrap; gap: 4px; }
 .icons .ic { width: 26px; height: 26px; }
@@ -188,8 +189,7 @@ body.building #topbar .speeds { opacity: .7; }
 .rnode .rcost { position: absolute; right: 8px; top: 8px; display: flex; align-items: center; gap: 2px; font-weight: 700; }
 .rnode.available { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(47,179,163,.18); }
 .rnode.done { background: #e8f6f3; border-color: var(--teal); opacity: 1; }
-.rnode.locked { background: #f4f1eb; color: #8a909a; }
-.rnode.locked .rcost, .rnode.locked b { opacity: .7; }
+.rnode.locked { background: #f4f1eb; color: #5f6670; opacity: .85; }   /* (locked research stays readable: what it needs is the point) */
 .rnode.unaffordable { border-style: dashed; }
 .panel-wide #panel { width: min(760px, calc(100vw - 20px)); }
 .lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
@@ -253,7 +253,7 @@ body.building #topbar .speeds { opacity: .7; }
 .stop-opts { background: var(--bg2); border-radius: 10px; padding: 4px 10px 8px; margin: -2px 0 6px 12px; }
 .rstop.cur { border-color: var(--teal); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.chips .chip { background: var(--bg2); color: var(--ink); min-height: 38px; padding: 4px 8px; opacity: .45; }
+.chips .chip { background: var(--bg2); color: var(--ink); min-height: 38px; padding: 4px 8px; opacity: .75; }   /* (unchosen filters stay readable: they are clickable, not disabled) */
 .chips .chip.on { background: #fff; opacity: 1; box-shadow: inset 0 0 0 2px var(--teal); }
 .upg { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
 .upg > span:first-child { width: 100px; }
@@ -642,7 +642,7 @@ h4.grp small { font-weight: 500; color: var(--ink2); text-transform: none; lette
 .tact:hover:not([disabled]) { border-color: var(--teal); background: #f2faf8; }
 .tact.hl { background: var(--teal); color: #fff; border-color: var(--teal); }
 .tact.hl .ic { color: #fff; }
-.tact[disabled] { opacity: .45; }
+.tact[disabled] { opacity: .6; }
 .btn.link { padding-left: 2px; }
 
 /* ---------- liveries ---------- */
@@ -1071,3 +1071,4 @@ details.card.history > summary { cursor: pointer; font-weight: 600; }
 .toast .fix { display: block; margin-top: 2px; font-weight: 400; opacity: .92; font-size: .92em; }
 .adv-why { margin-top: 3px; } .adv-why summary { cursor: pointer; font-size: .86em; opacity: .85; min-height: 24px; display: flex; align-items: center; } .adv-why small { display: block; opacity: .9; }
 .find-try { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 4px; }
+.find-try .chip { background: #fff; color: var(--ink); border: 1px solid var(--line); min-height: 32px; justify-content: center; }
