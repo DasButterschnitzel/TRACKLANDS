@@ -18,13 +18,17 @@ const TARGET = 'I=-14:TP=-2:LRA=11';
 // a gentle peak limiter first (single transients such as a whistle onset
 // would otherwise cap the linear gain below the target), and -2 dBTP inside
 // so the true peak stays at or below -1.5 dBTP after AAC/Opus encoding
-const PRE = 'alimiter=limit=0.5:attack=4:release=80:level=disabled,';
+let PRE = '';
 
 function loudness(file) {
   const p = spawnSync('ffmpeg', ['-hide_banner', '-nostats', '-i', file, '-vn', '-af', `${file === src ? PRE : ''}loudnorm=${TARGET}:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' });
   return JSON.parse((p.stderr || '').match(/\{[^{}]*"input_i"[^{}]*\}/)[0]);
 }
 
+// bring the mix up to about the target first, then limit its peaks at
+// -3 dBFS, so the linear pass below needs (almost) no further gain
+const raw = loudness(src);
+PRE = `volume=${(-14 - raw.input_i).toFixed(2)}dB,alimiter=limit=0.7:attack=3:release=60:level=disabled,`;
 const m = loudness(src);
 console.log(`loudness in: ${m.input_i} LUFS, true peak ${m.input_tp} dBTP`);
 const af = `${PRE}loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`;
