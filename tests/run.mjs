@@ -55,6 +55,7 @@ import * as localization from './suites/localization.mjs';
 import * as offline from './suites/offline.mjs';
 import * as access from './suites/access.mjs';
 import * as security from './suites/security.mjs';
+import * as rcflow from './suites/rcflow.mjs';
 import * as costquote from './suites/costquote.mjs';
 import * as company from './suites/company.mjs';
 import * as scenarios from './suites/scenarios.mjs';
@@ -92,7 +93,7 @@ import * as ai from './suites/ai.mjs';
 import * as aidecades from './suites/aidecades.mjs';
 import * as hardening from './suites/hardening.mjs';
 
-const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, terrain, eras, layers, metro, fourtrack, planning, stationcomplex, erainfra, p12risk, trafficperf, search, catalogsearch, localization, offline, access, security, costquote, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, ai, aidecades, eralong, hardening, savefuzz, monkey, ui, perf, gallery];
+const ALL = [unit, worldgen, rail, seeds, fuzz, prodsave, economy, persist, importexport, pwa, tutorial, build, finance, authority, towns, crossings, roads, audio, industry, weather, news, stationtypes, transport, mapsize, terrain, eras, layers, metro, fourtrack, planning, stationcomplex, erainfra, p12risk, trafficperf, search, catalogsearch, localization, offline, access, security, rcflow, costquote, company, scenarios, rivals, touch, buses, overview, traffic, cities, chains, rollingstock, stress, audit, network, urban, roadtypes, terminals, fleet, standing, analysis, competition, timectl, tools, savesafety, music, campaign, helpui, packs, branding, makers, bench, qa, xbrowser, ai, aidecades, eralong, hardening, savefuzz, monkey, ui, perf, gallery];
 const argv = process.argv.slice(2);
 const args = {};
 const names = [];
