@@ -1,5 +1,6 @@
 // Distribution files from an assembled master (development only):
-//   node trailer/tools/encode.mjs <master.mov> [--webm]
+//   node trailer/tools/encode.mjs <master.mov> [--webm] [--webm-only] [--drop-master]
+// (--drop-master deletes the ProRes file afterwards: for cutdowns, to save disk)
 // MP4: H.264 High, CRF 16, yuv420p, BT.709, AAC 320 kb/s, fast start.
 // WebM: VP9 (CRF 24) + Opus 192 kb/s.
 // The sound is loudness-normalised in two passes to -14 LUFS integrated with
@@ -10,7 +11,8 @@ import { spawnSync, execFileSync } from 'child_process';
 
 const args = process.argv.slice(2);
 const src = args.find((a) => !a.startsWith('--'));
-const webm = args.includes('--webm');
+const webmOnly = args.includes('--webm-only');
+const webm = webmOnly || args.includes('--webm');
 const base = src.replace(/\.mov$/, '');
 const TARGET = 'I=-14:TP=-1.5:LRA=11';
 
@@ -25,14 +27,15 @@ const af = `loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}
 const color = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
 
 const mp4 = base + '.mp4';
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', af, '-vf', 'format=yuv420p', '-c:v', 'libx264', '-profile:v', 'high', '-preset', 'slow', '-crf', '16', '-g', '120', ...color,
+if (!webmOnly) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', af, '-vf', 'format=yuv420p', '-c:v', 'libx264', '-profile:v', 'high', '-preset', 'slow', '-crf', '16', '-g', '120', ...color,
   '-c:a', 'aac', '-b:a', '320k', '-movflags', '+faststart', mp4], { stdio: 'inherit' });
-console.log('wrote', mp4, (fs.statSync(mp4).size / 1048576).toFixed(1), 'MB');
+if (!webmOnly) console.log('wrote', mp4, (fs.statSync(mp4).size / 1048576).toFixed(1), 'MB');
 if (webm) {
   const w = base + '.webm';
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', af, '-vf', 'format=yuv420p', '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', ...color,
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', af, '-vf', 'format=yuv420p', '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4', '-tile-columns', '2', '-threads', '4', ...color,
     '-c:a', 'libopus', '-b:a', '192k', w], { stdio: 'inherit' });
   console.log('wrote', w, (fs.statSync(w).size / 1048576).toFixed(1), 'MB');
 }
-const o = loudness(mp4);
+const o = loudness(webmOnly ? base + '.webm' : mp4);
 console.log(`loudness out: ${o.input_i} LUFS, true peak ${o.input_tp} dBTP`);
+if (args.includes('--drop-master')) fs.unlinkSync(src);
