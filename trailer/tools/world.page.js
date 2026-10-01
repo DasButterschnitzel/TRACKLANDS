@@ -220,3 +220,14 @@ export async function phaseQ() {
   say(JSON.stringify(Object.keys(C.INDUSTRIES.COAL_MINE || {})));
   return {};
 }
+
+// helper for timing shots: a free station site near a town (prints it)
+export async function phaseSite() {
+  for (const [name, toward] of [['Sundale', 'Wolfton'], ['Mosscrest', 'Wolfton'], ['Lakewatch', 'Greenfield']]) {
+    const t = town(name), w = town(toward);
+    if (!t || !w) continue;
+    const s = S.stationSite(t, w, 3, 1, 6);
+    if (s) say(`${name}: a=${s.a % g().mapSize},${Math.floor(s.a / g().mapSize)} b=${s.b % g().mapSize},${Math.floor(s.b / g().mapSize)} cost=${s.plan.cost} acquire=${(s.plan.acquire || []).length}`);
+  }
+  return {};
+}

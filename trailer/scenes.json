@@ -165,6 +165,310 @@
           }
         ]
       }
+    },
+    {
+      "id": "s02-track",
+      "save": "greenfield-1900.json.gz",
+      "duration": 4.2,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.36,
+      "weather": "clear",
+      "setup": "g.economy.coins = 48250;",
+      "notes": "1900. Real track drag with the track tool from Wolfton over the river towards Sundale: the game routes it, plans the bridge, shows the price, builds it.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 162,
+            "z": 160,
+            "zoom": 12.5,
+            "az": 45,
+            "elev": 0.62
+          },
+          {
+            "x": 165,
+            "z": 163,
+            "zoom": 11.6,
+            "az": 48,
+            "elev": 0.62
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "g.construction.setTool('track'); ui.renderToolbar();"
+        },
+        {
+          "t": 0.6,
+          "mouse": "down",
+          "tile": [
+            80,
+            76
+          ]
+        },
+        {
+          "t": 0.807,
+          "mouse": "move",
+          "tile": [
+            80.07,
+            76.13
+          ]
+        },
+        {
+          "t": 0.914,
+          "mouse": "move",
+          "tile": [
+            80.28,
+            76.5
+          ]
+        },
+        {
+          "t": 1.021,
+          "mouse": "move",
+          "tile": [
+            80.59,
+            77.06
+          ]
+        },
+        {
+          "t": 1.129,
+          "mouse": "move",
+          "tile": [
+            80.99,
+            77.78
+          ]
+        },
+        {
+          "t": 1.236,
+          "mouse": "move",
+          "tile": [
+            81.46,
+            78.62
+          ]
+        },
+        {
+          "t": 1.343,
+          "mouse": "move",
+          "tile": [
+            81.97,
+            79.54
+          ]
+        },
+        {
+          "t": 1.45,
+          "mouse": "move",
+          "tile": [
+            82.5,
+            80.5
+          ]
+        },
+        {
+          "t": 1.557,
+          "mouse": "move",
+          "tile": [
+            83.03,
+            81.46
+          ]
+        },
+        {
+          "t": 1.664,
+          "mouse": "move",
+          "tile": [
+            83.54,
+            82.38
+          ]
+        },
+        {
+          "t": 1.771,
+          "mouse": "move",
+          "tile": [
+            84.01,
+            83.22
+          ]
+        },
+        {
+          "t": 1.879,
+          "mouse": "move",
+          "tile": [
+            84.41,
+            83.94
+          ]
+        },
+        {
+          "t": 1.986,
+          "mouse": "move",
+          "tile": [
+            84.72,
+            84.5
+          ]
+        },
+        {
+          "t": 2.093,
+          "mouse": "move",
+          "tile": [
+            84.93,
+            84.87
+          ]
+        },
+        {
+          "t": 2.2,
+          "mouse": "move",
+          "tile": [
+            85.0,
+            85.0
+          ]
+        },
+        {
+          "t": 2.9,
+          "mouse": "up",
+          "tile": [
+            85,
+            85
+          ]
+        },
+        {
+          "t": 2.92,
+          "mouse": "move",
+          "tile": [
+            82,
+            74
+          ]
+        },
+        {
+          "t": 3.4,
+          "key": "Escape"
+        }
+      ]
+    },
+    {
+      "id": "s02-station",
+      "save": "greenfield-1900.json.gz",
+      "duration": 3.4,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "setup": "g.economy.coins = 47980;",
+      "notes": "1900. A station dragged in the hamlet of Sundale with the station tool (preview, price, built).",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 185,
+            "z": 175,
+            "zoom": 10.5,
+            "az": 40,
+            "elev": 0.6
+          },
+          {
+            "x": 187,
+            "z": 177,
+            "zoom": 9.6,
+            "az": 44,
+            "elev": 0.6
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "g.construction.setTool('station'); ui.renderToolbar();"
+        },
+        {
+          "t": 0.55,
+          "mouse": "down",
+          "tile": [
+            92,
+            88
+          ]
+        },
+        {
+          "t": 0.75,
+          "mouse": "move",
+          "tile": [
+            92.25,
+            88
+          ]
+        },
+        {
+          "t": 0.85,
+          "mouse": "move",
+          "tile": [
+            92.5,
+            88
+          ]
+        },
+        {
+          "t": 0.95,
+          "mouse": "move",
+          "tile": [
+            92.75,
+            88
+          ]
+        },
+        {
+          "t": 1.05,
+          "mouse": "move",
+          "tile": [
+            93.0,
+            88
+          ]
+        },
+        {
+          "t": 1.15,
+          "mouse": "move",
+          "tile": [
+            93.25,
+            88
+          ]
+        },
+        {
+          "t": 1.25,
+          "mouse": "move",
+          "tile": [
+            93.5,
+            88
+          ]
+        },
+        {
+          "t": 1.35,
+          "mouse": "move",
+          "tile": [
+            93.75,
+            88
+          ]
+        },
+        {
+          "t": 1.45,
+          "mouse": "move",
+          "tile": [
+            94.0,
+            88
+          ]
+        },
+        {
+          "t": 1.75,
+          "mouse": "up",
+          "tile": [
+            94,
+            88
+          ]
+        },
+        {
+          "t": 1.77,
+          "mouse": "move",
+          "tile": [
+            86,
+            82
+          ]
+        },
+        {
+          "t": 2.3,
+          "key": "Escape"
+        }
+      ]
     }
   ]
 }

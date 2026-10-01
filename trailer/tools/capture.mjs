@@ -163,12 +163,13 @@ for (let f = 0; f < nFrames; f++) {
     // real input: the mouse on a tile (projected to the screen) or a key
     if (a.mouse) {
       const [px, py] = await page.evaluate(([x, z, L]) => {
-        const g = window.__tracklands.game, THREE = g.camera.camera.constructor;
-        void THREE;
+        const g = window.__tracklands.game;
+        // a tile may be given as an expression evaluated in the page, e.g. "window.__site.a"
+        if (typeof x === 'string') [x, z] = new Function('g', 'return ' + x)(g);
         const wx = (x + 0.5) * 2, wz = (z + 0.5) * 2, wy = L ? 0 : g.world.view.heightAt(wx, wz);
         const v = g.camera.camera.position.clone().set(wx, wy, wz).project(g.camera.camera);
         return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)];
-      }, [a.tile[0], a.tile[1], a.layer || 0]);
+      }, typeof a.tile === 'string' ? [a.tile, 0, a.layer || 0] : [a.tile[0], a.tile[1], a.layer || 0]);
       if (a.mouse === 'move') await page.mouse.move(px, py, { steps: 1 });
       else if (a.mouse === 'down') { await page.mouse.move(px, py); await page.mouse.down(); }
       else if (a.mouse === 'up') { await page.mouse.move(px, py); await page.mouse.up(); }
