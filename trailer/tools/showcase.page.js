@@ -251,18 +251,26 @@ export function metro(t, n, name) {
     if (r0.error || r1.error) continue;
     Cn.setLayer(0); Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double');
     Cn.setLayer(1); Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', false, 1); Cn.setLayer(0);
+    // stations on the tunnel as built (it may bend round obstacles), on straight bits
+    const path = r1.tiles.filter((tt) => (tt / (N * N) | 0) === 1);
     const stns = [];
-    const span = 2 * back;
     for (let k = 0; k < n; k++) {
-      const at = 4 + Math.round(2 + (span - 4) * (k / Math.max(1, n - 1)));
-      const [x, z] = step(at);
-      const tile = onLayer(idx(x, z), 1);
-      const res = S.build(tile, ax);
-      if (res.error) { note('metro station: ' + res.error); continue; }
-      S.extendPlatform(res.station, 0, 1); S.extendPlatform(res.station, 0, 0);
-      res.station.name = name[k] || `${t.name} Metro ${k + 1}`;
-      stns.push(res.station);
+      let at = Math.round(3 + (path.length - 6) * (k / Math.max(1, n - 1)));
+      let placed = null;
+      for (let d = 0; d < 6 && !placed; d++) for (const j of [at + d, at - d]) {
+        if (placed || j < 2 || j > path.length - 3) continue;
+        const a0 = path[j - 1], a1 = path[j], a2 = path[j + 1];
+        const sx0 = tx(a1) - tx(a0), sz0 = tz(a1) - tz(a0), sx1 = tx(a2) - tx(a1), sz1 = tz(a2) - tz(a1);
+        if (sx0 !== sx1 || sz0 !== sz1 || (sx0 && sz0)) continue;
+        const res = S.build(a1, sx0 ? 0 : 2);
+        if (res.error) continue;
+        S.extendPlatform(res.station, 0, 1); S.extendPlatform(res.station, 0, 0);
+        res.station.name = name[k] || `${t.name} Metro ${k + 1}`;
+        placed = res.station;
+      }
+      if (placed) stns.push(placed); else note('metro station ' + k + ': no straight tunnel tile');
     }
+    if (stns.length > 1 && !net.connected(stns[0].tile, stns[stns.length - 1].tile)) note('metro: stations not connected!');
     let dep = null;
     for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) for (let k = 0; k < 3 && !dep; k++) { const [x, z] = step(k + 1); const tt = idx(x + (ax === 0 ? 0 : dx), z + (ax === 0 ? dz : 0)); const d = S.buildDepot(tt); if (d.depot && net.conn[tt]) dep = d.depot; else if (d.depot) S.removeDepot(d.depot); }
     note(`metro ${t.name}: ${stns.length} stations, depot ${!!dep}`);
