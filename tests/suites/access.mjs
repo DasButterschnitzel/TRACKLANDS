@@ -153,6 +153,10 @@ export async function run({ browser, base }) {
   // touch targets on a phone
   const m = await openPage(browser, base, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   await startTestGame(m.page, 3030);
+  // the phone tool strip starts at its first tool, unfaded, with the fade
+  // on the side that has more (scroll snapping used to shift it 4 px and fade Select)
+  const strip = await m.page.evaluate(() => { const s = document.querySelector('#toolbar .tools'); return { sl: s.scrollLeft, l: s.classList.contains('more-l'), r: s.classList.contains('more-r'), more: s.scrollWidth > s.clientWidth }; });
+  check(strip.sl === 0 && !strip.l && strip.r === strip.more, `phone tool strip starts at Select, unfaded, and shows there are more tools (scroll ${strip.sl}, fade ${strip.l ? 'left ' : ''}${strip.r ? 'right' : ''})`);
   const t = await m.page.evaluate(async () => {
     const ui = window.__tracklands.ui;
     // the target: the element, or the label around it

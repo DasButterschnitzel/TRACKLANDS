@@ -511,7 +511,7 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
 }
 
 /* scrollable tool strip on narrow screens: fade the edge that has more tools */
-#toolbar .tools { scroll-snap-type: x proximity; scrollbar-width: none; flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+#toolbar .tools { scroll-snap-type: x proximity; scroll-padding-inline: 6px; scrollbar-width: none; flex: 1 1 auto; min-width: 0; overflow-x: auto; }
 #toolbar .tools2 { flex: none; }
 #toolbar .tools::-webkit-scrollbar { display: none; }
 #toolbar .tools .tool { scroll-snap-align: start; flex: none; }

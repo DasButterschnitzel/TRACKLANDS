@@ -244,7 +244,8 @@ export class UI {
     if (strip) {
       const edges = () => { strip.classList.toggle('more-l', strip.scrollLeft > 2); strip.classList.toggle('more-r', strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 2); };
       const on = strip.querySelector('.tool.on');
-      if (on && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = Math.max(0, Math.min(on.offsetLeft - strip.clientWidth / 2 + on.offsetWidth / 2, strip.scrollWidth - strip.clientWidth));
+      // (the tool's place inside the strip, whatever its offset parent is)
+      if (on && strip.scrollWidth > strip.clientWidth) { const x = on.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft; strip.scrollLeft = Math.max(0, Math.min(x - strip.clientWidth / 2 + on.offsetWidth / 2, strip.scrollWidth - strip.clientWidth)); }
       strip.addEventListener('scroll', edges, { passive: true });
       this._stripEdges = edges;
       edges();
