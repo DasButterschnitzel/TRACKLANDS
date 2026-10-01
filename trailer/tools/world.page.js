@@ -231,3 +231,9 @@ export async function phaseSite() {
   }
   return {};
 }
+
+export async function phaseMT() {
+  S.unlockAll();
+  try { const M = S.metro(town('Greenfield'), 3, ['Market Square', 'Greenfield Central (Metro)', 'Riverside']); say('metro ok ' + M.stns.length); } catch (e) { say('metro: ' + e.message); }
+  return {};
+}

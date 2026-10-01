@@ -243,14 +243,18 @@ export function metro(t, n, name) {
     if (!ok) continue;
     const [x0, z0] = step(0), [x4, z4] = step(4), [xe, ze] = step(4 + 2 * back);
     if (xe < 4 || ze < 4 || xe > N - 5 || ze > N - 5) continue;
+    // the surface stub first, then the tunnel planned from its portal (as a
+    // player builds it); a tunnel that would leave the portal at an angle is
+    // refused by the game, so the stub is undone and the next corridor tried
     Cn.setLayer(0);
-    const r0 = Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double', true);
+    const b0 = Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double');
+    if (b0.error) continue;
     Cn.setLayer(1);
     const r1 = Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', true, 1);
+    const b1 = r1.error ? r1 : Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', false, 1);
     Cn.setLayer(0);
-    if (r0.error || r1.error) continue;
-    Cn.setLayer(0); Cn.trackOp(idx(x0, z0), idx(x4, z4), 2, 'double');
-    Cn.setLayer(1); Cn.trackOp(idx(x4, z4), idx(xe, ze), 2, 'double', false, 1); Cn.setLayer(0);
+    if (b1.error) { Cn.undo(); note(`metro corridor ${x4},${z4}: ${b1.error}`); continue; }
+    note(`metro build: stub and tunnel (${r1.tiles.length} tiles) from ${x4},${z4} to ${xe},${ze}`);
     // stations on the tunnel as built (it may bend round obstacles), on straight bits
     const path = r1.tiles.filter((tt) => (tt / (N * N) | 0) === 1);
     const stns = [];
