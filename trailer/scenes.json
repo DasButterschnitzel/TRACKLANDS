@@ -149,6 +149,35 @@
       }
     },
     {
+      "id": "s04-grow-2025",
+      "save": "greenfield-2025.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
       "id": "p2025",
       "save": "greenfield-2025.json.gz",
       "duration": 40,
@@ -502,6 +531,123 @@
             "x": 128,
             "z": 128,
             "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "s03-steam",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.33,
+      "weather": "clear",
+      "notes": "1930. The Greenfield Local under steam, followed out of Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7.5,
+            "az": 18,
+            "elev": 0.42
+          },
+          {
+            "zoom": 6.4,
+            "az": 44,
+            "elev": 0.38
+          }
+        ]
+      }
+    },
+    {
+      "id": "s03-timber",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 28,
+      "ui": "clean",
+      "timeOfDay": 0.4,
+      "weather": "clear",
+      "notes": "1930. Northern Timber arrives at the timber siding and loads.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 2,
+          "stiff": 2
+        },
+        "keys": [
+          {
+            "zoom": 6.5,
+            "az": -30,
+            "elev": 0.5
+          },
+          {
+            "zoom": 5.6,
+            "az": -12,
+            "elev": 0.44
+          }
+        ]
+      }
+    },
+    {
+      "id": "s05-bridge",
+      "save": "greenfield-1965.json.gz",
+      "duration": 6,
+      "warmup": 20,
+      "ui": "clean",
+      "timeOfDay": 0.42,
+      "weather": "clear",
+      "notes": "1965. The River Flyer on its way to Copperholm over the river.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 72,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 9,
+            "az": 60,
+            "elev": 0.4
+          },
+          {
+            "zoom": 8,
+            "az": 80,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s05-alpine",
+      "save": "greenfield-1965.json.gz",
+      "duration": 6,
+      "warmup": 47,
+      "ui": "clean",
+      "timeOfDay": 0.45,
+      "weather": "snow",
+      "snowCover": 1,
+      "notes": "1965. The Alpine Express climbing to Stonebrook in snow.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 75,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": -40,
+            "elev": 0.42
+          },
+          {
+            "zoom": 7,
+            "az": -20,
+            "elev": 0.36
           }
         ]
       }
