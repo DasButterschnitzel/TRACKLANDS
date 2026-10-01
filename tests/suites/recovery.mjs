@@ -63,18 +63,41 @@ export async function run({ browser, base }) {
     g.trains.clearTrail(rt); g.trains.placeAt(rt, T(14, -3), 0);
     g.trains.recoverTrain(rt);
     const rAt = stnOf(rt);
+    // a two-track station near the middle whose second platform no line
+    // reaches; its connected platform is taken by another train: the lost
+    // train must not be put on the cut-off platform
+    let cut = null;
+    const plan = S.planDrag(T(23, 5), T(25, 5), 2);
+    const D = plan.error ? null : S.buildDrag(plan).stn;
+    if (D) {
+      // the line reaches the platform that carries the station's own tile; the other is cut off
+      const conn0 = D.tracks.find((tk) => tk.tiles.includes(D.tile)), loose = D.tracks.find((tk) => !tk.tiles.includes(D.tile));
+      if (conn0) C.trackOp(T(21, 0), conn0.tiles.reduce((a, b) => (cheb(a, T(21, 0)) <= cheb(b, T(21, 0)) ? a : b)), 0, 'single');
+      const comp = net.components();
+      if (conn0 && loose && comp[conn0.tiles[0]] === comp[A.tile] && comp[loose.tiles[0]] !== comp[A.tile]) {
+        // the reachable platform is taken (held as by a train standing on it)
+        for (const tile of conn0.tiles) for (let d = 0; d < 8; d++) if (net.hasDir(tile, d)) net.reserve(net.laneKeys({ tile, inH: (d + 4) & 7, outH: null }), 999999);
+        pt.route = [A, D, B].map((s) => ({ st: s.id, act: 'auto', dwell: 0, full: false, skip: false, plat: null, cargo: null }));
+        g.trains.clearTrail(pt); g.trains.placeAt(pt, T(22, 0), 0);
+        g.trains.recoverTrain(pt);
+        const head = pt.steps.length ? pt.steps[g.trains.stepAt(pt, pt.s)].tile : -1;
+        cut = { loose: loose.tiles.includes(head), sameNet: net.components()[head] === net.components()[A.tile], at: (stnOf(pt) || { name: 'none' }).name };
+        for (const tile of conn0.tiles) for (let d = 0; d < 8; d++) if (net.hasDir(tile, d)) { const keys = net.laneKeys({ tile, inH: (d + 4) & 7, outH: null }); for (const k of keys) if (k >= 0 && net.resv[k] === 999999) net.resv[k] = 0; }
+      } else cut = { setup: `${!!conn0}/${!!loose}/${conn0 && comp[conn0.tiles[0]] === comp[A.tile]}/${loose && comp[loose.tiles[0]] !== comp[A.tile]}` };
+    } else cut = { setup: plan.error };
     // and they run on afterwards
     for (let k = 0; k < 600; k++) g.tick(1 / 20);
     return {
       pAt: pAt ? pAt.name + (pAt === A || pAt === B ? ' (own line)' : pAt === island ? ' (island)' : ' (rival)') : 'none',
       pOk: pAt === A || pAt === B, rAt: rAt ? rAt.name + ((rAt.owner || null) === (rt.owner || null) ? ' (own)' : ' (player)') : 'none',
       rOk: !!rAt && (rAt.owner || null) === (rt.owner || null), pProblem: pt.problem || null, rProblem: rt.problem || null,
-      dist: [cheb(T(15, 0), island.tile), cheb(T(15, 0), A.tile), cheb(T(15, 0), B.tile)],
+      dist: [cheb(T(15, 0), island.tile), cheb(T(15, 0), A.tile), cheb(T(15, 0), B.tile)], cut,
     };
   });
   if (r.error) { check(false, r.error); await ctx.close(); return { ok, lines }; }
   check(r.pOk, `a lost player train is put back on its own line, not at the nearer island station or a rival's (${r.pAt}; distances island/A/B ${r.dist.join('/')})`);
   check(r.rOk, `a lost rival train is put back at its own company's station (${r.rAt})`);
+  check(r.cut && !r.cut.setup && !r.cut.loose && r.cut.sameNet, `with the reachable platform taken, it is not put on a platform no line reaches (${JSON.stringify(r.cut)})`);
   check(r.pProblem !== 'no_route', `the recovered player train finds its route again (problem ${r.pProblem})`);
   if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
   await ctx.close();

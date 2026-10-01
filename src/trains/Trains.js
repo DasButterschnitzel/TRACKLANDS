@@ -2002,6 +2002,9 @@ export class TrainSystem {
     t.rev = null; t.via = false; t.pendingLost = false;
     for (const stn of cands) {
       for (const tile of g.stations.allTiles(stn)) {
+        // (a platform track of the station that no line reaches is no place to recover to)
+        if (nets.size && !nets.has(comp[tile])) continue;
+        if (net.tier[tile] < minTier) continue;
         for (let d = 0; d < 8; d++) {
           if (!net.hasDir(tile, d)) continue;
           const h = opp(d);
