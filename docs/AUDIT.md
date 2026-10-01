@@ -330,7 +330,7 @@ Run locally on the 6.1.1 release candidate (`a563a25`; the commits after it chan
 | Real devices, real GPU, physical audio, BrowserStack | UNTESTED / UNTESTED / UNTESTED / NOT EXECUTED |
 
 ### Release decision 6.1.1
-BLOCKER 0 · HIGH 0 open (3 found, fixed) · MEDIUM 0 open (5 found, fixed) · LOW 1 open · COSMETIC 3 open. Release gates: green. **Recommendation: READY.**
+BLOCKER 0 · HIGH 0 open (3 found, fixed) · MEDIUM 0 open (4 found, fixed) · LOW 1 open (2 found, 1 fixed) · COSMETIC 3 open. Release gates: green. **Recommendation: READY.**
 
 ## Release gates 6.1.0
 Run locally on `74b97ac` (the Phase 14 commit; the only later change is the `access` suite closing its desktop page before the phone page, a test-harness fix for a CI runner timeout) — dispatching `deep.yml` from this session is refused. CI (`tests.yml`) on every push; the Firefox job was red on three heads until the harness stopped passing `isMobile` to Firefox (`3463774`). This container renders at about **1 frame per second** (SwiftShader); long runs were split to stay under the session's 30-minute job limit.
