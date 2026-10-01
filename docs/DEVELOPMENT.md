@@ -110,7 +110,7 @@ Cross-browser: `BROWSER=webkit node tests/run.mjs xbrowser`, `BROWSER=firefox xv
 
 Real devices: `tests/devicecloud.mjs` runs a smoke on BrowserStack real Android devices and desktop Safari when the `BROWSERSTACK_USERNAME` / `BROWSERSTACK_ACCESS_KEY` secrets are set; otherwise it reports **NOT EXECUTED** and never fails CI. No real-device test has run for this project so far.
 
-The table lists the core suites; `tests/run.mjs` registers all of them (82 in 6.1.x), and [AUDIT.md](AUDIT.md) maps every requirement to the suite that covers it.
+The table lists the core suites; `tests/run.mjs` registers all of them (83 in 6.1.1), and [AUDIT.md](AUDIT.md) maps every requirement to the suite that covers it.
 
 | Suite | What it protects |
 |---|---|

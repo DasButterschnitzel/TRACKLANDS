@@ -313,7 +313,7 @@ Run locally on the 6.1.1 release candidate (`a563a25`; the commits after it chan
 
 | Gate | Result |
 |---|---|
-| Every regular suite (82) | PASS — in CI's four groups and three browsers, plus `ui` (all ten viewports), `tutorial`, `touch`, `xbrowser` and the changed suites locally |
+| Every registered suite (83) | PASS — in CI's four groups and three browsers, plus `ui` (all ten viewports), `tutorial`, `touch`, `xbrowser` and the changed suites locally |
 | Save fuzz, 1000 cases + 22 corpus entries (4 shards) | **0 bad** — 1008 started, 14 rejected cleanly by the load-failed dialog; 250 cases mutated lifts, escalators or a rival's flow memory directly |
 | Rail fuzzer, seeds 1–40 | PASS |
 | `prodsave` | PASS — 1,220 coins/min (band 900–2000) |
