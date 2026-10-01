@@ -1,0 +1,121 @@
+{
+  "name": "tracklands-cutdown-30",
+  "fps": 60,
+  "fadeIn": 0.6,
+  "fadeOut": 1.2,
+  "shots": [
+    {
+      "clip": "s01-dawn",
+      "in": 2,
+      "dur": 3,
+      "x": 0.4
+    },
+    {
+      "clip": "s02-track",
+      "in": 0.6,
+      "dur": 2.4,
+      "cx": 0.42
+    },
+    {
+      "clip": "s03-steam",
+      "in": 1,
+      "dur": 2.6
+    },
+    {
+      "clip": "s04-grow-1900",
+      "in": 0.3,
+      "dur": 1.4
+    },
+    {
+      "clip": "s04-grow-1965",
+      "in": 0.3,
+      "dur": 1.4
+    },
+    {
+      "clip": "s04-grow-2025",
+      "in": 0.3,
+      "dur": 1.4
+    },
+    {
+      "clip": "s09-fourtrack",
+      "in": 1.2,
+      "dur": 2.8
+    },
+    {
+      "clip": "s08-takeoff",
+      "in": 1.4,
+      "dur": 2.6
+    },
+    {
+      "clip": "s07-metro",
+      "in": 1,
+      "dur": 2.2
+    },
+    {
+      "clip": "s13-ui",
+      "in": 0.2,
+      "dur": 3,
+      "cx": 1
+    },
+    {
+      "clip": "s10-mega",
+      "in": 1.5,
+      "dur": 3.4,
+      "x": 0.6
+    },
+    {
+      "clip": "s12-title",
+      "in": 0.4,
+      "dur": 5
+    }
+  ],
+  "cards": [
+    {
+      "id": "first",
+      "shot": "s02-track",
+      "off": 0.2,
+      "dur": 2
+    },
+    {
+      "id": "grow",
+      "shot": "s04-grow-1900",
+      "off": 0.3,
+      "dur": 3.6
+    },
+    {
+      "id": "connect",
+      "shot": "s08-takeoff",
+      "off": 0.6,
+      "dur": 2
+    },
+    {
+      "id": "company",
+      "shot": "s13-ui",
+      "off": 0.4,
+      "dur": 2
+    },
+    {
+      "id": "title",
+      "shot": "s12-title",
+      "off": 0.4,
+      "dur": 2.3,
+      "fadeIn": 0.6
+    },
+    {
+      "id": "tagline",
+      "shot": "s12-title",
+      "off": 2.6,
+      "dur": 2.4,
+      "fadeIn": 0.4,
+      "fadeOut": 0.2
+    }
+  ],
+  "sfx": [
+    {
+      "file": "whistle-steam",
+      "shot": "s03-steam",
+      "off": 0.3,
+      "gain": -10
+    }
+  ]
+}

@@ -2,17 +2,20 @@
 // 1920×1080 PNGs in the game's own type: the TRACK/LANDS logo colours and
 // weight from styles/main.css (.logo), white capitals, a short teal rule.
 //
-//   node trailer/tools/cards.mjs        → trailer/cards/{en,de}/<id>.png
+//   node trailer/tools/cards.mjs              → trailer/cards/{en,de}/<id>.png
+//   node trailer/tools/cards.mjs --vertical   → 1080×1920 cards for 9:16 cutdowns in trailer/cards/{en,de}-v/
 import fs from 'fs';
 import path from 'path';
 import { launchBrowser, ROOT } from '../../tests/lib.mjs';
 
 const TR = path.join(ROOT, 'trailer');
 const { cards } = JSON.parse(fs.readFileSync(path.join(TR, 'cards', 'cards.json'), 'utf8'));
+const V = process.argv.includes('--vertical');
+const W = V ? 1080 : 1920, H = V ? 1920 : 1080;
 const FONT = '"Liberation Sans", system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", Arial, sans-serif';
 
 const css = `
-  html, body { margin: 0; width: 1920px; height: 1080px; background: transparent; overflow: hidden; }
+  html, body { margin: 0; width: ${W}px; height: ${H}px; background: transparent; overflow: hidden; }
   body { font-family: ${FONT}; color: #fff; display: flex; align-items: center; justify-content: center; }
   .veil { position: absolute; inset: 0; background: radial-gradient(ellipse 52% 30% at 50% 50%, rgba(14,20,30,.42), rgba(14,20,30,0) 100%); }
   .card { position: relative; text-align: center; }
@@ -24,7 +27,15 @@ const css = `
   .end { display: flex; gap: 64px; justify-content: center; }
   .end .line { font-size: 82px; }
   .end .line i { font-style: normal; color: #7fe0d0; }
-`;
+` + (V ? `
+  .veil { background: radial-gradient(ellipse 70% 26% at 50% 50%, rgba(14,20,30,.45), rgba(14,20,30,0) 100%); }
+  .card { max-width: 940px; }
+  .line { font-size: 66px; letter-spacing: .08em; }
+  .logo { font-size: 122px; letter-spacing: .04em; }
+  .tag { font-size: 46px; letter-spacing: .1em; line-height: 1.3; }
+  .end { flex-direction: column; gap: 10px; }
+  .end .line { font-size: 92px; }
+` : '');
 
 function html(card, lines) {
   if (card.style === 'title') return `<div class="veil"></div><div class="card"><div class="logo">TRACK<span>LANDS</span></div></div>`;
@@ -34,14 +45,14 @@ function html(card, lines) {
 }
 
 const browser = await launchBrowser();
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+const page = await browser.newPage({ viewport: { width: W, height: H } });
 for (const lang of ['en', 'de']) {
-  const dir = path.join(TR, 'cards', lang);
+  const dir = path.join(TR, 'cards', lang + (V ? '-v' : ''));
   fs.mkdirSync(dir, { recursive: true });
   for (const [id, card] of Object.entries(cards)) {
     await page.setContent(`<!doctype html><meta charset="utf-8"><style>${css}</style><body>${html(card, card[lang] || [])}</body>`);
     await page.screenshot({ path: path.join(dir, `${id}.png`), omitBackground: true });
   }
-  console.log(`cards/${lang}: ${Object.keys(cards).length}`);
+  console.log(`cards/${lang}${V ? '-v' : ''}: ${Object.keys(cards).length}`);
 }
 await browser.close();

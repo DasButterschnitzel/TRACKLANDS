@@ -1,0 +1,76 @@
+{
+  "name": "tracklands-cutdown-15-vertical",
+  "fps": 60,
+  "fadeIn": 0.4,
+  "fadeOut": 0.9,
+  "shots": [
+    {
+      "clip": "s01-dawn",
+      "in": 2.6,
+      "dur": 2.2,
+      "x": 0.3
+    },
+    {
+      "clip": "s04-grow-1900",
+      "in": 0.3,
+      "dur": 1
+    },
+    {
+      "clip": "s04-grow-2025",
+      "in": 0.3,
+      "dur": 1.2
+    },
+    {
+      "clip": "s09-fourtrack",
+      "in": 1.4,
+      "dur": 2.2
+    },
+    {
+      "clip": "s08-takeoff",
+      "in": 1.6,
+      "dur": 2
+    },
+    {
+      "clip": "s13-ui",
+      "in": 0.2,
+      "dur": 2,
+      "cx": 1
+    },
+    {
+      "clip": "s10-mega",
+      "in": 2,
+      "dur": 2.2,
+      "x": 0.5
+    },
+    {
+      "clip": "s12-title",
+      "in": 0.6,
+      "dur": 3
+    }
+  ],
+  "cards": [
+    {
+      "id": "grow",
+      "shot": "s04-grow-1900",
+      "off": 0.1,
+      "dur": 2
+    },
+    {
+      "id": "title",
+      "shot": "s12-title",
+      "off": 0.2,
+      "dur": 1.5,
+      "fadeIn": 0.4,
+      "fadeOut": 0.3
+    },
+    {
+      "id": "tagline",
+      "shot": "s12-title",
+      "off": 1.6,
+      "dur": 1.4,
+      "fadeIn": 0.3,
+      "fadeOut": 0.15
+    }
+  ],
+  "vertical": true
+}

@@ -2,7 +2,7 @@
 // and sound with FFmpeg — no proprietary editor. The edit is trailer/edit.json:
 //
 //   { "shots": [ { "clip": "s01-steam", "in": 0.5, "dur": 4, "x": 0.5 },  … ],
-//     "cards": [ { "id": "first", "at": 2.0, "dur": 2.6 }, … ],
+//     "cards": [ { "id": "first", "at": 2.0, "dur": 2.6 }, … ],   (or "shot"/"off" instead of "at")
 //     "sfx":   [ { "file": "whistle-steam", "at": 3.1, "gain": -8 }, … ],
 //     "fadeIn": 1.2, "fadeOut": 2.0 }
 //
@@ -42,9 +42,14 @@ const inputs = [];
 const fc = [];
 let t = 0;            // running timeline position (start of current shot)
 const starts = [];
+// "vertical": true makes a 9:16 cutdown: each shot is cropped to a 9:16
+// window ("cx": its centre across the frame, 0..1, default 0.5) and scaled to 1080×1920
+const V = !!edit.vertical;
+const OW = V ? 1080 : 1920, OH = V ? 1920 : 1080;
 edit.shots.forEach((s, i) => {
   inputs.push('-i', clipFile(s.clip, 'mp4'));
-  fc.push(`[${i}:v]trim=start=${s.in || 0}:duration=${s.dur},setpts=PTS-STARTPTS,fps=${fps},format=yuv420p,settb=1/${fps}[v${i}]`);
+  const crop = V ? `,crop=608:1080:${Math.round((1920 - 608) * Math.min(1, Math.max(0, s.cx ?? 0.5)))}:0,scale=${OW}:${OH}:flags=lanczos,setsar=1` : '';
+  fc.push(`[${i}:v]trim=start=${s.in || 0}:duration=${s.dur},setpts=PTS-STARTPTS,fps=${fps}${crop},format=yuv420p,settb=1/${fps}[v${i}]`);
 });
 let last = 'v0';
 let pos = edit.shots[0].dur;
@@ -62,13 +67,23 @@ for (let i = 1; i < edit.shots.length; i++) {
 }
 const total = pos;
 t = total;
+// a card or sound may be placed on a shot ("shot": its clip, "off": seconds
+// into it) instead of at an absolute time, so retiming the edit keeps them in place
+const place = (c) => {
+  if (c.shot == null) return c.at;
+  const i = edit.shots.findIndex((s) => s.clip === c.shot);
+  if (i < 0) throw new Error('no shot ' + c.shot);
+  return +(starts[i] + (c.off || 0)).toFixed(3);
+};
+for (const c of edit.cards || []) c.at = place(c);
+for (const a of edit.sfx || []) a.at = place(a);
 
 // ---- cards: transparent PNG overlays faded in and out ----
 const nIn = edit.shots.length;
 const cardLang = lang === 'clean' ? null : lang;
 let ci = nIn;
 if (cardLang) for (const c of edit.cards || []) {
-  inputs.push('-loop', '1', '-t', String(c.dur + 0.1), '-i', path.join(TR, 'cards', cardLang, `${c.id}.png`));
+  inputs.push('-loop', '1', '-t', String(c.dur + 0.1), '-i', path.join(TR, 'cards', cardLang + (V ? '-v' : ''), `${c.id}.png`));
   const fi = c.fadeIn ?? 0.45, fo = c.fadeOut ?? 0.5;
   fc.push(`[${ci}:v]format=rgba,fade=t=in:st=0:d=${fi}:alpha=1,fade=t=out:st=${(c.dur - fo).toFixed(3)}:d=${fo}:alpha=1,setpts=PTS-STARTPTS+${c.at}/TB[c${ci}]`);
   fc.push(`[${last}][c${ci}]overlay=0:0:eof_action=pass:enable='between(t,${c.at},${(c.at + c.dur).toFixed(3)})'[o${ci}]`);
