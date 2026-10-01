@@ -55,8 +55,8 @@ for (let i = 1; i < edit.shots.length; i++) {
   const tr = prev.black ? 'fadeblack' : 'fade';
   const offset = pos - (x || 0);
   starts.push(offset);
-  if (x > 0) fc.push(`[${last}][v${i}]xfade=transition=${tr}:duration=${x}:offset=${offset.toFixed(4)}[j${i}]`);
-  else fc.push(`[${last}][v${i}]concat=n=2:v=1:a=0[j${i}]`);
+  if (x > 0) fc.push(`[${last}][v${i}]xfade=transition=${tr}:duration=${x}:offset=${offset.toFixed(4)},settb=1/${fps}[j${i}]`);
+  else fc.push(`[${last}][v${i}]concat=n=2:v=1:a=0,settb=1/${fps},fps=${fps}[j${i}]`);
   last = `j${i}`;
   pos = offset + edit.shots[i].dur;
 }
