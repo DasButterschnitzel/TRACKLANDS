@@ -1,4 +1,4 @@
-# TRACKLANDS 6.1.0 — release audit (phases 1–14)
+# TRACKLANDS 6.1.1 — release audit (phases 1–15)
 
 Status per area. **PASS**: built, reachable in the game and covered by a named test suite that ran green for this release. **PARTIAL**: built, with a named part missing. **MISSING**: asked for and not built. **BROKEN**: built and not working. **HIDDEN**: built but not reachable by the player. **UNTESTED**: works in the headless browser but not checked on the named hardware. **NOT EXECUTED**: a job exists but has not run (no credentials). **DEFERRED**: deliberately not built, with a reason that still holds today (no fake option is shown for it). Every requirement of phases 1–12 was re-read for this audit; each PASS below is re-run on the 6.0.0 commit (see *Release gates 6.0.0*), and rows whose status changed since 5.0.0 say so. No row is BROKEN or HIDDEN.
 
@@ -278,6 +278,59 @@ Four-layer map sizes (`mapsize`), platform extension underground and on viaducts
 | Cross-browser | PASS | Chromium, Firefox and WebKit in CI (`xbrowser hardening terrain eras erainfra p12risk search catalogsearch access`) |
 | Real devices, real GPUs, speakers | REAL DEVICE: UNTESTED · REAL GPU: UNTESTED · PHYSICAL AUDIO: UNTESTED | headless SwiftShader and emulated touch only |
 | Device cloud (BrowserStack) | NOT EXECUTED | no credentials configured |
+
+## Phase 15 — release candidate: the player's journey, end to end
+A feature freeze: only defects found by auditing whole player flows were changed. Each finding has a severity; every BLOCKER and HIGH and the important MEDIUM ones were fixed with a regression check, LOW and COSMETIC ones are listed and left for a later patch.
+
+| Finding | Severity | Status | Evidence |
+|---|---|---|---|
+| A name in an imported save (train, station, company …) could carry markup that ran script in the statistics panel | HIGH (security) | FIXED — markup characters dropped where text comes in: loaded/imported saves, blueprints, scenarios, content packs, every rename field; imports over 32 MB refused | `security` (fails on 6.1.0: 2 script runs) |
+| New-game presets white on the light dialog (invisible) | HIGH | FIXED | `access` (contrast incl. the new-game dialog) |
+| FIND example words white on the light sheet (1.1:1) | HIGH | FIXED | `access` (contrast, fails on 6.1.0 with 39 texts) |
+| Start Journey and New game… opened the same long dialog; expert options (height map, seed) first | MEDIUM | FIXED — Start Journey starts the standard world with the tutorial; height map, wear and industry rules folded away, seed under the map preview | `rcflow`, `campaign`, `terrain`, `mapsize`, `tutorial` |
+| Unchosen filters (catalogue, research) and locked research faded like disabled controls (1.3–1.7:1) | MEDIUM | FIXED | `access` |
+| Phone tool strip scrolled 4 px by scroll snapping and faded Select | MEDIUM | FIXED | `access` (strip at 0, fade only where more follows) |
+| Logo clipped on a 360 px phone; version link unreadable on the title scene; Statistics on the title without a save | LOW | FIXED | screenshots |
+| README described metro, planning and terrain presets as deferred and the music as generative | MEDIUM (docs) | FIXED — player README; developer notes in `docs/DEVELOPMENT.md`; `docs/RELEASE_NOTES.md` | review |
+| Disabled buttons at ~1.9:1 | LOW | LEFT — disabled controls, distinguishable by shape and state | — |
+| Company level badge, cloud-covered locked regions, preset/terrain/size all named "Classic" | COSMETIC | LEFT | — |
+
+| Release flow | Status | Evidence |
+|---|---|---|
+| First public session: Start Journey → tutorial (skippable) → drag a track → undo with refund → close → reopen → Continue with the same company | PASS | `rcflow` |
+| First train through the tutorial with real mouse input | PASS | `tutorial` |
+| Every layout at 360×740, 412×860, phone landscape, tablet portrait/landscape, 1280×800, 1366×768, 1920×1080, 2560×1440, 3440×1440 (overflow, clipping, touch targets, missing strings) | PASS | `ui` (200 screenshots reviewed for the main screens) |
+| Text contrast in seven panels and the new-game dialog | PASS | `access` |
+| German interface: title, HUD, finance, transport, settings, station on desktop and a 360 px phone — no clipping | PASS | screenshots |
+| Hostile names in every panel and inspector | PASS | `security` |
+| Saves written by 6.0.0 and 6.1.0 (built from their release commits) load, pass the health check, keep running and round-trip | PASS | release gate (below) |
+| Network requests in a whole session: same origin only; nothing typed leaves the device | PASS | `offline` |
+| No debug logging in game code (`console.log/info/debug` outside `src/debug`); the monetization stub shows nothing | PASS | static review |
+| Licences: three.js r186 (MIT) bundled with its licence file; all models, textures, icons and sounds generated; no music shipped; invented makers and places | PASS | review |
+
+## Release gates 6.1.1
+Run locally on the 6.1.1 release candidate (`a563a25`; the commits after it change documentation only), one gate group at a time where timing matters; CI (`tests.yml`, nine jobs incl. Chromium, Firefox and WebKit and the new `security` and `rcflow` in core) green on that head. This container renders at about 1 frame per second (SwiftShader), and background jobs end after 30 minutes, so the long gates ran as separate jobs.
+
+| Gate | Result |
+|---|---|
+| Every regular suite (82) | PASS — in CI's four groups and three browsers, plus `ui` (all ten viewports), `tutorial`, `touch`, `xbrowser` and the changed suites locally |
+| Save fuzz, 1000 cases + 22 corpus entries (4 shards) | **0 bad** — 1008 started, 14 rejected cleanly by the load-failed dialog; 250 cases mutated lifts, escalators or a rival's flow memory directly |
+| Rail fuzzer, seeds 1–40 | PASS |
+| `prodsave` | PASS — 1,220 coins/min (band 900–2000) |
+| `qa`, `gallery`, `ai`, `trafficperf` | PASS |
+| `perf` | PASS — 8 to 100 trains: tick average ≤ 0.32 ms, p99 ≤ 1.7 ms |
+| `aidecades` (50 years, four companies) | PASS — save 351 KB, no company closed |
+| `eralong` (a century from 1900) | PASS — 5 renovations, heap +35 MB, save 175 KB, every terminal's look survives save/load |
+| `bench` against 6.1.0 (`553e68e`) in the same environment | **PASS** in all three worlds: 64² 1.81 ms (control 2.00), 128² 2.30 ms (2.92), 192² 5.49 ms (5.87), budget 8 ms. This run's environment was slower than the 6.1.0 release run (control 192²: 5.87 ms against 5.48 ms then); the comparison is within one environment. The 192² p99 (39 ms) comes from monthly town and industry work, as recorded for 6.1.0 |
+| `offline`, `pwa`, `hardening` | PASS. `offline` failed once while `monkey` ran in parallel (the service worker did not take control within the test's wait on a starved CPU) and passed alone, all ten checks |
+| `monkey` (desktop, phone, tablet) | PASS — seeds 1–3 × desktop, phone (touch, German) and tablet, 600 steps each: no NaN, no conflicts. Seeds 2 and 3 ran in parallel and the job limit ended their tablet runs part-way (the process was stopped, not the game); the tablet runs passed when repeated on their own |
+| Saves from 6.0.0 and 6.1.0 | PASS — made with the 6.0.0 (`d9a0ef5`) and 6.1.0 (`553e68e`) commits from the production save after four game months; both load in 6.1.1, pass the health check before and after two more months, and round-trip |
+| Release package | see below and the PR description |
+| Optional semantic translation review | NOT EXECUTED: LANGUAGE SEMANTIC REVIEW NOT CONFIGURED (no CI secret) |
+| Real devices, real GPU, physical audio, BrowserStack | UNTESTED / UNTESTED / UNTESTED / NOT EXECUTED |
+
+### Release decision 6.1.1
+BLOCKER 0 · HIGH 0 open (3 found, fixed) · MEDIUM 0 open (5 found, fixed) · LOW 1 open · COSMETIC 3 open. Release gates: green. **Recommendation: READY.**
 
 ## Release gates 6.1.0
 Run locally on `74b97ac` (the Phase 14 commit; the only later change is the `access` suite closing its desktop page before the phone page, a test-harness fix for a CI runner timeout) — dispatching `deep.yml` from this session is refused. CI (`tests.yml`) on every push; the Firefox job was red on three heads until the harness stopped passing `isMobile` to Firefox (`3463774`). This container renders at about **1 frame per second** (SwiftShader); long runs were split to stay under the session's 30-minute job limit.
