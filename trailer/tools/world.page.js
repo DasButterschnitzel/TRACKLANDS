@@ -184,6 +184,34 @@ export async function phaseE() {
   return { save: 'greenfield-2025.json.gz', stills: [['gf', x, z, 16, 45, 1], ['gf-wide', x + 6, z + 6, 34, 45, 0], ['mega', x + 8, z + 6, 22, 60, 0]] };
 }
 
+// ships: two docks on the same water anywhere on the map (towns at both ends)
+export async function phaseF() {
+  S.unlockAll();
+  const G = g(), R = G.roads, N = G.mapSize;
+  const { idx, cheb } = await import('/src/util.js');
+  const shore = [];
+  for (let i = 0; i < N * N; i++) if (!R.stopError(i, 'dock') && G.stations.previewLinks([i], 1).towns.length) shore.push(i);
+  say('shore tiles with towns: ' + shore.length);
+  const made = [];
+  for (const [model, n, name, dmin, dmax] of [['container_ship', 2, 'Coastal Containers', 18, 50], ['ferry', 1, 'Island Ferry', 10, 30]]) {
+    let done = false;
+    for (let a = 0; a < shore.length && !done; a += 3) for (let b = a + 1; b < shore.length && !done; b += 3) {
+      const d = cheb(shore[a], shore[b]);
+      if (d < dmin || d > dmax || made.some((m) => cheb(m, shore[a]) < 6 || cheb(m, shore[b]) < 6)) continue;
+      if (!R.waterPath(shore[a], shore[b])) continue;
+      const A = R.addStop(shore[a], 'dock').stop, B = R.addStop(shore[b], 'dock').stop;
+      if (!A || !B) continue;
+      const L = R.lines.create({ kind: 'dock', stops: [A.id, B.id], name }).line;
+      for (let k = 0; k < n; k++) { const v = R.buy(model, k % 2 ? B : A, null, L).vehicle; if (v) R.lines.assign(v, L); }
+      say(`${name}: ${shore[a] % N},${Math.floor(shore[a] / N)} -> ${shore[b] % N},${Math.floor(shore[b] / N)}`);
+      made.push(shore[a], shore[b]); done = true;
+    }
+  }
+  await runYears(1);
+  void idx;
+  return { save: 'greenfield-2025.json.gz', stills: made.length ? [['dock', (made[0] % N) * 2 + 1, Math.floor(made[0] / N) * 2 + 1, 14, 45, 0]] : [] };
+}
+
 export async function phaseQ() {
   const G = g(), C = await import('/src/config.js');
   const gf = town('Greenfield');
