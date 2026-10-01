@@ -40,10 +40,14 @@ if (!webmOnly) execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-
 if (!webmOnly) console.log('wrote', mp4, (fs.statSync(mp4).size / 1048576).toFixed(1), 'MB');
 if (webm) {
   const w = base + '.webm';
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', af, '-vf', 'format=yuv420p', '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4', '-tile-columns', '2', '-threads', '4', ...color,
+  // Opus overshoots peaks more than AAC: limit the WebM sound a little lower
+  const afw = af.replace('alimiter=limit=0.7', 'alimiter=limit=0.56').replace(`loudnorm=${TARGET}`, 'loudnorm=I=-14:TP=-3:LRA=11');
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', src, '-af', afw, '-vf', 'format=yuv420p', '-c:v', 'libvpx-vp9', '-crf', '24', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4', '-tile-columns', '2', '-threads', '4', ...color,
     '-c:a', 'libopus', '-b:a', '192k', w], { stdio: 'inherit' });
   console.log('wrote', w, (fs.statSync(w).size / 1048576).toFixed(1), 'MB');
 }
-const o = loudness(webmOnly ? base + '.webm' : mp4);
-console.log(`loudness out: ${o.input_i} LUFS, true peak ${o.input_tp} dBTP`);
+for (const f of webmOnly ? [base + '.webm'] : webm ? [mp4, base + '.webm'] : [mp4]) {
+  const o = loudness(f);
+  console.log(`loudness out ${f.split('.').pop()}: ${o.input_i} LUFS, true peak ${o.input_tp} dBTP`);
+}
 if (args.includes('--drop-master')) fs.unlinkSync(src);
