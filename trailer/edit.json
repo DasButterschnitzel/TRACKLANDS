@@ -1,0 +1,53 @@
+{
+  "name": "tracklands-trailer",
+  "fps": 60,
+  "fadeIn": 1.2,
+  "fadeOut": 2.0,
+  "_sections": "1 beginning · 2 build · 3 transport · 4 the world grows (match cut) · 5 railway complex · 6 multimodal · 7 freight · 8 the world gets big · 9 competition · 10 tycoon UI · 11 mega shot · 12 title",
+  "shots": [
+    { "clip": "s01-dawn",       "in": 0.4, "dur": 6.0, "x": 0.6 },
+    { "clip": "s02-track",      "in": 0.2, "dur": 3.4 },
+    { "clip": "s02-station",    "in": 0.3, "dur": 2.6 },
+    { "clip": "s02-consist",    "in": 0.2, "dur": 4.6, "x": 0.5 },
+    { "clip": "s03-steam",      "in": 0.6, "dur": 4.4, "x": 0.4 },
+    { "clip": "s03-timber",     "in": 1.8, "dur": 4.0, "x": 0.6, "black": true },
+    { "clip": "s04-grow-1900",  "in": 0.2, "dur": 2.0 },
+    { "clip": "s04-grow-1930",  "in": 0.2, "dur": 2.0 },
+    { "clip": "s04-grow-1965",  "in": 0.2, "dur": 2.0 },
+    { "clip": "s04-grow-1995",  "in": 0.2, "dur": 2.0 },
+    { "clip": "s04-grow-2025",  "in": 0.2, "dur": 2.4, "x": 0.5 },
+    { "clip": "s05-bridge",     "in": 2.1, "dur": 3.8, "x": 0.4 },
+    { "clip": "s05-alpine",     "in": 1.5, "dur": 3.8, "x": 0.4 },
+    { "clip": "s09-fourtrack",  "in": 1.0, "dur": 4.2 },
+    { "clip": "s06-arrowline",  "in": 1.0, "dur": 3.8, "x": 0.4 },
+    { "clip": "s07-bus",        "in": 1.0, "dur": 3.0 },
+    { "clip": "s07-tram",       "in": 1.0, "dur": 3.0 },
+    { "clip": "s07-metro",      "in": 0.8, "dur": 3.4 },
+    { "clip": "s08-takeoff",    "in": 1.0, "dur": 4.6, "x": 0.4 },
+    { "clip": "s08-oil",        "in": 0.4, "dur": 4.0, "x": 0.4 },
+    { "clip": "s11-night",      "in": 0.5, "dur": 3.8, "x": 0.4 },
+    { "clip": "s09-rival",      "in": 0.3, "dur": 3.4 },
+    { "clip": "s13-ui",         "in": 0.2, "dur": 7.3, "x": 0.6 },
+    { "clip": "s10-mega",       "in": 0.4, "dur": 7.2, "x": 0.8 },
+    { "clip": "s12-title",      "in": 0.2, "dur": 7.6 }
+  ],
+  "cards": [
+    { "id": "first",   "shot": "s02-track",     "off": 0.6, "dur": 2.5 },
+    { "id": "move",    "shot": "s03-steam",     "off": 0.6, "dur": 3.0 },
+    { "id": "grow",    "shot": "s04-grow-1930", "off": 0.2, "dur": 3.4 },
+    { "id": "network", "shot": "s09-fourtrack", "off": 0.6, "dur": 2.6 },
+    { "id": "connect", "shot": "s07-bus",       "off": 0.5, "dur": 2.4 },
+    { "id": "economy", "shot": "s08-oil",       "off": 0.5, "dur": 2.6 },
+    { "id": "compete", "shot": "s09-rival",     "off": 0.2, "dur": 3.0 },
+    { "id": "company", "shot": "s13-ui",        "off": 0.4, "dur": 2.2 },
+    { "id": "end",     "shot": "s10-mega",      "off": 3.6, "dur": 3.2 },
+    { "id": "title",   "shot": "s12-title",     "off": 0.8, "dur": 3.3, "fadeIn": 0.8 },
+    { "id": "tagline", "shot": "s12-title",     "off": 4.0, "dur": 3.6, "fadeIn": 0.6, "fadeOut": 0.2 }
+  ],
+  "sfx": [
+    { "file": "whistle-steam", "shot": "s03-steam",     "off": 0.5, "gain": -10 },
+    { "file": "hornElectric",  "shot": "s06-arrowline", "off": 0.6, "gain": -12 },
+    { "file": "tramBell",      "shot": "s07-tram",      "off": 0.4, "gain": -10 },
+    { "file": "jetWhine",      "shot": "s08-takeoff",   "off": 0.3, "gain": -12 }
+  ]
+}

@@ -1988,11 +1988,23 @@ export class TrainSystem {
     this.releaseClaim(t);
     g.stations.unclaimPlatform(t.id);
     const here = t.steps.length ? t.steps[Math.max(0, this.stepAt(t, t.s))].tile : (g.stations.list[0] ? g.stations.list[0].tile : 0);
-    const cands = g.stations.list.filter((s) => net.conn[s.tile]).sort((a, b) => cheb(a.tile, here) - cheb(b.tile, here));
+    // only the company's own stations, on the network its route runs on, and
+    // (for an electric train) on electrified track: a recovered train used to
+    // land at the nearest station of any company or level — a rival's train on
+    // the player's platform, a main-line train in a metro tunnel — and stay
+    // stuck there with no route
+    const comp = net.components();
+    const nets = new Set((t.route || []).map((r) => g.stations.byId(r.st)).filter(Boolean).map((s) => comp[s.tile]).filter((c) => c >= 0));
+    const minTier = (t._st && t._st.minTier) || 0;
+    const cands = g.stations.list.filter((s) => net.conn[s.tile] && (s.owner || null) === (t.owner || null) && (!nets.size || nets.has(comp[s.tile])) && net.tier[s.tile] >= minTier)
+      .sort((a, b) => cheb(a.tile, here) - cheb(b.tile, here));
     this.clearTrail(t);
     t.rev = null; t.via = false; t.pendingLost = false;
     for (const stn of cands) {
       for (const tile of g.stations.allTiles(stn)) {
+        // (a platform track of the station that no line reaches is no place to recover to)
+        if (nets.size && !nets.has(comp[tile])) continue;
+        if (net.tier[tile] < minTier) continue;
         for (let d = 0; d < 8; d++) {
           if (!net.hasDir(tile, d)) continue;
           const h = opp(d);

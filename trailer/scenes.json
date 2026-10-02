@@ -1,0 +1,1115 @@
+{
+  "fps": 60,
+  "width": 1920,
+  "height": 1080,
+  "scenes": [
+    {
+      "id": "s01-dawn",
+      "save": "greenfield-1900.json.gz",
+      "duration": 7,
+      "warmup": 6.5,
+      "ui": "clean",
+      "timeOfDay": 0.27,
+      "weather": "clear",
+      "notes": "1900. Morning. The Greenfield Local (steam) comes out of the trees and stops at Wolfton by the river. Slow crane down and in.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 146,
+            "z": 141,
+            "zoom": 11.5,
+            "az": 24,
+            "elev": 0.56
+          },
+          {
+            "x": 153,
+            "z": 147,
+            "zoom": 8.2,
+            "az": 34,
+            "elev": 0.45
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1900",
+      "save": "greenfield-1900.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1930",
+      "save": "greenfield-1930.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1965",
+      "save": "greenfield-1965.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-1995",
+      "save": "greenfield-1995.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s04-grow-2025",
+      "save": "greenfield-2025.json.gz",
+      "duration": 2.6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "notes": "Match cut: the same camera over Greenfield in every era.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 124,
+            "z": 128,
+            "zoom": 17,
+            "az": 40,
+            "elev": 0.62
+          },
+          {
+            "x": 126.5,
+            "z": 128.5,
+            "zoom": 16.2,
+            "az": 42,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "p2025",
+      "save": "greenfield-2025.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "s02-track",
+      "save": "greenfield-1900.json.gz",
+      "duration": 4.2,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.36,
+      "weather": "clear",
+      "setup": "g.economy.coins = 48250;",
+      "notes": "1900. Real track drag with the track tool from Wolfton over the river towards Sundale: the game routes it, plans the bridge, shows the price, builds it.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 162,
+            "z": 160,
+            "zoom": 12.5,
+            "az": 45,
+            "elev": 0.62
+          },
+          {
+            "x": 165,
+            "z": 163,
+            "zoom": 11.6,
+            "az": 48,
+            "elev": 0.62
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "g.construction.setTool('track'); ui.renderToolbar();"
+        },
+        {
+          "t": 0.6,
+          "mouse": "down",
+          "tile": [
+            80,
+            76
+          ]
+        },
+        {
+          "t": 0.807,
+          "mouse": "move",
+          "tile": [
+            80.07,
+            76.13
+          ]
+        },
+        {
+          "t": 0.914,
+          "mouse": "move",
+          "tile": [
+            80.28,
+            76.5
+          ]
+        },
+        {
+          "t": 1.021,
+          "mouse": "move",
+          "tile": [
+            80.59,
+            77.06
+          ]
+        },
+        {
+          "t": 1.129,
+          "mouse": "move",
+          "tile": [
+            80.99,
+            77.78
+          ]
+        },
+        {
+          "t": 1.236,
+          "mouse": "move",
+          "tile": [
+            81.46,
+            78.62
+          ]
+        },
+        {
+          "t": 1.343,
+          "mouse": "move",
+          "tile": [
+            81.97,
+            79.54
+          ]
+        },
+        {
+          "t": 1.45,
+          "mouse": "move",
+          "tile": [
+            82.5,
+            80.5
+          ]
+        },
+        {
+          "t": 1.557,
+          "mouse": "move",
+          "tile": [
+            83.03,
+            81.46
+          ]
+        },
+        {
+          "t": 1.664,
+          "mouse": "move",
+          "tile": [
+            83.54,
+            82.38
+          ]
+        },
+        {
+          "t": 1.771,
+          "mouse": "move",
+          "tile": [
+            84.01,
+            83.22
+          ]
+        },
+        {
+          "t": 1.879,
+          "mouse": "move",
+          "tile": [
+            84.41,
+            83.94
+          ]
+        },
+        {
+          "t": 1.986,
+          "mouse": "move",
+          "tile": [
+            84.72,
+            84.5
+          ]
+        },
+        {
+          "t": 2.093,
+          "mouse": "move",
+          "tile": [
+            84.93,
+            84.87
+          ]
+        },
+        {
+          "t": 2.2,
+          "mouse": "move",
+          "tile": [
+            85,
+            85
+          ]
+        },
+        {
+          "t": 2.9,
+          "mouse": "up",
+          "tile": [
+            85,
+            85
+          ]
+        },
+        {
+          "t": 2.92,
+          "mouse": "move",
+          "tile": [
+            82,
+            74
+          ]
+        },
+        {
+          "t": 2.95,
+          "key": "Escape"
+        }
+      ]
+    },
+    {
+      "id": "s02-station",
+      "save": "greenfield-1900.json.gz",
+      "duration": 3.4,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "setup": "g.economy.coins = 47980;",
+      "notes": "1900. A station dragged in the hamlet of Sundale with the station tool (preview, price, built).",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 185,
+            "z": 175,
+            "zoom": 10.5,
+            "az": 40,
+            "elev": 0.6
+          },
+          {
+            "x": 187,
+            "z": 177,
+            "zoom": 9.6,
+            "az": 44,
+            "elev": 0.6
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "g.construction.setTool('station'); ui.renderToolbar();"
+        },
+        {
+          "t": 0.55,
+          "mouse": "down",
+          "tile": [
+            92,
+            88
+          ]
+        },
+        {
+          "t": 0.75,
+          "mouse": "move",
+          "tile": [
+            92.25,
+            88
+          ]
+        },
+        {
+          "t": 0.85,
+          "mouse": "move",
+          "tile": [
+            92.5,
+            88
+          ]
+        },
+        {
+          "t": 0.95,
+          "mouse": "move",
+          "tile": [
+            92.75,
+            88
+          ]
+        },
+        {
+          "t": 1.05,
+          "mouse": "move",
+          "tile": [
+            93,
+            88
+          ]
+        },
+        {
+          "t": 1.15,
+          "mouse": "move",
+          "tile": [
+            93.25,
+            88
+          ]
+        },
+        {
+          "t": 1.25,
+          "mouse": "move",
+          "tile": [
+            93.5,
+            88
+          ]
+        },
+        {
+          "t": 1.35,
+          "mouse": "move",
+          "tile": [
+            93.75,
+            88
+          ]
+        },
+        {
+          "t": 1.45,
+          "mouse": "move",
+          "tile": [
+            94,
+            88
+          ]
+        },
+        {
+          "t": 1.75,
+          "mouse": "up",
+          "tile": [
+            94,
+            88
+          ]
+        },
+        {
+          "t": 1.77,
+          "mouse": "move",
+          "tile": [
+            86,
+            82
+          ]
+        },
+        {
+          "t": 1.8,
+          "key": "Escape"
+        }
+      ]
+    },
+    {
+      "id": "p1930",
+      "save": "greenfield-1930.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "p1965",
+      "save": "greenfield-1965.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "s03-steam",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.33,
+      "weather": "clear",
+      "notes": "1930. The Greenfield Local under steam, followed out of Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 1,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7.5,
+            "az": 18,
+            "elev": 0.42
+          },
+          {
+            "zoom": 6.4,
+            "az": 44,
+            "elev": 0.38
+          }
+        ]
+      }
+    },
+    {
+      "id": "s03-timber",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 28,
+      "ui": "clean",
+      "timeOfDay": 0.4,
+      "weather": "clear",
+      "notes": "1930. Northern Timber arrives at the timber siding and loads.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 2,
+          "stiff": 2
+        },
+        "keys": [
+          {
+            "zoom": 6.5,
+            "az": -30,
+            "elev": 0.5
+          },
+          {
+            "zoom": 5.6,
+            "az": -12,
+            "elev": 0.44
+          }
+        ]
+      }
+    },
+    {
+      "id": "s05-bridge",
+      "save": "greenfield-1965.json.gz",
+      "duration": 6,
+      "warmup": 20,
+      "ui": "clean",
+      "timeOfDay": 0.42,
+      "weather": "clear",
+      "notes": "1965. The River Flyer on its way to Copperholm over the river.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 72,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 9,
+            "az": 60,
+            "elev": 0.4
+          },
+          {
+            "zoom": 8,
+            "az": 80,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s05-alpine",
+      "save": "greenfield-1965.json.gz",
+      "duration": 6,
+      "warmup": 47,
+      "ui": "clean",
+      "timeOfDay": 0.45,
+      "weather": "snow",
+      "snowCover": 1,
+      "notes": "1965. Winter: the Alpine Express (steam) leaves Greenfield in the snow.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 75,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": -40,
+            "elev": 0.42
+          },
+          {
+            "zoom": 7,
+            "az": -20,
+            "elev": 0.36
+          }
+        ]
+      }
+    },
+    {
+      "id": "p1995",
+      "save": "greenfield-1995.json.gz",
+      "duration": 40,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.37,
+      "weather": "clear",
+      "camera": {
+        "keys": [
+          {
+            "x": 128,
+            "z": 128,
+            "zoom": 20
+          }
+        ]
+      }
+    },
+    {
+      "id": "s06-arrowline",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 8,
+      "ui": "clean",
+      "timeOfDay": 0.4,
+      "weather": "clear",
+      "notes": "2025. Arrowline Coastal high-speed set leaving Wolfton for Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 284,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 8,
+            "az": 140,
+            "elev": 0.36
+          },
+          {
+            "zoom": 7,
+            "az": 115,
+            "elev": 0.32
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-metro",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 11,
+      "ui": "clean",
+      "timeOfDay": 0.42,
+      "weather": "clear",
+      "setup": "for (let k = 0; k < 3 && !g.layerView.showsUnderground(); k++) g.layerView.cycle();",
+      "notes": "2025. Underground view: Greenfield Metro 3 (automatic) under the city.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 286,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7.5,
+            "az": 20,
+            "elev": 0.55
+          },
+          {
+            "zoom": 6.8,
+            "az": 35,
+            "elev": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-tram",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.43,
+      "weather": "clear",
+      "notes": "2025. The Wolfton Tram through the streets.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "veh": 4,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 4.6,
+            "az": 330,
+            "elev": 0.6
+          },
+          {
+            "zoom": 4.2,
+            "az": 345,
+            "elev": 0.55
+          }
+        ]
+      }
+    },
+    {
+      "id": "s07-bus",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 4,
+      "ui": "clean",
+      "timeOfDay": 0.44,
+      "weather": "clear",
+      "notes": "2025. Greenfield Circle buses at Greenfield Central.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 121,
+            "z": 123,
+            "zoom": 6.5,
+            "az": -20,
+            "elev": 0.48
+          },
+          {
+            "x": 122,
+            "z": 124,
+            "zoom": 5.8,
+            "az": -8,
+            "elev": 0.44
+          }
+        ]
+      }
+    },
+    {
+      "id": "s08-takeoff",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 15,
+      "ui": "clean",
+      "timeOfDay": 0.46,
+      "weather": "clear",
+      "notes": "2025. A jetliner leaves Greenfield airport.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "veh": 7,
+          "stiff": 1.8
+        },
+        "keys": [
+          {
+            "zoom": 9,
+            "az": 200,
+            "elev": 0.4
+          },
+          {
+            "zoom": 10,
+            "az": 215,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s08-oil",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 37,
+      "ui": "clean",
+      "timeOfDay": 0.47,
+      "weather": "clear",
+      "notes": "2025. Oil Train 1 (goliath) with tank wagons.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 210,
+          "stiff": 2.5
+        },
+        "keys": [
+          {
+            "zoom": 7,
+            "az": -60,
+            "elev": 0.38
+          },
+          {
+            "zoom": 6.4,
+            "az": -40,
+            "elev": 0.34
+          }
+        ]
+      }
+    },
+    {
+      "id": "s09-fourtrack",
+      "save": "greenfield-2025.json.gz",
+      "duration": 6,
+      "warmup": 14,
+      "ui": "clean",
+      "timeOfDay": 0.5,
+      "weather": "clear",
+      "notes": "2025. Northern Freight 3 on the four-track main line Greenfield–Wolfton.",
+      "camera": {
+        "ease": "inOut",
+        "follow": {
+          "train": 207,
+          "stiff": 2
+        },
+        "keys": [
+          {
+            "zoom": 9.5,
+            "az": 100,
+            "elev": 0.4
+          },
+          {
+            "zoom": 8.5,
+            "az": 120,
+            "elev": 0.36
+          }
+        ]
+      }
+    },
+    {
+      "id": "s10-mega",
+      "save": "greenfield-2025.json.gz",
+      "duration": 8,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.62,
+      "weather": "clear",
+      "notes": "2025. Greenfield in the afternoon, slow orbit over the city and Greenfield Central.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 15,
+            "az": 10,
+            "elev": 0.46
+          },
+          {
+            "x": 126,
+            "z": 128,
+            "zoom": 12.5,
+            "az": 50,
+            "elev": 0.4
+          }
+        ]
+      }
+    },
+    {
+      "id": "s11-night",
+      "save": "greenfield-2025.json.gz",
+      "duration": 5,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.9,
+      "weather": "rain",
+      "notes": "2025. Greenfield at night in the rain.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 122,
+            "z": 126,
+            "zoom": 9,
+            "az": -30,
+            "elev": 0.42
+          },
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 8,
+            "az": -15,
+            "elev": 0.38
+          }
+        ]
+      }
+    },
+    {
+      "id": "s12-title",
+      "save": "greenfield-2025.json.gz",
+      "duration": 8,
+      "warmup": 6,
+      "ui": "clean",
+      "timeOfDay": 0.78,
+      "weather": "clear",
+      "notes": "2025. Wide dusk pull-out for the title.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 126,
+            "z": 130,
+            "zoom": 12,
+            "az": 40,
+            "elev": 0.5
+          },
+          {
+            "x": 128,
+            "z": 132,
+            "zoom": 28,
+            "az": 52,
+            "elev": 0.62
+          }
+        ]
+      }
+    },
+    {
+      "id": "s02-consist",
+      "save": "greenfield-1930.json.gz",
+      "duration": 6,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.38,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 182400; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off);",
+      "notes": "1930. A train put together in the train builder at the Greenfield depot and bought; it rolls out.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 131,
+            "z": 125,
+            "zoom": 6.5,
+            "az": 30,
+            "elev": 0.5
+          },
+          {
+            "x": 131.5,
+            "z": 125.5,
+            "zoom": 6,
+            "az": 36,
+            "elev": 0.47
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0.25,
+          "js": "ui.openBuilder({ depotId: 3, model: \"regent\" });"
+        },
+        {
+          "t": 1.2,
+          "click": "[data-act=bldCat][data-arg=pax]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 1.9,
+          "click": "[data-act=bldAdd][data-arg=\"W:coach\"]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 2.5,
+          "click": "[data-act=bldAdd][data-arg=\"W:coach\"]",
+          "park": [
+            700,
+            620
+          ]
+        },
+        {
+          "t": 3.4,
+          "click": "[data-act=bldBuy]",
+          "park": [
+            700,
+            620
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s13-ui",
+      "save": "greenfield-2025.json.gz",
+      "duration": 7.6,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.45,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 3486200; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off);",
+      "notes": "2025. Tycoon panels: finance, transport, towns, the company and its competitors, the vehicle collection.",
+      "camera": {
+        "ease": "linear",
+        "keys": [
+          {
+            "x": 122,
+            "z": 126,
+            "zoom": 12,
+            "az": 28,
+            "elev": 0.5
+          },
+          {
+            "x": 124,
+            "z": 127,
+            "zoom": 11,
+            "az": 36,
+            "elev": 0.48
+          }
+        ]
+      },
+      "actions": [
+        {
+          "t": 0,
+          "js": "ui.openPanel(\"finance\");"
+        },
+        {
+          "t": 1.5,
+          "js": "ui.openPanel(\"trains\");"
+        },
+        {
+          "t": 3,
+          "js": "ui.openPanel(\"lists\");"
+        },
+        {
+          "t": 4.5,
+          "js": "ui.openPanel(\"company\"); const b = document.querySelector(\"#panel .pbody\"); if (b) b.scrollTop = 1e5;"
+        },
+        {
+          "t": 6,
+          "js": "ui.openPanel(\"collection\");"
+        }
+      ]
+    },
+    {
+      "id": "s09-rival",
+      "save": "greenfield-2025.json.gz",
+      "duration": 4,
+      "warmup": 3,
+      "ui": "hud",
+      "timeOfDay": 0.45,
+      "weather": "clear",
+      "setup": "const off = g.economy.coins - 3486200; g.economy.coins -= off; for (const m of g.ledger.months || []) if (typeof m.cash === \"number\") m.cash = Math.max(0, m.cash - off); if (g.ledger.cur && typeof g.ledger.cur.cash === \"number\") g.ledger.cur.cash = Math.max(0, g.ledger.cur.cash - off); app.ui.rivalId = g.rivals.list[0].id; app.ui.openPanel(\"rival\");",
+      "notes": "2025. The competitor Northstar Railways with its lines; its blue trains at Greenfield.",
+      "camera": {
+        "ease": "inOut",
+        "keys": [
+          {
+            "x": 118,
+            "z": 122,
+            "zoom": 8.5,
+            "az": 20,
+            "elev": 0.48
+          },
+          {
+            "x": 119,
+            "z": 123,
+            "zoom": 7.8,
+            "az": 28,
+            "elev": 0.45
+          }
+        ]
+      }
+    }
+  ]
+}

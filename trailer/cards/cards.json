@@ -1,0 +1,16 @@
+{
+  "_note": "Trailer text cards. Rendered by trailer/tools/cards.mjs into transparent 1920×1080 PNGs (trailer/cards/<lang>/<id>.png). Very few words; the German follows the game's own localization style (informal imperative, as in its tagline 'Baue Eisenbahnen. Lass Städte wachsen.').",
+  "cards": {
+    "first":    { "en": ["BUILD THE FIRST CONNECTION."], "de": ["BAUE DIE ERSTE VERBINDUNG."] },
+    "move":     { "en": ["MOVE PEOPLE.", "MOVE GOODS."], "de": ["BEWEGE MENSCHEN.", "BEWEGE GÜTER."] },
+    "grow":     { "en": ["WATCH THE WORLD GROW."], "de": ["SIEH ZU, WIE DIE WELT WÄCHST."] },
+    "network":  { "en": ["BUILD THE NETWORK."], "de": ["BAUE DAS NETZ."] },
+    "connect":  { "en": ["CONNECT EVERYTHING."], "de": ["VERBINDE ALLES."] },
+    "economy":  { "en": ["BUILD AN ECONOMY."], "de": ["BAUE EINE WIRTSCHAFT AUF."] },
+    "compete":  { "en": ["COMPETE.", "EXPAND.", "ADAPT."], "de": ["KONKURRIERE.", "EXPANDIERE.", "PASSE DICH AN."] },
+    "company":  { "en": ["RUN THE COMPANY."], "de": ["FÜHRE DEIN UNTERNEHMEN."] },
+    "title":    { "style": "title", "en": [], "de": [] },
+    "tagline":  { "style": "tagline", "en": ["TRANSPORT CREATES CIVILIZATION."], "de": ["VERKEHR SCHAFFT ZIVILISATION."] },
+    "end":      { "style": "end", "en": ["BUILD.", "CONNECT.", "GROW."], "de": ["BAUE.", "VERBINDE.", "WACHSE."] }
+  }
+}
