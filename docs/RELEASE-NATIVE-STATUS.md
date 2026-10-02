@@ -65,8 +65,8 @@ An ASSUMED item is never counted as VERIFIED.
 
 | Item | Status | Evidence |
 |---|---|---|
-| NSIS installer builds on windows-latest | NOT EXECUTED | `native` workflow |
-| Silent install, launch, WebView2 page start, uninstall | NOT EXECUTED | `tools/ci/windows-smoke.ps1` in `native` |
+| NSIS installer builds on windows-latest | VERIFIED | `native` run 36976587203 (job windows) and `release` dry run 36977882844; `TRACKLANDS-6.2.0-windows-x64-setup.exe`, 2.4 MB, NSIS (the installer stub is a 32-bit PE, as every NSIS installer; it installs the x64 app) |
+| Silent install, launch, WebView2 page start, uninstall | VERIFIED | `windows-smoke.ps1` in both runs above: silent per-user install, version in the uninstall entry, the app creates its WebView2 IndexedDB, still running after 10 s, silent uninstall |
 | Signing | UNSIGNED - CERTIFICATE NOT CONFIGURED | supported optionally; see SIGNING.md |
 | DPI scaling, multi-monitor, real keyboard | NOT EXECUTED | needs a real Windows desktop |
 
@@ -76,8 +76,11 @@ An ASSUMED item is never counted as VERIFIED.
 |---|---|---|
 | Project generated (minSdk 24, targetSdk 37, NDK r29) | VERIFIED | `src-tauri/gen/android` |
 | Release signing from secrets; no secrets committed | VERIFIED (design) | `android-signing.mjs`; `.gitignore` covers `*.jks`, `*.keystore`, `*.p12`, `*.pfx`, `keystore.properties` |
-| APK + AAB build, signature, id, version, ABIs, 16 KB alignment | NOT EXECUTED | `native` workflow, `android-verify.mjs` |
-| Emulator: boot, Back (hint, then exit), restart | NOT EXECUTED | `native` workflow, `android-emulator-smoke.sh` |
+| APK + AAB build, signature, id, version, ABIs, 16 KB alignment | VERIFIED | `release` dry run 36977882844 (job android) and `native` runs: universal APK and AAB, apksigner v2 and jarsigner pass, `dev.tracklands.preview` 6.2.0 / 6020099, minSdk 24, targetSdk 37, arm64-v8a, armeabi-v7a, x86, x86_64, not debuggable; 64-bit libraries 16 KB aligned. Re-checked locally on the downloaded files |
+| 32-bit libraries at 4 KB alignment | VERIFIED: correct | the first CI build showed armeabi-v7a and x86 at 4 KB. 16 KB pages exist only on 64-bit devices; the check now requires 16 KB for 64-bit ABIs and 4 KB for 32-bit, and records every library |
+| Emulator: install, start, title screen | VERIFIED | `native` run 36977767642 (API 34 x86_64): cold start in 1.4 s, title screen rendered (screenshot `1-title.png`), no crash |
+| Emulator: first Back on the title shows the hint, app keeps running | VERIFIED | same run: screenshot `2-after-first-back.png` shows "Press Back again to leave TRACKLANDS" |
+| Emulator: Back twice leaves the app, restart | VERIFIED | `native` run 36979512777 on 9bc56fd: two Back presses leave the app (screenshot `3-after-double-back.png` shows the launcher), cold restart shows the title again (`4-restart.png`). The first run had pressed the second Back after the 2 s window (a test bug, fixed in the script) |
 | Real device, physical audio | UNTESTED | no device available |
 
 ### Release factory
@@ -85,9 +88,14 @@ An ASSUMED item is never counted as VERIFIED.
 | Item | Status | Evidence |
 |---|---|---|
 | `release.yml` syntax | VERIFIED | actionlint 1.7.12 clean |
-| Dry run end to end | NOT EXECUTED | |
-| Tag without Android secrets fails early | ASSUMED | validate step; to be fault-tested |
-| Placeholder identifier refused | ASSUMED | validate step; to be fault-tested |
+| Dry run end to end | VERIFIED | `release` run 36977882844 (pull request, 521f0d8): validate, web, windows, android, verify all success; publish skipped. Artifact `TRACKLANDS-6.2.0-dryrun` downloaded and re-checked locally: `sha256sum -c` OK for all four files, APK and AAB signatures, badging, PE/NSIS type, no development folders in the web zip |
+| Manifest signing status | VERIFIED (after a fix) | the first dry run listed the signed APK/AAB as "unsigned" (`apkCertSha256` not read in CI). `android-verify` now reads the certificate robustly and fails if it cannot. Dry run 36979516866 on 9bc56fd: "signed (certificate SHA-256 e66fa093…) — DRY RUN: throwaway key"; re-checked locally with apksigner and keytool |
+| AAB signed with the same certificate as the APK | VERIFIED | now a check in `android-verify` (and required by `release-finalize` for a tag). Fault injection: an AAB re-signed with another key fails "AAB signed with the same certificate as the APK" |
+| Secret scan catches a leaked value | VERIFIED (local) | `release-finalize.mjs` with a `SCAN_SECRET_*` value planted in the web zip: "FAIL secret scan … contains the value of SCAN_SECRET_TEST", exit 1 |
+| Commit in a pull-request dry run | NOTE | a pull-request run builds GitHub's merge commit (`66a3da6…` for head 521f0d8); a tag run builds the tag's commit |
+| Tag without Android secrets fails early | VERIFIED (local) | `android-signing.mjs --from-env` with no secrets: "ANDROID RELEASE SIGNING NOT CONFIGURED: missing secret(s) …", exit 1; a garbage keystore: exit 1. Not executed as a real tag (this environment cannot push tags) |
+| Wrong tag, missing release notes | VERIFIED (local) | `version.mjs check --tag=v6.1.9` exit 1; `release-notes.mjs` for a version without changelog entry exit 1 |
+| Placeholder identifier refused | ASSUMED | validate step (tag mode only) prints "NEEDS HUMAN DECISION: CONFIRM FINAL BUNDLE IDENTIFIER"; runs only on a tag, not executed |
 
 ## Human decisions pending
 
@@ -98,5 +106,5 @@ An ASSUMED item is never counted as VERIFIED.
 
 ## Next action
 
-Get `native.yml` green on GitHub Actions (Windows, Android, emulator). Then
-run a `release.yml` dry run and the fault-injection runs.
+Merge PR #3 once CI is green on its head. After the human decisions above,
+the owner pushes `v6.2.0`.

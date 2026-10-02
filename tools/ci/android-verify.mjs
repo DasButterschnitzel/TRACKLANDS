@@ -124,6 +124,11 @@ if (fs.existsSync(aab)) {
     const v = run('jarsigner', ['-verify', '-verbose', '-certs', aab]);
     check(/jar verified\./.test(v) && !/unsigned/i.test(v.split('jar verified')[0].slice(-200)), 'AAB signature verifies (jarsigner)');
   } catch (e) { check(false, 'AAB signature verifies (jarsigner)', (e.stdout || e.message).split('\n').slice(-3).join(' ')); }
+  // the bundle must carry the same certificate as the APK
+  const pc = spawnSync('keytool', ['-printcert', '-jarfile', aab], { encoding: 'utf8' });
+  const aabSha = ((`${pc.stdout || ''}`.match(/SHA256:\s*([0-9A-F:]{95})/i) || [])[1] || '').replace(/:/g, '').toLowerCase();
+  report.aabCertSha256 = aabSha || null;
+  check(!!aabSha && aabSha === report.apkCertSha256, 'AAB signed with the same certificate as the APK', aabSha || 'not read');
   const ents = zipEntries(aab);
   const abis = [...new Set(ents.filter((e) => /^base\/lib\/[^/]+\/.+\.so$/.test(e.name)).map((e) => e.name.split('/')[2]))].sort();
   report.aabAbis = abis;

@@ -96,9 +96,9 @@ const signed = {
   web: 'not applicable',
   windows: win.signature || 'unknown',
   apk: android.apkCertSha256 ? `signed (certificate SHA-256 ${android.apkCertSha256})${dryRun ? ' — DRY RUN: throwaway key, not for distribution' : ''}` : 'unsigned',
-  aab: android.apkCertSha256 ? `signed with the same key${dryRun ? ' — DRY RUN: throwaway key, not for distribution' : ''}` : 'unsigned',
+  aab: android.aabCertSha256 ? `signed (certificate SHA-256 ${android.aabCertSha256})${dryRun ? ' — DRY RUN: throwaway key, not for distribution' : ''}` : 'unsigned',
 };
-if (!dryRun) say(!!android.apkCertSha256, 'Android release artifacts are signed with the release key');
+if (!dryRun) say(!!android.apkCertSha256 && android.aabCertSha256 === android.apkCertSha256, 'Android release artifacts are signed, APK and AAB with the same certificate');
 const platform = { web: 'web', windows: 'windows-x64', apk: 'android', aab: 'android' };
 
 if (problems.length) { console.error(`\nrelease verification failed (${problems.length}):\n  ${problems.join('\n  ')}`); process.exit(1); }
