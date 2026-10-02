@@ -1,0 +1,286 @@
+# Release factory. A version tag (vX.Y.Z or vX.Y.Z-rc.N) on main builds every
+# distribution from that exact commit, verifies it and publishes one GitHub
+# Release:
+#   TRACKLANDS-<v>-web.zip · TRACKLANDS-<v>-windows-x64-setup.exe ·
+#   TRACKLANDS-<v>-android-universal.apk · TRACKLANDS-<v>-android.aab ·
+#   SHA256SUMS.txt · release-manifest.json
+#
+#   validate ─▶ web ─┬─▶ windows ─┬─▶ verify ─▶ publish (tags only)
+#                    └─▶ android ─┘
+#
+# "Run workflow" (workflow_dispatch) is a DRY RUN of the same pipeline on any
+# branch: Android is signed with a throwaway key, nothing is published, the
+# files are kept as workflow artifacts. See docs/RELEASING.md and docs/SIGNING.md.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# a newer push never cancels a release that is being built
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: '29.0.14206865'
+  BUNDLETOOL_VERSION: '1.18.3'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+      dry_run: ${{ steps.v.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: v
+        name: Version, tag and release preconditions
+        env:
+          HAS_ANDROID_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          set -e
+          V=$(node -p "require('./package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          case "$V" in *-rc.*) echo "prerelease=true" >> "$GITHUB_OUTPUT";; *) echo "prerelease=false" >> "$GITHUB_OUTPUT";; esac
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+            node tools/version.mjs check --tag="$GITHUB_REF_NAME"
+            git fetch -q origin main
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::tag $GITHUB_REF_NAME is not on main: releases are built from main only"; exit 1; }
+            ID=$(node -p "require('./src-tauri/tauri.conf.json').identifier")
+            case "$ID" in com.example.*|com.tauri.*|dev.tracklands.preview|*.preview|*.example|*.test)
+              echo "::error::NEEDS HUMAN DECISION: CONFIRM FINAL BUNDLE IDENTIFIER (current: $ID is a development placeholder; see docs/SIGNING.md)"; exit 1;;
+            esac
+            if [ "$HAS_ANDROID_KEY" != "true" ]; then
+              echo "::error::ANDROID RELEASE SIGNING NOT CONFIGURED: set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (docs/SIGNING.md). No unsigned Android release is published."; exit 1
+            fi
+          else
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            node tools/version.mjs check
+          fi
+          node tools/ci/release-notes.mjs "$V" > /dev/null
+          node tools/check.mjs
+          test -z "$(git status --porcelain)" || { git status --porcelain; echo "::error::the source tree is not clean"; exit 1; }
+          echo "release $V from $GITHUB_SHA ($([ "$GITHUB_REF_TYPE" = tag ] && echo tag || echo dry run))"
+
+  web:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Release gate (core suites)
+        run: node tests/run.mjs unit rail recovery prodsave persist savesafety nativebuild
+      - name: Web package
+        run: |
+          node tools/build-web.mjs --target=web --zip --sha="$GITHUB_SHA"
+          mkdir -p out && cp dist/TRACKLANDS-*-web.zip out/
+      - name: The unpacked package runs on its own (offline, PWA, first session)
+        run: |
+          rm -rf "$RUNNER_TEMP/web" && mkdir -p "$RUNNER_TEMP/web"
+          unzip -q out/TRACKLANDS-*-web.zip -d "$RUNNER_TEMP/web"
+          STATIC_ROOT="$(ls -d "$RUNNER_TEMP"/web/TRACKLANDS-*)" node tests/run.mjs offline pwa rcflow
+      - name: Report
+        run: node -e "require('fs').writeFileSync('out/web-report.json', JSON.stringify({ tools: { node: process.version } }))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rel-web
+          path: out/*
+          retention-days: 30
+
+  windows:
+    needs: [validate, web]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          save-if: false
+      - name: Code signing certificate (optional)
+        id: sign
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CERT_PW: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          TS_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if (-not $env:CERT_B64) {
+            Write-Host "::warning::Windows installer will be UNSIGNED - CERTIFICATE NOT CONFIGURED (docs/SIGNING.md)"
+            '{}' | Set-Content "$env:RUNNER_TEMP/sign.json"
+            "status=UNSIGNED - CERTIFICATE NOT CONFIGURED" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          $pw = ConvertTo-SecureString $env:CERT_PW -AsPlainText -Force
+          $c = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+          Remove-Item $pfx -Force
+          $ts = if ($env:TS_URL) { $env:TS_URL } else { 'http://timestamp.digicert.com' }
+          @{ bundle = @{ windows = @{ certificateThumbprint = $c.Thumbprint; digestAlgorithm = 'sha256'; timestampUrl = $ts } } } | ConvertTo-Json -Depth 5 | Set-Content "$env:RUNNER_TEMP/sign.json"
+          "status=SIGNED" >> $env:GITHUB_OUTPUT
+      - name: Build NSIS installer
+        shell: pwsh
+        run: npx tauri build --bundles nsis --ci --config "$env:RUNNER_TEMP/sign.json"
+      - name: Name, check signature, smoke test
+        shell: pwsh
+        run: |
+          $v = '${{ needs.validate.outputs.version }}'
+          $src = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force out | Out-Null
+          $dst = "out/TRACKLANDS-$v-windows-x64-setup.exe"
+          Copy-Item $src.FullName $dst
+          $sig = (Get-AuthenticodeSignature $dst).Status
+          $want = '${{ steps.sign.outputs.status }}'
+          if ($want -eq 'SIGNED' -and $sig -ne 'Valid') { throw "installer signature is $sig although a certificate was configured" }
+          $label = if ($sig -eq 'Valid') { 'SIGNED' } else { 'UNSIGNED - CERTIFICATE NOT CONFIGURED' }
+          ./tools/ci/windows-smoke.ps1 -Installer $dst
+          @{ signature = $label; tools = @{ rustc = (rustc -V); node = (node -v) } } | ConvertTo-Json | Set-Content out/windows-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rel-windows
+          path: out/*
+          retention-days: 30
+
+  android:
+    needs: [validate, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Android NDK and bundletool
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}" >/dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          curl -sSfLo "$RUNNER_TEMP/bundletool.jar" "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          echo "BUNDLETOOL_JAR=$RUNNER_TEMP/bundletool.jar" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          save-if: false
+      - name: Signing (release key from secrets, or throwaway key for a dry run)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
+            KS="$RUNNER_TEMP/dry-run.jks"; PW="$(openssl rand -hex 16)"; echo "::add-mask::$PW"
+            keytool -genkeypair -keystore "$KS" -alias dry-run -keyalg RSA -keysize 2048 -validity 2 -storepass "$PW" -keypass "$PW" \
+              -dname "CN=TRACKLANDS dry run, O=NOT FOR DISTRIBUTION" >/dev/null 2>&1
+            node tools/ci/android-signing.mjs --keystore "$KS" --alias dry-run --store-password "$PW" --key-password "$PW"
+          else
+            node tools/ci/android-signing.mjs --from-env
+          fi
+      - name: Build universal APK and AAB
+        run: npx tauri android build --apk --aab --ci
+      - name: Verify (signature, id, version, ABIs, 16 KB alignment)
+        run: |
+          LABEL=""; [ "${{ needs.validate.outputs.dry_run }}" = "true" ] && LABEL="--label dryrun"
+          EXPECT=""; [ -n "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}" ] && [ "${{ needs.validate.outputs.dry_run }}" != "true" ] && EXPECT="--expect-cert ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}"
+          node tools/ci/android-verify.mjs --out out $LABEL $EXPECT
+          node -e "const f='out/android-verify.json',r=JSON.parse(require('fs').readFileSync(f));r.tools={rustc:require('child_process').execSync('rustc -V').toString().trim(),ndk:process.env.NDK_VERSION};require('fs').writeFileSync(f,JSON.stringify(r,null,2))"
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/*.jks src-tauri/gen/android/keystore.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rel-android
+          path: out/*
+          retention-days: 30
+
+  verify:
+    needs: [validate, web, windows, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rel-*
+          path: release
+          merge-multiple: true
+      - name: Independent verification, checksums, manifest, secret scan
+        env:
+          SCAN_SECRET_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SCAN_SECRET_ANDROID_STORE_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SCAN_SECRET_ANDROID_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SCAN_SECRET_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          SCAN_SECRET_WINDOWS_PW: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          DRY=""; [ "${{ needs.validate.outputs.dry_run }}" = "true" ] && DRY="--dry-run"
+          node tools/ci/release-finalize.mjs --dir release --version "${{ needs.validate.outputs.version }}" --commit "$GITHUB_SHA" $DRY
+          (cd release && sha256sum -c SHA256SUMS.txt)
+          ls -la release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRACKLANDS-${{ needs.validate.outputs.version }}${{ needs.validate.outputs.dry_run == 'true' && '-dryrun' || '' }}
+          path: release/*
+          retention-days: 30
+
+  publish:
+    needs: [validate, verify]
+    if: github.ref_type == 'tag' && needs.validate.outputs.dry_run == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: TRACKLANDS-${{ needs.validate.outputs.version }}
+          path: release
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ needs.validate.outputs.version }}"
+          node tools/ci/release-notes.mjs "$V" > notes.md
+          PRE=""; [ "${{ needs.validate.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
+          gh release create "$GITHUB_REF_NAME" release/* --title "TRACKLANDS $V" --notes-file notes.md --verify-tag $PRE

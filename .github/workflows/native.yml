@@ -1,0 +1,175 @@
+# Native builds (Tauri 2): proves on every relevant change that the game still
+# packages for Windows and Android. No release secrets are used here: Android
+# packages are signed with a throwaway key made in the job (they are test
+# builds, never published), Windows packages are unsigned.
+#   native-static — staging, version sync, Rust format and compile check
+#   windows       — NSIS installer on windows-latest; silent install, launch, uninstall
+#   android       — universal APK + AAB, signature and ABI checks
+# Tagged releases are built by release.yml.
+name: native
+
+on:
+  pull_request:
+    paths: ['src/**', 'styles/**', 'assets/**', 'icons/**', 'vendor/**', 'index.html', 'manifest.json', 'src-tauri/**', 'tools/**', 'package.json', 'package-lock.json', '.github/workflows/native.yml']
+  push:
+    branches: [main, 'claude/**', 'release/**']
+    paths: ['src/**', 'styles/**', 'assets/**', 'icons/**', 'vendor/**', 'index.html', 'manifest.json', 'src-tauri/**', 'tools/**', 'package.json', 'package-lock.json', '.github/workflows/native.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: '29.0.14206865'
+
+jobs:
+  native-static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Static check and version sync
+        run: |
+          node tools/check.mjs
+          node tools/version.mjs check
+      - name: Stage web and native builds
+        run: |
+          node tools/build-web.mjs --target=native
+          node tools/build-web.mjs --target=web --zip
+      - name: Linux WebView libraries (for cargo check)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Rust format, check, lints
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo check --locked
+          cargo clippy --locked -- -D warnings
+
+  windows:
+    needs: native-static
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Build NSIS installer
+        run: npx tauri build --bundles nsis --ci
+      - name: Name the installer
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $src = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $src.FullName "out/TRACKLANDS-$v-windows-x64-setup.exe"
+          Get-ChildItem out | Format-Table Name, Length
+      - name: Install silently, launch, uninstall
+        shell: pwsh
+        run: ./tools/ci/windows-smoke.ps1 -Installer (Get-ChildItem out/*-setup.exe | Select-Object -First 1).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: out/*.exe
+          retention-days: 14
+
+  android:
+    needs: native-static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Android NDK
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}" >/dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Throwaway signing key (test build only)
+        run: |
+          KS="$RUNNER_TEMP/ci-test.jks"
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          keytool -genkeypair -v -keystore "$KS" -alias ci-test -keyalg RSA -keysize 2048 -validity 2 \
+            -storepass "$PW" -keypass "$PW" -dname "CN=TRACKLANDS CI test build, O=NOT FOR DISTRIBUTION" >/dev/null 2>&1
+          node tools/ci/android-signing.mjs --keystore "$KS" --alias ci-test --store-password "$PW" --key-password "$PW"
+      - name: Build universal APK and AAB
+        run: npx tauri android build --apk --aab --ci
+      - name: bundletool
+        run: |
+          curl -sSfLo "$RUNNER_TEMP/bundletool.jar" "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
+          echo "BUNDLETOOL_JAR=$RUNNER_TEMP/bundletool.jar" >> "$GITHUB_ENV"
+      - name: Verify and collect
+        run: node tools/ci/android-verify.mjs --out out --label ci-test
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ci-test.jks" src-tauri/gen/android/keystore.properties
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-test-build
+          path: out/*
+          retention-days: 14
+
+  android-emulator:
+    needs: android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-test-build
+          path: build
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Boot, Back button, restart on an emulator (Android 14, x86_64)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash tools/ci/android-emulator-smoke.sh "$(ls build/*-android-universal-ci-test.apk)" "$(node -p "require('./src-tauri/tauri.conf.json').identifier")"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator-screens
+          path: out/emulator
+          retention-days: 14
