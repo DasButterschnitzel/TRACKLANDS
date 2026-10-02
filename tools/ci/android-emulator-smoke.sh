@@ -29,6 +29,9 @@ adb exec-out screencap -p > "$OUT/3-after-double-back.png"
 # TRACKLANDS is no longer the resumed activity
 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG/" && fail "Back twice did not leave the app"
 echo "Back twice left the app"
+# a native abort while the process winds down after the activity has gone
+# (no dialog; seen once in CI) is reported, not failed: see RELEASE-NATIVE-STATUS.md
+adb logcat -d | grep -E "Fatal signal .*\(cklands\.preview\)|>>> $PKG <<<" | head -3 | sed 's/^/WARNING (teardown): /' || true
 adb shell am start -W -n "$PKG/.MainActivity" || fail "restart"
 sleep 45
 adb exec-out screencap -p > "$OUT/4-restart.png"

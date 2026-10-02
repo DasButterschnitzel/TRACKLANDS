@@ -104,7 +104,8 @@ class App {
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
     if (wantsServiceWorker()) this.registerSW();
-    onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
+    // (a promise: true once Android Back is ours; kept for diagnostics and tests)
+    this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
   }
 

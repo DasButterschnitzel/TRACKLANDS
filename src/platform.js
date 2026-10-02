@@ -8,9 +8,25 @@ import { BUILD } from './buildinfo.js';
 
 const tauri = () => globalThis.__TAURI__ || null;
 
-// true inside the Tauri shell (Tauri defines __TAURI_INTERNALS__ before any script runs)
+// true inside the Tauri shell. Tauri's globals come from initialization
+// scripts, which on Android can run after the page's own modules, so the app's
+// origin (http(s)://tauri.localhost on Windows and Android, tauri:// elsewhere)
+// counts as well.
+function nativeOrigin() {
+  const l = globalThis.location;
+  return !!l && (l.hostname === 'tauri.localhost' || l.protocol === 'tauri:');
+}
 export function isNative() {
-  return !!(globalThis.isTauri || globalThis.__TAURI_INTERNALS__);
+  return !!(globalThis.isTauri || globalThis.__TAURI_INTERNALS__) || nativeOrigin();
+}
+
+// the Tauri API object once it exists (polls briefly for a late injection)
+function whenTauri(test, ms = 20000) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const look = () => { const T = tauri(); if (T && test(T)) resolve(T); else if (Date.now() - t0 > ms) resolve(null); else setTimeout(look, 50); };
+    look();
+  });
 }
 
 // 'web' | 'windows' | 'android' | 'native'
@@ -59,15 +75,23 @@ export async function saveFile(name, data, mime = 'application/octet-stream') {
 // Android hardware / gesture Back. handler() returns true when it closed
 // something (modal, panel, tool...); otherwise a second Back within two
 // seconds leaves the app (the first one calls hint()). No-op elsewhere.
-export function onNativeBack(handler, hint) {
-  const T = tauri();
-  if (!isNative() || !T || !T.app || typeof T.app.onBackButtonPress !== 'function') return null;
+// Registering the listener is what stops Android from closing the app on
+// Back, so it waits for a late Tauri API and retries a failed registration.
+// Resolves to true once the listener is registered.
+export async function onNativeBack(handler, hint) {
+  if (!isNative()) return false;
+  const T = await whenTauri((t) => t.app && typeof t.app.onBackButtonPress === 'function');
+  if (!T) return false;
   let armed = 0;
-  return T.app.onBackButtonPress(() => {
+  const onBack = () => {
     if (handler()) { armed = 0; return; }
     const now = Date.now();
     if (now - armed < 2000) { T.app.exit(0); return; }
     armed = now;
     if (hint) hint();
-  });
+  };
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try { await T.app.onBackButtonPress(onBack); return true; } catch (e) { await new Promise((r) => setTimeout(r, 200 * (attempt + 1))); }
+  }
+  return false;
 }

@@ -30,6 +30,14 @@ const FAKE_TAURI = () => {
     app: { onBackButtonPress: async (h) => { window.__nat.back = h; return { unregister() {} }; }, exit: async () => { window.__nat.exited = true; } },
   };
 };
+// the Tauri API arriving after the game's modules have run (seen on Android)
+const LATE_TAURI = () => {
+  window.__TAURI_INTERNALS__ = {};
+  window.__late = { back: null };
+  // only once the title screen is up, i.e. well after main.js asked for Back
+  const inject = () => { if (!(window.__tracklands && window.__tracklands.title)) { setTimeout(inject, 50); return; } window.__late.missingAtStart = !window.__TAURI__; setTimeout(() => { window.__TAURI__ = { app: { onBackButtonPress: async (h) => { window.__late.back = h; return { unregister() {} }; }, exit: async () => {} } }; }, 500); };
+  inject();
+};
 const SEEDED_RANDOM = () => {
   let s = 20261002;
   Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -136,6 +144,17 @@ export async function run({ browser }) {
   });
   check(!back.missing && back.out.every(Boolean), `Android Back closes the panel, puts the tool down, leaves the underground view, then asks once and only then exits (${JSON.stringify(back)})`);
   check(wsw, 'the web build still registers its service worker');
+  // Back must still be taken over when the Tauri API is injected late
+  {
+    const ctxL = await browser.newContext({ viewport: { width: 900, height: 600 } });
+    await ctxL.addInitScript(LATE_TAURI);
+    const pl = await ctxL.newPage();
+    await pl.goto(sNat.url + '/index.html', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await pl.waitForFunction(() => window.__tracklands && window.__tracklands.title, null, { timeout: 90000 });
+    const late = await pl.evaluate(async () => ({ missingAtStart: window.__late.missingAtStart, ready: await window.__tracklands.nativeBackReady, hooked: typeof window.__late.back === 'function', sw: navigator.serviceWorker ? (await navigator.serviceWorker.getRegistrations()).length : 0 }));
+    check(late.missingAtStart === true && late.ready === true && late.hooked && late.sw === 0, `Android Back is taken over even when the Tauri API arrives after the game started (${JSON.stringify(late)})`);
+    await ctxL.close();
+  }
   await done(c);
   sNat.server.close(); sWeb.server.close(); sRepo.server.close();
   return { ok, lines };
