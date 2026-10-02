@@ -104,6 +104,7 @@ class App {
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
     if (wantsServiceWorker()) this.registerSW();
+    document.addEventListener('pointercancel', (e) => { if (e.target && e.target.closest && e.target.closest('input[type=range]')) this._ctrlCancelAt = Date.now(); }, true);
     // (a promise: true once Android Back is ours; kept for diagnostics and tests)
     this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
@@ -114,8 +115,16 @@ class App {
   // popover, menu, panel, selection), back to the surface view, put the tool
   // down. Returns false when there is nothing left to close.
   nativeBack() {
+    // Android's edge Back gesture cancels the touch it interrupts: a Back that
+    // cut off a slider drag was not meant for the game (it used to close the
+    // settings panel while a volume was being set)
+    if (Date.now() - (this._ctrlCancelAt || 0) < 800) return true;
     const g = this.game;
-    if (!g || !g.running) { const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; } return false; }
+    if (!g || !g.running) {
+      const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; }
+      if (this.ui.panel) { this.ui.closePanel(); return true; }
+      return false;
+    }
     if (g.ui.driveId != null) { g.ui.stopDrive(); return true; }
     if (g.construction.drag) { g.construction.touchCancel(); return true; }
     if (g.ui.closeTop()) return true;

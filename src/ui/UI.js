@@ -227,16 +227,16 @@ export class UI {
     const C = g.construction;
     const tools = [['select', 'select'], ['track', 'track'], ['station', 'station'], ['depot', 'depot'], ['train', 'train'], ['road', 'road'], ['roadstop', 'bus'], ['line', 'route'], ['industry', 'factory'], ['bulldoze', 'bulldoze'], ['decor', 'decor'], ['signal', 'signal'], ['waypoint', 'waypoint']];
     const KEYS = { select: 1, track: 2, station: 3, depot: 4, train: 5, bulldoze: 6, decor: 7, signal: 8, waypoint: 9, road: 'R', roadstop: 'B', line: 'L', industry: 'I' };
-    const btn = ([id, ic]) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)} (${KEYS[id]})" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
+    const btn = ([id, ic]) => `<button id="tool-${id}" class="tool ${C.tool === id ? 'on' : ''}" data-act="tool" data-arg="${id}" data-tip="${this.tr('tool_' + id)}${this.kh(KEYS[id])}" aria-label="${this.tr('tool_' + id)}" aria-pressed="${C.tool === id}">${icon(ic)}<span>${this.tr('tool_' + id)}</span></button>`;
     const ov = g.overlays.mode;
     const undo = C.canUndo();
     const menuOpen = $('#overlay-menu') && !$('#overlay-menu').hidden;
     $('#toolbar').innerHTML = `<div class="tools">${tools.map(btn).join('')}</div>
       <div class="tools2">
-        <button class="tool small planmode ${g.plans && g.plans.on ? 'on' : ''}" data-act="planMode" data-arg="${g.plans && g.plans.on ? 0 : 1}" data-tip="${this.tr('plan_mode')} (J)" aria-label="${this.tr('plan_mode')}" aria-pressed="${!!(g.plans && g.plans.on)}">${icon('plans')}</button>
-        <button class="tool small layerview ${g.layerView && g.layerView.mode !== 'surface' ? 'on' : ''}" data-act="layerView" data-tip="${this.tr('layer_view')}: ${this.tr('lv_' + (g.layerView ? g.layerView.mode : 'surface'))} (U)" aria-label="${this.tr('layer_view')}">${icon('tunnel')}<i class="lv-tag">${this.tr('lv_short_' + (g.layerView ? g.layerView.mode : 'surface'))}</i></button>
-        <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')} (O)${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
-        <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')} (Ctrl+Z)" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
+        <button class="tool small planmode ${g.plans && g.plans.on ? 'on' : ''}" data-act="planMode" data-arg="${g.plans && g.plans.on ? 0 : 1}" data-tip="${this.tr('plan_mode')}${this.kh('J')}" aria-label="${this.tr('plan_mode')}" aria-pressed="${!!(g.plans && g.plans.on)}">${icon('plans')}</button>
+        <button class="tool small layerview ${g.layerView && g.layerView.mode !== 'surface' ? 'on' : ''}" data-act="layerView" data-tip="${this.tr('layer_view')}: ${this.tr('lv_' + (g.layerView ? g.layerView.mode : 'surface'))}${this.kh('U')}" aria-label="${this.tr('layer_view')}">${icon('tunnel')}<i class="lv-tag">${this.tr('lv_short_' + (g.layerView ? g.layerView.mode : 'surface'))}</i></button>
+        <button class="tool small ${ov ? 'on' : ''}" data-act="overlayMenu" data-tip="${this.tr('overlays')}${this.kh('O')}${ov ? ' · ' + this.tr('ov_' + ov) : ''}" aria-label="${this.tr('overlays')}">${icon('layers')}</button>
+        <button class="tool small undo ${undo ? 'ready' : ''}" data-act="undo" ${undo ? '' : 'disabled'} data-tip="${this.tr('undo')}${this.kh('Ctrl+Z')}" aria-label="${this.tr('undo')}">${icon('undo')}<i class="undo-t" id="undo-t"></i></button>
       </div><div id="overlay-menu" ${menuOpen ? '' : 'hidden'}></div>${ov ? this.overlayLegend(ov) : ''}`;
     if (menuOpen) this.renderOverlayMenu();
     // narrow screens: the tool strip scrolls; keep the active tool in view and
@@ -307,7 +307,7 @@ export class UI {
     // waiting for confirmation replaces the options with Build / Cancel
     if (C.tool !== 'select' && C.tool !== 'train') {
       const mode = `<span class="sub-mode" aria-live="polite">${icon(tools.find((t) => t[0] === C.tool)?.[1] || (C.tool === 'hq' ? 'company' : 'build'), 'mini')}<b>${this.tr('tool_' + C.tool)}</b></span>`;
-      const exit = `<button class="icon-btn small sub-exit" data-act="tool" data-arg="select" aria-label="${this.tr('tool_exit')}" data-tip="${this.tr('tool_exit')} (Esc)">${icon('close')}</button>`;
+      const exit = `<button class="icon-btn small sub-exit" data-act="tool" data-arg="select" aria-label="${this.tr('tool_exit')}" data-tip="${this.tr('tool_exit')}${this.kh('Esc')}">${icon('close')}</button>`;
       const d = C.drag;
       if (d && d.touch) {
         const ready = C.touchReady();
@@ -469,6 +469,10 @@ export class UI {
   }
   hideCursorInfo() { this._ci = null; $('#cursorinfo').hidden = true; }
   coarse() { return !!(window.matchMedia && matchMedia('(pointer: coarse)').matches); }
+  // keyboard shortcuts are only shown where a keyboard is likely: a phone or
+  // tablet without a mouse gets no "(B)", "(F3)" or "Ctrl+Z" in its labels
+  keyboard() { return !(window.matchMedia && matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches); }
+  kh(k) { return this.keyboard() ? ` (${k})` : ''; }
   touchHintShow(text) {
     const el = $('#cursorinfo');
     el.hidden = false;
@@ -1158,7 +1162,7 @@ export class UI {
     const inGame = !!this.game;
     return `<h3>${this.tr('audio')}</h3>${range('volMaster', 'vol_master')}${range('volMusic', 'vol_music')}${range('volSfx', 'vol_sfx')}${range('volAmb', 'vol_amb')}${tog('music', 'music_on')}${this.musicBlock()}
       <h3>${this.tr('graphics')}</h3>${sel('graphics', 'graphics_quality', ['auto', 'low', 'medium', 'high'])}${s.graphics === 'auto' ? `<p class="muted small">${this.tr('gfx_auto_now', { q: this.tr('opt_' + this.app.gfx()) })}</p>` : ''}${sel('shadows', 'shadow_quality', ['off', 'low', 'medium', 'high'])}${sel('particles', 'particle_quality', ['low', 'medium', 'high'])}
-      ${tog('dayNight', 'day_night')}${sel('dayLength', 'day_length', ['short', 'normal', 'long'])}${tog('weather', 'weather')}${tog('extremeWeather', 'extreme_weather')}${tog('labels', 'world_labels')}${tog('perfHud', 'perf_hud')}${inGame ? `<div class="row wrap"><button class="btn small" data-act="photo">${icon('camera', 'mini')} ${this.tr('photo_mode')} (P)</button></div>` : ''}
+      ${tog('dayNight', 'day_night')}${sel('dayLength', 'day_length', ['short', 'normal', 'long'])}${tog('weather', 'weather')}${tog('extremeWeather', 'extreme_weather')}${tog('labels', 'world_labels')}${tog('perfHud', 'perf_hud')}${inGame ? `<div class="row wrap"><button class="btn small" data-act="photo">${icon('camera', 'mini')} ${this.tr('photo_mode')}${this.kh('P')}</button></div>` : ''}
       ${inGame ? `<h3>${this.tr('world_rules')}</h3><label class="set"><span>${this.tr('rel_mode')}</span><select data-change="relMode">${['off', 'relaxed', 'tycoon'].map((o) => `<option value="${o}" ${this.game.maint.mode === o ? 'selected' : ''}>${this.tr('rel_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('rel_' + this.game.maint.mode + '_desc')}</p><label class="set"><span>${this.tr('ind_rule')}</span><select data-change="indRule">${['off', 'on'].map((o) => `<option value="${o}" ${this.game.standing.industryRule === o ? 'selected' : ''}>${this.tr('ind_rule_' + o)}</option>`).join('')}</select></label><p class="muted small">${this.tr('ind_rule_desc')}</p>` : ''}
       <h3>${this.tr('comfort')}</h3>${tog('cameraMotion', 'camera_motion')}${tog('screenShake', 'screen_shake')}${tog('reducedMotion', 'reduced_motion')}${tog('highContrast', 'high_contrast')}${tog('tips', 'setting_tips')}
       <h3>${this.tr('controls')}</h3>${sel('wheel', 'setting_wheel', ['auto', 'zoom', 'pan'])}${tog('instantBuild', 'setting_instant_build')}${tog('keepTool', 'setting_keep_tool')}

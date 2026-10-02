@@ -232,6 +232,8 @@ body.building #topbar .speeds { opacity: .7; }
 .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .set > span:first-child { flex: 1; }
 .set input[type=range] { width: 150px; accent-color: var(--teal); }
+/* touch: keep sliders clear of the screen edge, where Android's Back gesture starts */
+@media (pointer: coarse) { #panel .set input[type=range] { margin-right: 28px; } }
 .set select, .inp { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: #fff; color: var(--ink); min-height: 40px; max-width: 220px; }
 .inp { width: 100%; max-width: none; user-select: text; }
 .inp.code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8em; resize: vertical; }
@@ -414,7 +416,9 @@ body.reduced-motion #celebrate.show { opacity: 1; animation: none; transform: tr
   .phead { position: relative; }
   body.insp-open #toolbar, body.panel-open #toolbar, body.insp-open #subbar, body.panel-open #subbar { display: none; }
   #tutorial { left: 8px; right: 8px !important; width: auto; top: auto; bottom: calc(66px + var(--safe-b)); }
-  body.insp-open #tutorial, body.panel-open #tutorial { bottom: auto; top: calc(56px + var(--safe-t)); }
+  /* while a build tool is active the build bar (Build / Cancel) sits where the
+     tutorial card would be: the card moves to the top so it never covers it */
+  body.insp-open #tutorial, body.panel-open #tutorial, body.building #tutorial { bottom: auto; top: calc(56px + var(--safe-t)); }
   #grant { bottom: calc(66px + var(--safe-b)); }
   #toasts { top: calc(58px + var(--safe-t)); }
   #banner { top: auto; bottom: calc(130px + var(--safe-b)); }

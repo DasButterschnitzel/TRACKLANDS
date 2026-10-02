@@ -43,7 +43,7 @@ export const PlanUIMixin = {
     const bps = B.all().map((b) => `<div class="bp-row"><span>${icon('blueprint', 'mini')} ${esc(b.name.startsWith('bp_') ? tr(b.name) : b.name)} <small class="muted">${tr('bp_runs', { n: b.runs.length })}</small></span>
       <span class="row gap"><button class="btn small" data-act="bpPlace" data-arg="${esc(b.id)}">${tr('bp_place')}</button><button class="btn small" data-act="bpExport" data-arg="${esc(b.id)}">${tr('bp_export')}</button>${b.builtin ? '' : `<button class="icon-btn small" data-act="bpDelete" data-arg="${esc(b.id)}" aria-label="${tr('remove')}">${icon('close')}</button>`}</span></div>`).join('');
     const bpHead = `<div class="row gap wrap"><button class="btn small" data-act="bpCapture">${icon('blueprint')} ${tr('bp_capture')}</button><button class="btn small" data-act="bpImport">${tr('bp_import')}</button>
-      ${C.tool === 'blueprint' ? `<button class="btn small" data-act="bpRotate">${tr('bp_rotate')} (R)</button><button class="btn small ${C.bpMirror ? 'on' : ''}" data-act="bpMirror">${tr('bp_mirror')} (M)</button>` : ''}</div>`;
+      ${C.tool === 'blueprint' ? `<button class="btn small" data-act="bpRotate">${tr('bp_rotate')}${this.kh('R')}</button><button class="btn small ${C.bpMirror ? 'on' : ''}" data-act="bpMirror">${tr('bp_mirror')}${this.kh('M')}</button>` : ''}</div>`;
     return `${head}${cmp}<h4>${tr('plan_projects')}</h4>${projects || `<p class="muted">${tr('plan_none')}</p>`}<h4>${tr('bp_library')}</h4>${bpHead}<div class="bp-list">${bps}</div><p class="muted small">${tr('plan_no_reserve')}</p>`;
   },
   planActions() {

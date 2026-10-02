@@ -25,7 +25,7 @@ export const DriverUIMixin = {
       <div class="drv-speed"><b id="drv-v">0</b><small>${this.spdUnit()}</small><span id="drv-lim"></span></div>
       <label class="drv-lever"><span>${this.tr('drive_power')}</span><input type="range" min="0" max="100" step="5" value="60" data-input="driveThrottle" aria-label="${this.tr('drive_power')}"/></label>
       <div class="row"><button class="btn small" data-act="driveBrake" id="drv-brake">${this.tr('drive_brake')}</button><button class="btn ghost small" data-act="stopDrive">${this.tr('drive_stop')}</button></div>
-      <small class="muted">${this.tr('drive_help')}</small>`;
+      <small class="muted">${this.tr(this.keyboard() ? 'drive_help' : 'drive_help_touch')}</small>`;
     el.hidden = false;
     this.app.audio.play('whistle');
   },
