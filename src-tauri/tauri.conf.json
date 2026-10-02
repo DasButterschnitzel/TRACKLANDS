@@ -45,7 +45,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "TRACKLANDS",
     "copyright": "© TRACKLANDS",
     "category": "SimulationGame",
@@ -59,7 +61,10 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false
@@ -67,7 +72,7 @@
     },
     "android": {
       "minSdkVersion": 24,
-      "versionCode": 6010199
+      "versionCode": 6020099
     }
   }
 }

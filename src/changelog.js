@@ -2,6 +2,23 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '6.2.0', date: '2026-10',
+    en: [
+      'TRACKLANDS is also an app now: a Windows installer and an Android app with the same game, running fully offline',
+      'Android: Back closes what is open first (dialog, panel, tool, underground view); on an empty screen press it twice to leave',
+      'In the apps, save exports, diagnostics and photos are saved through the system’s Save as dialog',
+      'Credits show the exact build and platform',
+      'A train that lost its way is put back on its own company’s line, never on a rival’s platform or a platform no track reaches',
+    ],
+    de: [
+      'TRACKLANDS gibt es jetzt auch als App: ein Installer für Windows und eine Android-App mit demselben Spiel, ganz ohne Internet',
+      'Android: Zurück schließt zuerst, was offen ist (Dialog, Panel, Werkzeug, Untergrundansicht); auf leerem Bildschirm zweimal drücken zum Verlassen',
+      'In den Apps werden Spielstand-Exporte, Diagnose und Fotos über den „Speichern unter“-Dialog des Systems gesichert',
+      'Die Mitwirkenden-Seite zeigt den genauen Build und die Plattform',
+      'Ein Zug, der sich verirrt hat, wird auf die Strecke seiner eigenen Firma zurückgesetzt – nie an einen fremden Bahnsteig oder an einen ohne Gleisanschluss',
+    ],
+  },
+  {
     v: '6.1.1', date: '2026-10',
     en: [
       'Start Journey begins a standard world with the tutorial at once; New game… holds every choice, with the expert settings folded away',

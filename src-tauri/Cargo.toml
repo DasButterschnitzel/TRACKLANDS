@@ -1,6 +1,6 @@
 [package]
 name = "tracklands"
-version = "6.1.1"
+version = "6.2.0"
 description = "TRACKLANDS native shell (Tauri 2): hosts the unchanged web game"
 authors = ["TRACKLANDS"]
 license = "UNLICENSED"
