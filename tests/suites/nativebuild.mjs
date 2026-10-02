@@ -48,6 +48,15 @@ const FLAKY_REGISTER = () => {
     exit: async () => { window.__flaky.exited = true; },
   } };
 };
+// the first registration reaches Android but its answer never comes back
+const HUNG_REGISTER = () => {
+  window.isTauri = true;
+  window.__flaky = { listeners: [], exited: false };
+  window.__TAURI__ = { app: {
+    onBackButtonPress: (h) => { window.__flaky.listeners.push(h); return window.__flaky.listeners.length === 1 ? new Promise(() => {}) : Promise.resolve({ unregister() {} }); },
+    exit: async () => { window.__flaky.exited = true; },
+  } };
+};
 const SEEDED_RANDOM = () => {
   let s = 20261002;
   Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -166,9 +175,9 @@ export async function run({ browser }) {
     await ctxL.close();
   }
   // one Back is one press, even with two listeners left by a retried registration
-  {
+  for (const [name, script] of [['failed', FLAKY_REGISTER], ['unanswered', HUNG_REGISTER]]) {
     const ctxF = await browser.newContext({ viewport: { width: 900, height: 600 } });
-    await ctxF.addInitScript(FLAKY_REGISTER);
+    await ctxF.addInitScript(script);
     const pf = await ctxF.newPage();
     await pf.goto(sNat.url + '/index.html', { waitUntil: 'domcontentloaded', timeout: 60000 });
     await pf.waitForFunction(() => window.__tracklands && window.__tracklands.title, null, { timeout: 90000 });
@@ -178,7 +187,7 @@ export async function run({ browser }) {
       press(); const afterOne = f.exited;
       press(); return { ready, listeners: f.listeners.length, afterOne, afterTwo: f.exited };
     });
-    check(fl.ready === true && fl.listeners === 2 && fl.afterOne === false && fl.afterTwo === true, `one Back is one press when a retried registration left two listeners: the first only asks, the second leaves (${JSON.stringify(fl)})`);
+    check(fl.ready === true && fl.listeners === 2 && fl.afterOne === false && fl.afterTwo === true, `one Back is one press when a retried registration (first try ${name}) left two listeners: the first only asks, the second leaves (${JSON.stringify(fl)})`);
     await ctxF.close();
   }
   await done(c);

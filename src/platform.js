@@ -99,8 +99,14 @@ export async function onNativeBack(handler, hint) {
   // owns it from then on; the others stay silent.
   let owner = null;
   const listener = (id) => () => { if (owner == null) owner = id; if (owner === id) onBack(); };
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try { await T.app.onBackButtonPress(listener(attempt)); return true; } catch (e) { await new Promise((r) => setTimeout(r, 200 * (attempt + 1))); }
+  // a registration that neither succeeds nor fails within a few seconds (a
+  // busy start) is tried again; a late answer to an earlier try is harmless
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const done = await Promise.race([T.app.onBackButtonPress(listener(attempt)).then(() => true), wait(4000).then(() => false)]);
+      if (done) return true;
+    } catch (e) { await wait(200 * (attempt + 1)); }
   }
   return false;
 }

@@ -55,6 +55,10 @@ class App {
   }
 
   async boot() {
+    // Android Back first, before graphics and music start loading: without
+    // the listener Android closes the app on Back. (A promise: true once Back
+    // is ours; kept for diagnostics and tests.)
+    this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui && this.ui.toast(t('back_again_exit'), 'info'));
     const canvas = $('#view');
     // WebGL 2 with antialiasing first; weaker drivers get a second, plainer try
     for (const opts of [{ antialias: this.settings.graphics !== 'low', powerPreference: 'high-performance' }, { antialias: false, powerPreference: 'default' }]) {
@@ -105,8 +109,6 @@ class App {
     setTimeout(() => $('#loading').remove(), 800);
     if (wantsServiceWorker()) this.registerSW();
     document.addEventListener('pointercancel', (e) => { if (e.target && e.target.closest && e.target.closest('input[type=range]')) this._ctrlCancelAt = Date.now(); }, true);
-    // (a promise: true once Android Back is ours; kept for diagnostics and tests)
-    this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
   }
 
@@ -119,6 +121,7 @@ class App {
     // cut off a slider drag was not meant for the game (it used to close the
     // settings panel while a volume was being set)
     if (Date.now() - (this._ctrlCancelAt || 0) < 800) return true;
+    if (!this.ui) return false;   // still starting
     const g = this.game;
     if (!g || !g.running) {
       const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; }

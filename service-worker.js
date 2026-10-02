@@ -6,7 +6,7 @@
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
 // Music tracks (68) are cached when first played, in MUSIC.
-const CACHE = 'tracklands-6.3.0-53c9d7bdf3';
+const CACHE = 'tracklands-6.3.0-9a6ebe14cf';
 const MUSIC = 'tracklands-music-e149a051b3';
 const MUSIC_FILE = new RegExp("/assets/music/[^/]+\\.(ogg|mp3|m4a|opus|wav|webm)$", 'i');
 const ASSETS = [
