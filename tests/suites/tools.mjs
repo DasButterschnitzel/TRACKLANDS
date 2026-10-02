@@ -21,8 +21,11 @@ export async function run({ browser, base }) {
   const rows = await page.$$eval('.find-row', (els) => els.map((e) => e.textContent));
   check(rows.some((t) => t.includes(town.name)), `FIND lists ${town.name} for “${town.name.slice(0, 4)}” (${rows.length} results)`);
   await page.click(`.find-row[data-arg="town:${town.id}"]`);
-  const sel = await page.evaluate(() => { const g = window.__tracklands.game; return { sel: g.selection, goal: !!g.camera.focusGoal }; });
-  check(sel.sel && sel.sel.type === 'town' && sel.sel.id === town.id && sel.goal, 'picking a result selects it and moves the camera there');
+  // the camera clears its goal once it arrives, which a fast machine can do
+  // before the next check; so wait for the camera to be at the town instead
+  const at = await page.waitForFunction((id) => { const g = window.__tracklands.game, p = g.entityPos({ type: 'town', id }), c = g.camera; const goal = c.focusGoal || c.target; const d = Math.hypot(goal.x - p.x, goal.z - p.z); return d < 1 ? { d } : false; }, town.id, { timeout: 5000, polling: 50 }).then(async (h) => (await h.jsonValue()).d).catch(() => null);
+  const sel = await page.evaluate(() => window.__tracklands.game.selection);
+  check(sel && sel.type === 'town' && sel.id === town.id && at !== null, `picking a result selects it and moves the camera there (${at === null ? 'camera not at the town' : 'camera ' + at.toFixed(1) + ' from the town centre'})`);
   // bookmarks
   const bm = await page.evaluate(async () => {
     const g = window.__tracklands.game, u = g.ui;
