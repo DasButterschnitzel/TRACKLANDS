@@ -3,6 +3,7 @@
 import { SAVE_VERSION, STATION, TOWN_STAGES, MAX_LEVEL, TRAIN_UPGRADES, WORLDGEN_VERSION } from '../config.js';
 import { normalizeTerrain } from '../world/Terrain.js';
 import { MAP_SIZES, scrubNames } from '../util.js';
+import { saveFile } from '../platform.js';
 
 const DB = 'tracklands', STORE = 'saves', LS_KEY = 'tracklands.save', LS_BACKUP = 'tracklands.backup';
 
@@ -222,10 +223,6 @@ export function importText(text) {
   } catch (e) { return null; }
 }
 export function downloadJSON(d, name) {
-  const blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  // browser download on the web, the system "save as" dialog in the native app
+  return saveFile(name, JSON.stringify(d, null, 1), 'application/json');
 }

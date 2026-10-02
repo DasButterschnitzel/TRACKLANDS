@@ -9,3 +9,11 @@ trailer/cards/en/
 trailer/cards/de/
 trailer/cards/en-v/
 trailer/cards/de-v/
+dist/
+# native signing material: never committed
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+src-tauri/gen/android/key.properties

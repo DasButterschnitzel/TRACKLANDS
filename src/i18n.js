@@ -248,6 +248,7 @@ const EN = {
   double_ad: 'Double (watch ad)',
   credits_tagline: 'A living miniature world transformed by railways.', credits_tech: 'Built with three.js, WebGL2 and the Web Audio API. All models, textures, music and sounds are generated procedurally.',
   created_by: 'Created by',
+  back_again_exit: 'Press Back again to leave TRACKLANDS',
 };
 
 const DE = {
@@ -459,6 +460,7 @@ const DE = {
   double_ad: 'Verdoppeln (Werbung)',
   credits_tagline: 'Eine lebendige Miniaturwelt, verwandelt durch Eisenbahnen.', credits_tech: 'Erstellt mit three.js, WebGL2 und der Web Audio API. Alle Modelle, Texturen, Musik und Klänge werden prozedural erzeugt.',
   created_by: 'Erstellt von',
+  back_again_exit: 'Noch einmal Zurück drücken, um TRACKLANDS zu verlassen',
 };
 
 Object.assign(EN, EN_RAIL);

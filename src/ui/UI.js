@@ -43,6 +43,7 @@ import { log } from '../core/Log.js';
 import { WEATHER } from '../world/Environment.js';
 import { COMPANY_COLORS } from '../world/Company.js';
 import { LANDMARKS, LANDMARK_STAGE } from '../world/CityStyle.js';
+import { saveFile, buildLabel } from '../platform.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = escapeHtml;
@@ -1200,7 +1201,7 @@ export class UI {
   pCredits() {
     return `<div class="credits"><h1>TRACKLANDS</h1><p>${this.tr('credits_tagline')}</p>
       ${CREATOR_NAME ? `<p><b>${this.tr('created_by')}</b><br>${esc(CREATOR_NAME)}</p>` : ''}
-      <p class="muted">${this.tr('credits_tech')}</p><p class="muted small">three.js — MIT License © three.js authors</p><p class="muted small">v${GAME_VERSION}</p></div>`;
+      <p class="muted">${this.tr('credits_tech')}</p><p class="muted small">three.js — MIT License © three.js authors</p><p class="muted small">${buildLabel(GAME_VERSION)}</p></div>`;
   }
 
   pTrainShop() {
@@ -1529,7 +1530,7 @@ export class UI {
       copyDiagnostics: async () => {
         const txt = this.app.diagnostics();
         try { await navigator.clipboard.writeText(txt); this.toast(this.tr('diagnostics_copied'), 'good', 'check'); }
-        catch (e) { const b = new Blob([txt], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'tracklands-diagnostics.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+        catch (e) { saveFile('tracklands-diagnostics.json', txt, 'application/json'); }
       },
       help: (a) => { this.handbookTopic = a; if (this.panel !== 'handbook') this.openPanel('handbook'); else this.refreshPanel(); },
       researchCat: (a) => { this.researchCat = a; this.refreshPanel(); },

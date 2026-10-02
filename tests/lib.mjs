@@ -17,12 +17,12 @@ const MIME = {
 // Serve the repository root on a free local port (no caching). STATIC_ROOT
 // serves another folder instead (the unpacked release artifact).
 export const SERVE_ROOT = process.env.STATIC_ROOT ? path.resolve(process.env.STATIC_ROOT) : ROOT;
-export function startServer() {
+export function startServer(root = SERVE_ROOT) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent((req.url || '/').split('?')[0]);
-      let file = path.join(SERVE_ROOT, url === '/' ? 'index.html' : url);
-      if (!file.startsWith(SERVE_ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
+      let file = path.join(root, url === '/' ? 'index.html' : url);
+      if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       fs.createReadStream(file).pipe(res);
     });

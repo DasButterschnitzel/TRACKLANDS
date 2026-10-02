@@ -16,6 +16,7 @@ import { readHeightmap } from './world/Heightmap.js';
 import { scenarioDialog } from './ui/ScenarioMenu.js';
 import { icon } from './ui/icons.js';
 import { DIFFICULTY, SAVE_VERSION, GAME_VERSION, GAME_PRESETS } from './config.js';
+import { wantsServiceWorker, onNativeBack, platformName } from './platform.js';
 import { log } from './core/Log.js';
 import { RIVAL_COUNTS, RIVAL_TIMINGS } from './world/Rivals.js';
 import { AI_LEVEL_IDS } from './world/RailAI.js';
@@ -102,8 +103,24 @@ class App {
     requestAnimationFrame((ts) => this.loop(ts));
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') this.registerSW();
+    if (wantsServiceWorker()) this.registerSW();
+    onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
+  }
+
+  // Android Back (native app): the same order as Escape — leave driver mode,
+  // cancel a construction drag, close what is on top (photo mode, dialog,
+  // popover, menu, panel, selection), back to the surface view, put the tool
+  // down. Returns false when there is nothing left to close.
+  nativeBack() {
+    const g = this.game;
+    if (!g || !g.running) { const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; } return false; }
+    if (g.ui.driveId != null) { g.ui.stopDrive(); return true; }
+    if (g.construction.drag) { g.construction.touchCancel(); return true; }
+    if (g.ui.closeTop()) return true;
+    if (g.layerView && g.layerView.showsUnderground()) { g.layerView.set('surface'); g.ui.renderToolbar(); return true; }
+    if (g.construction.tool !== 'select') { g.construction.setTool('select'); g.ui.renderToolbar(); return true; }
+    return false;
   }
 
   // PWA updates: a new release installs completely in the background, then the
@@ -123,7 +140,7 @@ class App {
   diagnostics() {
     const g = this.game, r = this.renderer;
     const d = {
-      version: GAME_VERSION, save: SAVE_VERSION, time: new Date().toISOString(), ua: navigator.userAgent, lang: getLang(),
+      version: GAME_VERSION, platform: platformName(), save: SAVE_VERSION, time: new Date().toISOString(), ua: navigator.userAgent, lang: getLang(),
       screen: { w: innerWidth, h: innerHeight, dpr: window.devicePixelRatio }, gpu: this.gpu, webgl2: !!(r && r.capabilities.isWebGL2),
       gfx: { setting: this.settings.graphics, effective: this.gfx() }, fps: Math.round(this.fps), settings: this.settings,
       backups: this.settings.backups, autosave: this.settings.autosave,
