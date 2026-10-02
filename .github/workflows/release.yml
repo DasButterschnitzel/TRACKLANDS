@@ -99,7 +99,8 @@ jobs:
           unzip -q out/TRACKLANDS-*-web.zip -d "$RUNNER_TEMP/web"
           STATIC_ROOT="$(ls -d "$RUNNER_TEMP"/web/TRACKLANDS-*)" node tests/run.mjs offline pwa rcflow
       - name: Report
-        run: node -e "require('fs').writeFileSync('out/web-report.json', JSON.stringify({ tools: { node: process.version } }))"
+        run: |
+          node -e "require('fs').writeFileSync('out/web-report.json', JSON.stringify({ tools: { node: process.version } }))"
       - uses: actions/upload-artifact@v4
         with:
           name: rel-web
@@ -182,10 +183,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
       - name: Android NDK and bundletool
         run: |
-          sdkmanager --install "ndk;${NDK_VERSION}" >/dev/null
+          # the runner image ships the Android SDK (ANDROID_HOME); add the pinned NDK
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --install "ndk;${NDK_VERSION}" >/dev/null
           echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           curl -sSfLo "$RUNNER_TEMP/bundletool.jar" "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
           echo "BUNDLETOOL_JAR=$RUNNER_TEMP/bundletool.jar" >> "$GITHUB_ENV"

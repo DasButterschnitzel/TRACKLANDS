@@ -25,14 +25,15 @@ $ok = $false
 for ($i = 0; $i -lt 60; $i++) {
   Start-Sleep -Seconds 2
   if ($app.HasExited) { throw "TRACKLANDS exited during start-up (exit code $($app.ExitCode))" }
-  # the page has run when WebView2 has written the game's local storage
-  if (Test-Path (Join-Path $data 'EBWebView/Default/Local Storage')) { $ok = $true; break }
+  # the game's own script has run when its save store exists: the game opens
+  # IndexedDB at start-up (WebView2 creates the folder only for a page that does)
+  if (Test-Path (Join-Path $data 'EBWebView/Default/IndexedDB')) { $ok = $true; break }
 }
 Write-Host "WebView2 data folder:"; if (Test-Path $data) { Get-ChildItem -Recurse -Depth 2 $data | Select-Object -First 25 | Format-Table FullName }
-if (-not $ok) { Stop-Process -Id $app.Id -Force; throw 'the game page did not start (no WebView2 local storage after 120 s)' }
+if (-not $ok) { Stop-Process -Id $app.Id -Force; throw 'the game page did not start (no IndexedDB save store after 120 s)' }
 Start-Sleep -Seconds 10
 if ($app.HasExited) { throw "TRACKLANDS exited after start-up (exit code $($app.ExitCode))" }
-Write-Host "TRACKLANDS running (pid $($app.Id)), page storage present"
+Write-Host "TRACKLANDS running (pid $($app.Id)); the game opened its IndexedDB save store:"; Get-ChildItem (Join-Path $data 'EBWebView/Default/IndexedDB') | Format-Table Name
 Stop-Process -Id $app.Id -Force
 Start-Sleep -Seconds 2
 

@@ -1,6 +1,6 @@
 {
   "name": "tracklands",
-  "version": "6.1.1",
+  "version": "6.2.0",
   "private": true,
   "type": "module",
   "description": "TRACKLANDS: a cozy railway empire builder (Three.js PWA, no build step).",
@@ -10,7 +10,18 @@
     "build:sw": "node tools/build-sw.mjs",
     "serve": "node -e \"import('./tests/lib.mjs').then(async (l) => { const s = await l.startServer(); console.log(s.url); })\"",
     "check": "node tools/check.mjs",
-    "test:fast": "node tools/check.mjs && node tests/run.mjs unit rail seeds savefuzz --cases=150 --corpus"
+    "test:fast": "node tools/check.mjs && node tests/run.mjs unit rail seeds savefuzz --cases=150 --corpus",
+    "tauri": "tauri",
+    "native:prepare": "node tools/build-web.mjs --target=native",
+    "native:check": "node tools/version.mjs check && node tools/build-web.mjs --target=native && cd src-tauri && cargo fmt --check && cargo check --locked",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "build:web": "node tools/build-web.mjs --target=web --zip",
+    "android:init": "tauri android init --ci",
+    "android:apk": "tauri android build --apk",
+    "android:aab": "tauri android build --aab",
+    "version:set": "node tools/version.mjs set",
+    "version:check": "node tools/version.mjs check"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.1",

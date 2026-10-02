@@ -84,10 +84,11 @@ if (fs.existsSync(apk)) {
   const pkg = /package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/.exec(badging) || [];
   check(pkg[1] === want.id, 'APK package id', `${pkg[1]} (expected ${want.id})`);
   check(pkg[3] === want.versionName && +pkg[2] === want.versionCode, 'APK versionName and versionCode', `${pkg[3]} / ${pkg[2]} (expected ${want.versionName} / ${want.versionCode})`);
-  const sdk = { min: (badging.match(/sdkVersion:'(\d+)'/) || [])[1], target: (badging.match(/targetSdkVersion:'(\d+)'/) || [])[1] };
+  const sdk = { min: (badging.match(/(?:minSdkVersion|sdkVersion):'(\d+)'/) || [])[1], target: (badging.match(/targetSdkVersion:'(\d+)'/) || [])[1] };
   report.apkSdk = sdk;
   check(!!sdk.min && !!sdk.target, 'APK min / target SDK', `minSdk ${sdk.min}, targetSdk ${sdk.target}`);
   check(/application-label:'TRACKLANDS'/.test(badging), 'APK app name TRACKLANDS');
+  check(!/application-debuggable/.test(badging), 'APK is a release build (not debuggable)');
   const ents = zipEntries(apk);
   const libs = ents.filter((e) => /^lib\/[^/]+\/.+\.so$/.test(e.name));
   const abis = [...new Set(libs.map((e) => e.name.split('/')[1]))].sort();
