@@ -90,8 +90,8 @@ export async function run({ browser }) {
     const page = await ctx0.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto(base + '/index.html');
-    await page.waitForFunction(() => window.__tracklands && window.__tracklands.renderer && window.__tracklands.title, null, { timeout: 60000 });
+    await page.goto(base + '/index.html', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForFunction(() => window.__tracklands && window.__tracklands.renderer && window.__tracklands.title, null, { timeout: 90000 });
     await page.evaluate((sv) => { const app = window.__tracklands; document.querySelectorAll('.modal-wrap').forEach((m) => m.remove()); app.startGame({ save: sv, test: true, paused: true }); }, JSON.parse(JSON.stringify(save)));
     await page.waitForFunction(() => window.__tracklands.game && window.__tracklands.game.running, null, { timeout: 90000, polling: 250 });
     await page.evaluate(() => document.querySelectorAll('.modal-wrap').forEach((m) => m.remove()));
@@ -104,7 +104,16 @@ export async function run({ browser }) {
     const extra = native ? await page.evaluate(() => ({ sw: navigator.serviceWorker ? navigator.serviceWorker.controller : null, regs: navigator.serviceWorker ? (navigator.serviceWorker.getRegistrations ? 'n/a' : 'n/a') : 'n/a' })) : null;
     return { page, ctx: ctx0, fp: { ...fp, hash: crypto.createHash('sha256').update(fp.json).digest('hex') }, errors, extra };
   };
-  const a = await fingerprint(sRepo.url, false), b = await fingerprint(sWeb.url, false), c = await fingerprint(sNat.url, true);
+  // one game at a time: each page is closed once its part is done, so a slow
+  // CI runner never renders three production saves at once
+  const done = async (x) => { if (x.errors.length) { ok = false; lines.push('errors: ' + x.errors.slice(0, 3).join(' | ')); } await x.ctx.close(); };
+  const a = await fingerprint(sRepo.url, false);
+  await done(a);
+  const b = await fingerprint(sWeb.url, false);
+  // the web build keeps the service worker
+  const wsw = await b.page.evaluate(async () => { for (let i = 0; i < 100; i++) { if ((await navigator.serviceWorker.getRegistrations()).length) return true; await new Promise((r) => setTimeout(r, 100)); } return false; });
+  await done(b);
+  const c = await fingerprint(sNat.url, true);
   check(a.fp.hash === b.fp.hash && a.fp.hash === c.fp.hash, `same simulation in repository, web build and native build after 120 s of play (${a.fp.hash.slice(0, 12)}…; coins ${a.fp.coins}/${b.fp.coins}/${c.fp.coins}, population ${a.fp.pop}/${c.fp.pop})`);
 
   // native behaviour (page c runs the native build with the fake Tauri API)
@@ -126,10 +135,8 @@ export async function run({ browser }) {
     return { out };
   });
   check(!back.missing && back.out.every(Boolean), `Android Back closes the panel, puts the tool down, leaves the underground view, then asks once and only then exits (${JSON.stringify(back)})`);
-  // the web build keeps the service worker
-  const wsw = await b.page.evaluate(async () => { for (let i = 0; i < 100; i++) { if ((await navigator.serviceWorker.getRegistrations()).length) return true; await new Promise((r) => setTimeout(r, 100)); } return false; });
   check(wsw, 'the web build still registers its service worker');
-  for (const x of [a, b, c]) { if (x.errors.length) { ok = false; lines.push('errors: ' + x.errors.slice(0, 3).join(' | ')); } await x.ctx.close(); }
+  await done(c);
   sNat.server.close(); sWeb.server.close(); sRepo.server.close();
   return { ok, lines };
 }
