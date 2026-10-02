@@ -89,7 +89,7 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 |---|---|---|
 | Save safety (backups, health check, crash snapshot, autosave settings) | PASS | `savesafety` |
 | Version display, changelog, diagnostics without personal data | PASS | `savesafety`, `bench` (diagnostics) |
-| Music playlist, shuffle, repeat, now playing (no music shipped) | PASS | `music` |
+| Music playlist, shuffle, repeat, now playing, periods, all eras (68 tracks shipped) | PASS | `music` |
 | Campaign, medals, quick start, game presets, map preview | PASS | `campaign`, `scenarios` |
 | Content packs (JSON, schema checked) | PASS | `packs` |
 | Command palette, units, haptics, handbook topics, shortcuts | PASS | `helpui` |
@@ -211,7 +211,7 @@ Suites run in CI on every push (static check, then the core, economy, transport 
 | Rival companies: the same resolver for their stations; renovation only two eras behind and at most once a year; no heritage listing (a player's choice); at most one metro | PASS | `ai`, `metro`, `eralong` |
 | Rival terminal renovation | PASS (Phase 13) | rivals own railway stations only (no airports or ports): renovation rules for their stations, see Phase 13 |
 | Sound: metro door chime on arrival and warning tone on departure, tunnel rumble loop (louder in the underground view), gulls and ship horns at harbours, jet engines at airports, renovation and project fanfares; still under the voice budget and a fixed loop pool | PASS | `audio` (every effect plays; harbour/airport/tunnel ambience; pooled loop) |
-| Background music: only files the player adds, with id, file, title, artist, era, mood and weight | PASS | `music`; no music is generated |
+| Background music: the owner's tracks, with id, file, title, artist, period, years, mood and weight | PASS | `music`; no music is generated |
 | Sound on real speakers | PHYSICAL AUDIO: UNTESTED | no audio device in the container |
 | One construction price: estimate = charge for station over track, new track, metro, elevated, extension, four-track station, partial build and blueprint; a changed world re-quotes; a failed build charges and books nothing | PASS (fixed in Phase 12) | `costquote` (found three mismatches: 860/720, 805/825, 300/170), `planning`, `p12risk` (same quote twice) |
 | UI suite time: measured (80 % in screenshots under SwiftShader); state-driven frame gate instead of fixed sleeps; coverage unchanged | PASS | `ui` prints its slowest viewports; two viewports 263 s → 113 s |
@@ -306,7 +306,7 @@ A feature freeze: only defects found by auditing whole player flows were changed
 | Saves written by 6.0.0 and 6.1.0 (built from their release commits) load, pass the health check, keep running and round-trip | PASS | release gate (below) |
 | Network requests in a whole session: same origin only; nothing typed leaves the device | PASS | `offline` |
 | No debug logging in game code (`console.log/info/debug` outside `src/debug`); the monetization stub shows nothing | PASS | static review |
-| Licences: three.js r186 (MIT) bundled with its licence file; all models, textures, icons and sounds generated; no music shipped; invented makers and places | PASS | review |
+| Licences: three.js r186 (MIT) bundled with its licence file; all models, textures, icons and sounds generated; music is the owner's own; invented makers and places | PASS | review |
 
 ## Release gates 6.1.1
 Run locally on the 6.1.1 release candidate (`a563a25`; the commits after it change documentation only), one gate group at a time where timing matters; CI (`tests.yml`, nine jobs incl. Chromium, Firefox and WebKit and the new `security` and `rcflow` in core) green on that head. This container renders at about 1 frame per second (SwiftShader), and background jobs end after 30 minutes, so the long gates ran as separate jobs.

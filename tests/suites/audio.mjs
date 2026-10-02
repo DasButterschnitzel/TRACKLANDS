@@ -33,10 +33,10 @@ export async function run({ browser, base }) {
       for (let i = 0; i < 5; i++) A.update(0.1);
       return { tracks: A.musicMgr.tracks.length, playing: !!A.musicMgr.nowPlaying() };
     });
-    check(r.tracks === 0 && !r.playing, 'no tracks installed: no music plays');
+    check(r.tracks > 0 && r.playing, `the shipped music starts on its own (${r.tracks} tracks)`);
     await page.evaluate(() => window.__tracklands.ui.openPanel('settings'));
-    const txt = await page.evaluate(() => document.querySelector('#panel').textContent);
-    check(/assets\/music/.test(txt), 'Settings explains where music goes');
+    const pl = await page.evaluate(() => ({ rows: document.querySelectorAll('#panel [data-act="musicPlay"]').length, allEras: !!document.querySelector('#panel [data-key="musicAllEras"]') }));
+    check(pl.rows === r.tracks && pl.allEras, `Settings list the ${pl.rows} tracks and offer "music of all eras"`);
     // voice budget and sound effect names
     const v = await page.evaluate(() => {
       const A = window.__tracklands.audio, bad = [];

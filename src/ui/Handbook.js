@@ -37,15 +37,28 @@ export const HANDBOOK = [
   { id: 'shortcuts', icon: 'settings', n: 10 },
 ];
 
+// handbook lines that only describe keyboard use
+const KEYBOARD_ONLY = new Set(['hb_access_3']);
+
 export const HandbookMixin = {
   // a small "?" that opens the handbook at a topic
   helpBtn(topic) {
     return `<button class="icon-btn small help-btn" data-act="help" data-arg="${topic}" aria-label="${this.tr('handbook')}: ${this.tr('hb_' + topic + '_title')}" data-tip="${this.tr('handbook')}: ${this.tr('hb_' + topic + '_title')}">?</button>`;
   },
+  // without a keyboard (phone, tablet): no shortcuts page, no keyboard-only
+  // lines, and no "(J)" / "(Strg+K)" after the names of things
+  hbTopics() { return this.keyboard() ? HANDBOOK : HANDBOOK.filter((h) => h.id !== 'shortcuts'); },
+  hbLine(key) {
+    const s = this.tr(key);
+    if (this.keyboard()) return s;
+    if (KEYBOARD_ONLY.has(key)) return '';
+    return s.replace(/ \((?:Strg|Ctrl)\+[A-Z]\)| \([A-Z]\)/g, '');
+  },
   pHandbook() {
+    const HANDBOOK = this.hbTopics();
     const cur = HANDBOOK.find((h) => h.id === this.handbookTopic) || HANDBOOK[0];
     const list = HANDBOOK.map((h) => `<button class="chip ${h.id === cur.id ? 'on' : ''}" data-act="help" data-arg="${h.id}" role="tab" aria-selected="${h.id === cur.id}">${icon(h.icon, 'mini')}<b>${this.tr('hb_' + h.id + '_title')}</b></button>`).join('');
-    const pts = Array.from({ length: cur.n }, (_, i) => `<li>${this.tr('hb_' + cur.id + '_' + (i + 1))}</li>`).join('');
+    const pts = Array.from({ length: cur.n }, (_, i) => this.hbLine('hb_' + cur.id + '_' + (i + 1))).filter(Boolean).map((l) => `<li>${l}</li>`).join('');
     const idx = HANDBOOK.indexOf(cur);
     const nav = `<div class="row hb-nav">${idx > 0 ? `<button class="btn ghost small" data-act="help" data-arg="${HANDBOOK[idx - 1].id}">‹ ${this.tr('hb_' + HANDBOOK[idx - 1].id + '_title')}</button>` : '<span></span>'}${idx < HANDBOOK.length - 1 ? `<button class="btn ghost small" data-act="help" data-arg="${HANDBOOK[idx + 1].id}">${this.tr('hb_' + HANDBOOK[idx + 1].id + '_title')} ›</button>` : ''}</div>`;
     return `<div class="chips wrap hb-topics" role="tablist">${list}</div>

@@ -5,7 +5,10 @@
 // service worker installs the complete new set in the background and waits;
 // the game offers "update ready" and switches only after saving, so a page
 // never runs a mix of old and new modules. The first install takes over at once.
-const CACHE = 'tracklands-6.2.0-be08b08a98';
+// Music tracks (68) are cached when first played, in MUSIC.
+const CACHE = 'tracklands-6.3.0-9a6ebe14cf';
+const MUSIC = 'tracklands-music-e149a051b3';
+const MUSIC_FILE = new RegExp("/assets/music/[^/]+\\.(ogg|mp3|m4a|opus|wav|webm)$", 'i');
 const ASSETS = [
   './',
   './assets/music/README.md',
@@ -140,14 +143,23 @@ self.addEventListener('install', (e) => {
 self.addEventListener('message', (e) => { if (e.data === 'skipWaiting') self.skipWaiting(); });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('tracklands-') && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('tracklands-') && k !== CACHE && k !== MUSIC).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 // cache first from this release's cache; anything not in it comes from the
 // network (and is kept for offline use); offline navigation falls back to the game
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  // music: from its own cache, else the network (then kept for next time)
+  if (MUSIC_FILE.test(url.pathname)) {
+    e.respondWith(caches.open(MUSIC).then((c) => c.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => {
+      if (res && res.status === 200) c.put(req, res.clone());
+      return res;
+    }))));
+    return;
+  }
   e.respondWith(caches.open(CACHE).then((c) => c.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => {
     if (res && res.ok) c.put(req, res.clone());
     return res;

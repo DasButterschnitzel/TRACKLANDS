@@ -1,1 +1,1 @@
-Musik/**/*.wav filter=lfs diff=lfs merge=lfs -text
+Music/**/*.wav filter=lfs diff=lfs merge=lfs -text

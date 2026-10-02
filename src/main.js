@@ -25,7 +25,7 @@ const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchend'];
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true, perfHud: false,
+  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', musicAllEras: false, nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true, perfHud: false,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
   instantBuild: false, keepTool: true,
 };
@@ -55,6 +55,10 @@ class App {
   }
 
   async boot() {
+    // Android Back first, before graphics and music start loading: without
+    // the listener Android closes the app on Back. (A promise: true once Back
+    // is ours; kept for diagnostics and tests.)
+    this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui && this.ui.toast(t('back_again_exit'), 'info'));
     const canvas = $('#view');
     // WebGL 2 with antialiasing first; weaker drivers get a second, plainer try
     for (const opts of [{ antialias: this.settings.graphics !== 'low', powerPreference: 'high-performance' }, { antialias: false, powerPreference: 'default' }]) {
@@ -104,8 +108,7 @@ class App {
     $('#loading').classList.add('done');
     setTimeout(() => $('#loading').remove(), 800);
     if (wantsServiceWorker()) this.registerSW();
-    // (a promise: true once Android Back is ours; kept for diagnostics and tests)
-    this.nativeBackReady = onNativeBack(() => this.nativeBack(), () => this.ui.toast(t('back_again_exit'), 'info'));
+    document.addEventListener('pointercancel', (e) => { if (e.target && e.target.closest && e.target.closest('input[type=range]')) this._ctrlCancelAt = Date.now(); }, true);
     if (new URLSearchParams(location.search).has('railtest')) this.runRailTests();
   }
 
@@ -114,8 +117,17 @@ class App {
   // popover, menu, panel, selection), back to the surface view, put the tool
   // down. Returns false when there is nothing left to close.
   nativeBack() {
+    // Android's edge Back gesture cancels the touch it interrupts: a Back that
+    // cut off a slider drag was not meant for the game (it used to close the
+    // settings panel while a volume was being set)
+    if (Date.now() - (this._ctrlCancelAt || 0) < 800) return true;
+    if (!this.ui) return false;   // still starting
     const g = this.game;
-    if (!g || !g.running) { const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; } return false; }
+    if (!g || !g.running) {
+      const m = $('#modal-root'); if (m && m.children.length) { const l = m.lastElementChild; if (l._cancel) l._cancel(); else l.remove(); return true; }
+      if (this.ui.panel) { this.ui.closePanel(); return true; }
+      return false;
+    }
     if (g.ui.driveId != null) { g.ui.stopDrive(); return true; }
     if (g.construction.drag) { g.construction.touchCancel(); return true; }
     if (g.ui.closeTop()) return true;
