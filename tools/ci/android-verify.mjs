@@ -4,8 +4,8 @@
 //   node tools/ci/android-verify.mjs --out out [--label ci-test] [--expect-cert <sha256>]
 //
 // Universal APK: signed (apksigner, v2+ scheme), package id, versionName and
-//   versionCode as configured, the four ABIs present, every native library
-//   aligned for 16 KB memory pages (ELF segments and zip alignment).
+//   versionCode as configured, the four ABIs present, the 64-bit native
+//   libraries aligned for 16 KB memory pages (ELF segments and zip alignment).
 // AAB: signed (jarsigner), same id/version (bundletool), the four ABIs.
 // Writes out/TRACKLANDS-<version>-android-universal.apk and
 //        out/TRACKLANDS-<version>-android.aab (+ "-<label>" for test builds),
@@ -94,13 +94,20 @@ if (fs.existsSync(apk)) {
   const abis = [...new Set(libs.map((e) => e.name.split('/')[1]))].sort();
   report.apkAbis = abis;
   check(ABIS.every((a) => abis.includes(a)), 'APK contains all four ABIs', abis.join(', '));
+  // 16 KB memory pages exist only on 64-bit devices, so the 64-bit libraries
+  // must be 16 KB aligned (NDK r28+ does this by default). 32-bit libraries
+  // only ever run with 4 KB pages; they need 4 KB, and the value is recorded.
   const misaligned = [];
+  report.libAlign = {};
   for (const l of libs) {
+    const abi = l.name.split('/')[1];
+    const need = /64/.test(abi) ? 16384 : 4096;
     const al = elfLoadAlign(l.data());
-    if (al < 16384) misaligned.push(`${l.name} (ELF align ${al})`);
-    if (l.method === 0 && l.dataOff % 16384 !== 0) misaligned.push(`${l.name} (zip offset ${l.dataOff})`);
+    report.libAlign[l.name] = al;
+    if (al < need) misaligned.push(`${l.name} (ELF align ${al}, needs ${need})`);
+    if (l.method === 0 && l.dataOff % need !== 0) misaligned.push(`${l.name} (zip offset ${l.dataOff}, needs ${need})`);
   }
-  check(misaligned.length === 0, 'native libraries aligned for 16 KB pages (ELF PT_LOAD and uncompressed zip offset)', misaligned.slice(0, 4).join('; ') || `${libs.length} libraries`);
+  check(misaligned.length === 0, 'native libraries page-aligned: 16 KB for 64-bit ABIs, 4 KB for 32-bit (ELF PT_LOAD and uncompressed zip offset)', misaligned.slice(0, 4).join('; ') || `${libs.length} libraries`);
   const name = `TRACKLANDS-${version}-android-universal${label ? '-' + label : ''}.apk`;
   fs.copyFileSync(apk, path.join(outDir, name));
   report.apk = { name, bytes: fs.statSync(apk).size, sha256: crypto.createHash('sha256').update(fs.readFileSync(apk)).digest('hex') };

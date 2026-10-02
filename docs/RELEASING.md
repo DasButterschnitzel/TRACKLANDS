@@ -72,7 +72,7 @@ any time:
    | `validate` | Checks that the tag matches the version, that the commit is on `main`, that the identifier is final, that the Android signing secrets are present, that release notes exist and that the source tree is clean. |
    | `web` | Runs the release test suites and builds the web zip. It then tests the *unpacked* zip on its own: offline, PWA and first session. |
    | `windows` | Builds the NSIS installer (signed if a certificate is configured), then installs it silently, launches it until WebView2 has run the game, and uninstalls it. |
-   | `android` | Builds the universal APK and the AAB, signed with your upload key. It verifies the signature, package id, versionName and versionCode, the four ABIs and the 16 KB page alignment. |
+   | `android` | Builds the universal APK and the AAB, signed with your upload key. It verifies the signature, package id, versionName and versionCode, the four ABIs and the 16 KB page alignment of the 64-bit libraries. |
    | `verify` | Recomputes every checksum and confirms the file types, then scans every file for signing material and secret values. It writes `SHA256SUMS.txt` and `release-manifest.json`. |
    | `publish` | Creates the GitHub Release. Tags such as `v6.2.0-rc.1` become pre-releases. |
 

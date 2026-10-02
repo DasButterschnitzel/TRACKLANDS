@@ -160,6 +160,6 @@ npx tauri build --no-bundle && ./src-tauri/target/release/TRACKLANDS
   - the Windows installer, with a silent install, launch until WebView2 has
     run the page, and silent uninstall;
   - the Android APK and AAB, signed with a throwaway key and verified for
-    signature, id, version, ABIs and 16 KB page alignment;
+    signature, id, version, ABIs and 16 KB page alignment (64-bit libraries);
   - an Android emulator run that boots the app, presses Back twice and
     restarts it.
