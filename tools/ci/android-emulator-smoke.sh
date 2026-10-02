@@ -39,10 +39,23 @@ adb shell pidof "$PKG" >/dev/null || fail "app not running after restart"
 # the Back listener must be in place on every start, not just the first:
 # three cold starts, each time one Back on the title shows the hint and the
 # app keeps running
-for n in 1 2 3; do
-  adb shell am force-stop "$PKG"; sleep 2
-  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null || fail "cold start $n"
+# (Android also kills the app when a content provider it uses dies; on the
+# emulator that is Google Play services' font provider, used by the WebView.
+# Such a kill before Back is pressed is retried once and reported; any other
+# missing process is a failure.)
+cold_start() {
+  adb shell am force-stop "$PKG"; sleep 2; adb logcat -c
+  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null || fail "cold start $1"
   sleep 40
+}
+for n in 1 2 3; do
+  cold_start $n
+  if ! adb shell pidof "$PKG" >/dev/null; then
+    adb logcat -d | grep -qE "Killing .*$PKG.*depends on provider .* in dying proc" || fail "cold start $n: app not running before Back"
+    echo "NOTE cold start $n: Android killed the app because a provider process (Google Play services) died; starting again"
+    cold_start $n
+    adb shell pidof "$PKG" >/dev/null || fail "cold start $n: app not running before Back (after a retry)"
+  fi
   adb shell input keyevent 4; sleep 3
   adb exec-out screencap -p > "$OUT/5-start$n-after-back.png"
   adb shell pidof "$PKG" >/dev/null || fail "cold start $n: the first Back closed the app (expected the hint)"
