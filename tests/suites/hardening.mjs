@@ -189,7 +189,9 @@ export async function run({ browser, base }) {
     await page.waitForFunction(() => window.__tracklands && window.__tracklands.ui, null, { timeout: 60000 }).catch(() => null);
     await page.waitForTimeout(1000);
     const b = await page.evaluate(async () => ({ keys: await caches.keys(), v: (await import('./src/config.js')).GAME_VERSION }));
-    const oneCache = b.keys.filter((k) => k.startsWith('tracklands-')).length === 1 && b.keys[0].endsWith('-b');
+    // one release cache left (the music cache is shared between releases and kept)
+    const rel = b.keys.filter((k) => k.startsWith('tracklands-') && !k.startsWith('tracklands-music-'));
+    const oneCache = rel.length === 1 && rel[0].endsWith('-b');
     check(!!offered && b.v.endsWith('-b') && !a.v.endsWith('-b') && oneCache, `update between two builds: offered, switched (${a.v} → ${b.v}), one cache left (${b.keys.join(', ')})`);
     if (errors.length) { ok = false; lines.push('errors: ' + errors.slice(0, 3).join(' | ')); }
     await ctx.close();
