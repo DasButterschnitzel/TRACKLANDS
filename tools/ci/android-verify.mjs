@@ -14,7 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import zlib from 'zlib';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { versionCode } from '../version.mjs';
 
@@ -75,10 +75,14 @@ function elfLoadAlign(buf) {
 // ---- APK ----
 check(fs.existsSync(apk), 'universal release APK built', path.relative(ROOT, apk));
 if (fs.existsSync(apk)) {
-  let certs = '';
-  try { certs = run(tool('apksigner'), ['verify', '--verbose', '--print-certs', apk]); check(/Verified using v2 scheme \(APK Signature Scheme v2\): true|Verified using v3 scheme.*: true/.test(certs), 'APK signature verifies (apksigner, v2/v3 scheme)'); } catch (e) { check(false, 'APK signature verifies (apksigner)', (e.stderr || e.message).split('\n')[0]); }
-  const sha = (certs.match(/Signer #1 certificate SHA-256 digest: ([0-9a-f]+)/) || [])[1];
+  // apksigner's wording and stream differ between build-tools versions, so
+  // read stdout and stderr together and match loosely
+  const sv = spawnSync(tool('apksigner'), ['verify', '--verbose', '--print-certs', apk], { encoding: 'utf8' });
+  const certs = `${sv.stdout || ''}\n${sv.stderr || ''}`;
+  check(sv.status === 0 && /Verified using v[23](?:\.1)? scheme[^\n]*: true/i.test(certs), 'APK signature verifies (apksigner, v2/v3 scheme)', sv.status === 0 ? '' : certs.trim().split('\n')[0]);
+  const sha = ((certs.match(/certificate SHA-256 digest:\s*([0-9a-f:]{64,95})/i) || [])[1] || '').replace(/:/g, '').toLowerCase();
   report.apkCertSha256 = sha || null;
+  check(!!sha, 'APK signer certificate read', sha || certs.split('\n').filter((l) => /signer|digest/i.test(l)).slice(0, 3).join(' | ') || 'no certificate line');
   if (expectCert) check(sha === expectCert.toLowerCase().replace(/:/g, ''), 'APK signed with the expected release certificate', sha || 'none');
   const badging = run(tool('aapt2'), ['dump', 'badging', apk]);
   const pkg = /package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/.exec(badging) || [];
