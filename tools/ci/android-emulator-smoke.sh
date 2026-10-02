@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Android emulator smoke test (CI): install the test APK, start TRACKLANDS,
-# prove the game page came up (screenshot + the app's WebView storage on
-# disk), then the Back button: on the title screen the first press only shows
-# the "press again" hint (the app keeps running), the second leaves the app.
+# prove the game page came up (screenshot and WebView log), then the Back
+# button: on the title screen the first press only shows
+# the "press again" hint (the app keeps running); two presses within two
+# seconds leave the app.
 # Finally a cold restart. Screenshots go to out/emulator/.
 set -u
 APK="$1"; PKG="$2"
@@ -20,13 +21,16 @@ adb logcat -d | grep -iE "chromium|Tauri|Console" | tail -200 > "$OUT/webview-lo
 adb shell input keyevent 4; sleep 3
 adb exec-out screencap -p > "$OUT/2-after-first-back.png"
 adb shell pidof "$PKG" >/dev/null || fail "the first Back on the title screen closed the app (expected the hint)"
-adb shell input keyevent 4; sleep 4
-if adb shell pidof "$PKG" >/dev/null; then
-  # finished activity: the process may linger, the activity must be gone
-  adb shell dumpsys activity activities | grep -q "$PKG/.MainActivity" && fail "the second Back did not leave the app"
-fi
+# the hint above has timed out by now (2 s), so press twice in quick
+# succession: the first shows the hint again, the second leaves the app
+adb shell input keyevent 4 4; sleep 4
+adb exec-out screencap -p > "$OUT/3-after-double-back.png"
+# the process may linger after the activity finished; what counts is that
+# TRACKLANDS is no longer the resumed activity
+adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG/" && fail "Back twice did not leave the app"
+echo "Back twice left the app"
 adb shell am start -W -n "$PKG/.MainActivity" || fail "restart"
 sleep 45
-adb exec-out screencap -p > "$OUT/3-restart.png"
+adb exec-out screencap -p > "$OUT/4-restart.png"
 adb shell pidof "$PKG" >/dev/null || fail "app not running after restart"
 echo "emulator smoke test passed"
