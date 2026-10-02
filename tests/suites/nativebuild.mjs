@@ -38,6 +38,16 @@ const LATE_TAURI = () => {
   const inject = () => { if (!(window.__tracklands && window.__tracklands.title)) { setTimeout(inject, 50); return; } window.__late.missingAtStart = !window.__TAURI__; setTimeout(() => { window.__TAURI__ = { app: { onBackButtonPress: async (h) => { window.__late.back = h; return { unregister() {} }; }, exit: async () => {} } }; }, 500); };
   inject();
 };
+// a registration that fails on the JS side but still reached Android: the
+// retry leaves two listeners, both called on every Back
+const FLAKY_REGISTER = () => {
+  window.isTauri = true;
+  window.__flaky = { listeners: [], exited: false };
+  window.__TAURI__ = { app: {
+    onBackButtonPress: async (h) => { window.__flaky.listeners.push(h); if (window.__flaky.listeners.length === 1) throw new Error('ipc not ready'); return { unregister() {} }; },
+    exit: async () => { window.__flaky.exited = true; },
+  } };
+};
 const SEEDED_RANDOM = () => {
   let s = 20261002;
   Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -154,6 +164,22 @@ export async function run({ browser }) {
     const late = await pl.evaluate(async () => ({ missingAtStart: window.__late.missingAtStart, ready: await window.__tracklands.nativeBackReady, hooked: typeof window.__late.back === 'function', sw: navigator.serviceWorker ? (await navigator.serviceWorker.getRegistrations()).length : 0 }));
     check(late.missingAtStart === true && late.ready === true && late.hooked && late.sw === 0, `Android Back is taken over even when the Tauri API arrives after the game started (${JSON.stringify(late)})`);
     await ctxL.close();
+  }
+  // one Back is one press, even with two listeners left by a retried registration
+  {
+    const ctxF = await browser.newContext({ viewport: { width: 900, height: 600 } });
+    await ctxF.addInitScript(FLAKY_REGISTER);
+    const pf = await ctxF.newPage();
+    await pf.goto(sNat.url + '/index.html', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await pf.waitForFunction(() => window.__tracklands && window.__tracklands.title, null, { timeout: 90000 });
+    const fl = await pf.evaluate(async () => {
+      const ready = await window.__tracklands.nativeBackReady;
+      const f = window.__flaky, press = () => f.listeners.forEach((h) => h({ canGoBack: false }));
+      press(); const afterOne = f.exited;
+      press(); return { ready, listeners: f.listeners.length, afterOne, afterTwo: f.exited };
+    });
+    check(fl.ready === true && fl.listeners === 2 && fl.afterOne === false && fl.afterTwo === true, `one Back is one press when a retried registration left two listeners: the first only asks, the second leaves (${JSON.stringify(fl)})`);
+    await ctxF.close();
   }
   await done(c);
   sNat.server.close(); sWeb.server.close(); sRepo.server.close();

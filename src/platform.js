@@ -20,11 +20,12 @@ export function isNative() {
   return !!(globalThis.isTauri || globalThis.__TAURI_INTERNALS__) || nativeOrigin();
 }
 
-// the Tauri API object once it exists (polls briefly for a late injection)
+// the Tauri API object once it exists (polls for a late injection: often for
+// the first 20 s, then every half second; ms = Infinity never gives up)
 function whenTauri(test, ms = 20000) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    const look = () => { const T = tauri(); if (T && test(T)) resolve(T); else if (Date.now() - t0 > ms) resolve(null); else setTimeout(look, 50); };
+    const look = () => { const T = tauri(); const dt = Date.now() - t0; if (T && test(T)) resolve(T); else if (dt > ms) resolve(null); else setTimeout(look, dt < 20000 ? 50 : 500); };
     look();
   });
 }
@@ -80,7 +81,9 @@ export async function saveFile(name, data, mime = 'application/octet-stream') {
 // Resolves to true once the listener is registered.
 export async function onNativeBack(handler, hint) {
   if (!isNative()) return false;
-  const T = await whenTauri((t) => t.app && typeof t.app.onBackButtonPress === 'function');
+  // without the listener Android closes the app on Back, so never give up
+  // waiting for a late API (a slow first start)
+  const T = await whenTauri((t) => t.app && typeof t.app.onBackButtonPress === 'function', Infinity);
   if (!T) return false;
   let armed = 0;
   const onBack = () => {
@@ -90,8 +93,14 @@ export async function onNativeBack(handler, hint) {
     armed = now;
     if (hint) hint();
   };
+  // A registration that failed on our side may still have reached Android;
+  // a retry then leaves two listeners, and one Back would arrive twice (the
+  // second "press" would leave the app). The first listener that hears a Back
+  // owns it from then on; the others stay silent.
+  let owner = null;
+  const listener = (id) => () => { if (owner == null) owner = id; if (owner === id) onBack(); };
   for (let attempt = 0; attempt < 5; attempt++) {
-    try { await T.app.onBackButtonPress(onBack); return true; } catch (e) { await new Promise((r) => setTimeout(r, 200 * (attempt + 1))); }
+    try { await T.app.onBackButtonPress(listener(attempt)); return true; } catch (e) { await new Promise((r) => setTimeout(r, 200 * (attempt + 1))); }
   }
   return false;
 }
