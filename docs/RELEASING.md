@@ -32,6 +32,21 @@ any time:
 3. Nothing is published; the files appear as a workflow artifact named
    `TRACKLANDS-<version>-dryrun`.
 
+## Preview release (before the release key exists)
+
+To put installable files on the Releases page before the one-time setup is done:
+
+1. Go to **Actions → release → Run workflow**.
+2. Pick `main` and tick **preview**.
+
+This runs the same pipeline and publishes a **pre-release** named `v<version>-preview`:
+
+- **Windows:** the installer is unsigned.
+- **Android:** the APK and AAB are signed with a one-off **test key** and named `-preview`.
+- **Release text:** it says this at the top.
+
+A later official release (signed with your upload key) cannot be installed over a preview APK. Players must export their save, uninstall the preview, and install the official app. The preview AAB is not for Google Play.
+
 ## Every release
 
 1. **Prepare the version** on a branch:

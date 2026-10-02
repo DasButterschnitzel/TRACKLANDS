@@ -22,7 +22,12 @@ const dir = path.resolve(opt('dir') || 'release');
 const version = opt('version'), commit = opt('commit');
 const dryRun = argv.includes('--dry-run');
 if (!version || !commit) { console.error('usage: --dir --version --commit [--dry-run]'); process.exit(2); }
-const sfx = dryRun ? '-dryrun' : '';
+// test-key builds carry a label in their Android file names: 'dryrun' (never
+// published) or 'preview' (published as a marked pre-release)
+const labelArg = (() => { const i = argv.indexOf('--label'); return i >= 0 ? argv[i + 1] : ''; })();
+const label = labelArg || (dryRun ? 'dryrun' : '');
+const sfx = label ? '-' + label : '';
+const testKeyNote = label === 'preview' ? ' — PREVIEW: test signing key, not the release key; an official release cannot update this install' : ' — DRY RUN: throwaway key, not for distribution';
 const expected = {
   web: `TRACKLANDS-${version}-web.zip`,
   windows: `TRACKLANDS-${version}-windows-x64-setup.exe`,
@@ -95,8 +100,8 @@ const win = readJSON('windows-report.json') || {}, android = readJSON('android-v
 const signed = {
   web: 'not applicable',
   windows: win.signature || 'unknown',
-  apk: android.apkCertSha256 ? `signed (certificate SHA-256 ${android.apkCertSha256})${dryRun ? ' — DRY RUN: throwaway key, not for distribution' : ''}` : 'unsigned',
-  aab: android.aabCertSha256 ? `signed (certificate SHA-256 ${android.aabCertSha256})${dryRun ? ' — DRY RUN: throwaway key, not for distribution' : ''}` : 'unsigned',
+  apk: android.apkCertSha256 ? `signed (certificate SHA-256 ${android.apkCertSha256})${dryRun ? testKeyNote : ''}` : 'unsigned',
+  aab: android.aabCertSha256 ? `signed (certificate SHA-256 ${android.aabCertSha256})${dryRun ? testKeyNote : ''}` : 'unsigned',
 };
 if (!dryRun) say(!!android.apkCertSha256 && android.aabCertSha256 === android.apkCertSha256, 'Android release artifacts are signed, APK and AAB with the same certificate');
 const platform = { web: 'web', windows: 'windows-x64', apk: 'android', aab: 'android' };
@@ -105,7 +110,7 @@ if (problems.length) { console.error(`\nrelease verification failed (${problems.
 
 fs.writeFileSync(path.join(dir, 'SHA256SUMS.txt'), artifacts.map((a) => `${a.sha256}  ${a.name}`).join('\n') + '\n');
 const manifest = {
-  product: 'TRACKLANDS', version, commit, dryRun,
+  product: 'TRACKLANDS', version, commit, dryRun, preview: label === 'preview',
   built: new Date().toISOString(),
   artifacts: artifacts.map((a) => ({ file: a.name, platform: platform[a.kind], bytes: a.bytes, sha256: a.sha256, signing: signed[a.kind] })),
   android: { applicationId: android.want && android.want.id, versionName: android.want && android.want.versionName, versionCode: android.want && android.want.versionCode, minSdk: android.apkSdk && android.apkSdk.min, targetSdk: android.apkSdk && android.apkSdk.target, abis: android.apkAbis },

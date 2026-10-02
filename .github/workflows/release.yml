@@ -11,12 +11,22 @@
 # "Run workflow" (workflow_dispatch) and pull requests that change the factory
 # are a DRY RUN of the same pipeline: Android is signed with a throwaway key, nothing is published, the
 # files are kept as workflow artifacts. See docs/RELEASING.md and docs/SIGNING.md.
+#
+# "Run workflow" on main with "preview" ticked publishes a PREVIEW pre-release
+# (tag v<version>-preview) before the release key exists: Windows unsigned,
+# Android signed with a one-off test key and named "-preview". An official
+# release later cannot install over a preview APK (different key).
 name: release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      preview:
+        description: 'Publish a PREVIEW pre-release from main (test-signed Android, unsigned Windows)'
+        type: boolean
+        default: false
   # the factory tests itself: a pull request that changes it runs a dry run
   pull_request:
     paths: ['.github/workflows/release.yml', 'tools/ci/**', 'tools/build-web.mjs', 'tools/runtime-files.mjs', 'tools/version.mjs', 'src-tauri/**']
@@ -41,6 +51,8 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
       dry_run: ${{ steps.v.outputs.dry_run }}
+      preview: ${{ steps.v.outputs.preview }}
+      label: ${{ steps.v.outputs.label }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,8 +81,13 @@ jobs:
             if [ "$HAS_ANDROID_KEY" != "true" ]; then
               echo "::error::ANDROID RELEASE SIGNING NOT CONFIGURED: set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (docs/SIGNING.md). No unsigned Android release is published."; exit 1
             fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.preview }}" = "true" ]; then
+            [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::a preview is published from main only"; exit 1; }
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"; echo "preview=true" >> "$GITHUB_OUTPUT"; echo "label=preview" >> "$GITHUB_OUTPUT"
+            node tools/version.mjs check
+            echo "::warning::PREVIEW: Android is signed with a one-off test key and Windows is unsigned; this is not the official release"
           else
-            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"; echo "label=dryrun" >> "$GITHUB_OUTPUT"
             node tools/version.mjs check
           fi
           node tools/ci/release-notes.mjs "$V" > /dev/null
@@ -211,8 +228,9 @@ jobs:
         run: |
           if [ "${{ needs.validate.outputs.dry_run }}" = "true" ]; then
             KS="$RUNNER_TEMP/dry-run.jks"; PW="$(openssl rand -hex 16)"; echo "::add-mask::$PW"
-            keytool -genkeypair -keystore "$KS" -alias dry-run -keyalg RSA -keysize 2048 -validity 2 -storepass "$PW" -keypass "$PW" \
-              -dname "CN=TRACKLANDS dry run, O=NOT FOR DISTRIBUTION" >/dev/null 2>&1
+            if [ "${{ needs.validate.outputs.preview }}" = "true" ]; then DN="CN=TRACKLANDS preview, O=PREVIEW TEST KEY - NOT THE RELEASE KEY"; DAYS=3650; else DN="CN=TRACKLANDS dry run, O=NOT FOR DISTRIBUTION"; DAYS=2; fi
+            keytool -genkeypair -keystore "$KS" -alias dry-run -keyalg RSA -keysize 2048 -validity "$DAYS" -storepass "$PW" -keypass "$PW" \
+              -dname "$DN" >/dev/null 2>&1
             node tools/ci/android-signing.mjs --keystore "$KS" --alias dry-run --store-password "$PW" --key-password "$PW"
           else
             node tools/ci/android-signing.mjs --from-env
@@ -221,7 +239,7 @@ jobs:
         run: npx tauri android build --apk --aab --ci
       - name: Verify (signature, id, version, ABIs, 16 KB alignment)
         run: |
-          LABEL=""; [ "${{ needs.validate.outputs.dry_run }}" = "true" ] && LABEL="--label dryrun"
+          LABEL=""; [ -n "${{ needs.validate.outputs.label }}" ] && LABEL="--label ${{ needs.validate.outputs.label }}"
           EXPECT=""; [ -n "${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}" ] && [ "${{ needs.validate.outputs.dry_run }}" != "true" ] && EXPECT="--expect-cert ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}"
           node tools/ci/android-verify.mjs --out out $LABEL $EXPECT
           node -e "const f='out/android-verify.json',r=JSON.parse(require('fs').readFileSync(f));r.tools={rustc:require('child_process').execSync('rustc -V').toString().trim(),ndk:process.env.NDK_VERSION};require('fs').writeFileSync(f,JSON.stringify(r,null,2))"
@@ -256,19 +274,19 @@ jobs:
           SCAN_SECRET_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           SCAN_SECRET_WINDOWS_PW: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          DRY=""; [ "${{ needs.validate.outputs.dry_run }}" = "true" ] && DRY="--dry-run"
+          DRY=""; [ "${{ needs.validate.outputs.dry_run }}" = "true" ] && DRY="--dry-run --label ${{ needs.validate.outputs.label }}"
           node tools/ci/release-finalize.mjs --dir release --version "${{ needs.validate.outputs.version }}" --commit "$GITHUB_SHA" $DRY
           (cd release && sha256sum -c SHA256SUMS.txt)
           ls -la release
       - uses: actions/upload-artifact@v4
         with:
-          name: TRACKLANDS-${{ needs.validate.outputs.version }}${{ needs.validate.outputs.dry_run == 'true' && '-dryrun' || '' }}
+          name: TRACKLANDS-${{ needs.validate.outputs.version }}${{ needs.validate.outputs.label && format('-{0}', needs.validate.outputs.label) || '' }}
           path: release/*
           retention-days: 30
 
   publish:
     needs: [validate, verify]
-    if: github.ref_type == 'tag' && needs.validate.outputs.dry_run == 'false'
+    if: (github.ref_type == 'tag' && needs.validate.outputs.dry_run == 'false') || needs.validate.outputs.preview == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -280,7 +298,7 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@v4
         with:
-          name: TRACKLANDS-${{ needs.validate.outputs.version }}
+          name: TRACKLANDS-${{ needs.validate.outputs.version }}${{ needs.validate.outputs.preview == 'true' && '-preview' || '' }}
           path: release
       - name: Create the GitHub Release
         env:
@@ -288,5 +306,10 @@ jobs:
         run: |
           V="${{ needs.validate.outputs.version }}"
           node tools/ci/release-notes.mjs "$V" > notes.md
+          if [ "${{ needs.validate.outputs.preview }}" = "true" ]; then
+            { echo "> **Preview build, not the official release.** Windows: the installer is unsigned, so Windows SmartScreen may warn. Android: signed with a preview test key, not the release key — a later official release cannot be installed over this APK; export your save, uninstall, then install the official version. The AAB is for testing only, not for Google Play."; echo; cat notes.md; } > notes-preview.md
+            gh release create "v$V-preview" release/* --target "$GITHUB_SHA" --title "TRACKLANDS $V (Preview)" --notes-file notes-preview.md --prerelease
+            exit 0
+          fi
           PRE=""; [ "${{ needs.validate.outputs.prerelease }}" = "true" ] && PRE="--prerelease"
           gh release create "$GITHUB_REF_NAME" release/* --title "TRACKLANDS $V" --notes-file notes.md --verify-tag $PRE
