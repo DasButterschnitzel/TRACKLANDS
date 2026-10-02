@@ -45,7 +45,7 @@ Older saves (v1 and v2, including TRKL1 exports) are migrated automatically (the
 The release audit for all eight phases (what is done, what is deferred and why, and which suite covers it) is in [`docs/AUDIT.md`](AUDIT.md).
 
 - **Save safety:** rolling backups (up to 8, every 5 minutes of play, on leaving to the title, before an import or restore), a read-only health check of the running game, a crash snapshot after an uncaught error with a notice on the next start, autosave interval setting, a changelog (Settings → What's new), and diagnostics without personal data.
-- **Music:** the creator's tracks in a playlist with shuffle, repeat (all/one/off), crossfades, mood and era preferences, and a "now playing" note. No music ships with the game.
+- **Music:** 68 tracks for three periods (early, mid century, today) in a playlist with shuffle, repeat (all/one/off), crossfades, mood preferences, "music of all eras" and a "now playing" note. The calendar picks the period.
 - **Campaign:** the six built-in scenarios open one after another. A win earns gold, silver or bronze by how early it came.
 - **Content packs:** vehicles and scenarios as JSON in `assets/packs` (see its README). Every entry is checked against a schema; bad entries are left out and listed in Settings → Content packs.
 - **Help and controls:** FIND doubles as a command palette (`Ctrl+K`), km/h or mph, a haptics switch, and handbook pages for roads, ports and airports, reputation, fleet care, saves and shortcuts.
@@ -188,4 +188,4 @@ tools/make-icons.mjs     renders icons/icon.svg to PNG app icons (Playwright)
 
 Set `CREATOR_NAME` in `src/config.js` to credit the creator in the Credits panel.
 
-All models, textures, icons and sound effects are generated procedurally at runtime. No music ships with the game: `assets/music` holds tracks the creator adds.
+All models, textures, icons and sound effects are generated procedurally at runtime. The music in `assets/music` is encoded from the owner's masters in `Music/` by `tools/encode-music.mjs`.

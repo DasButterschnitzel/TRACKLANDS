@@ -62,7 +62,7 @@ The apps run fully offline and keep saves in their own storage; use *Export* to 
 
 ## Music
 
-No music ships with the game. Put your own tracks in `assets/music` and list them in `assets/music/music.json` (see the README there); the game plays them as a playlist with shuffle, repeat and crossfades. Sound effects and ambience are generated in the browser.
+The game ships with 68 music tracks for three periods (to 1949, 1950–1999, from 2000); in a game the music follows the calendar, and *Settings → Audio → Music of all eras* plays every track. The tracks are made from the masters in `Music/` (see `assets/music/README.md`); the game plays them as a playlist with shuffle, repeat and crossfades. Sound effects and ambience are generated in the browser.
 
 ## Privacy
 
