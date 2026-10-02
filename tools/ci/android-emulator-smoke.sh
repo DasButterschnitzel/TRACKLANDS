@@ -36,4 +36,17 @@ adb shell am start -W -n "$PKG/.MainActivity" || fail "restart"
 sleep 45
 adb exec-out screencap -p > "$OUT/4-restart.png"
 adb shell pidof "$PKG" >/dev/null || fail "app not running after restart"
+# the Back listener must be in place on every start, not just the first:
+# three cold starts, each time one Back on the title shows the hint and the
+# app keeps running
+for n in 1 2 3; do
+  adb shell am force-stop "$PKG"; sleep 2
+  adb shell am start -W -n "$PKG/.MainActivity" >/dev/null || fail "cold start $n"
+  sleep 40
+  adb shell input keyevent 4; sleep 3
+  adb exec-out screencap -p > "$OUT/5-start$n-after-back.png"
+  adb shell pidof "$PKG" >/dev/null || fail "cold start $n: the first Back closed the app (expected the hint)"
+  adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG/" || fail "cold start $n: the first Back left the app"
+  echo "cold start $n: first Back kept the app open"
+done
 echo "emulator smoke test passed"
