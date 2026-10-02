@@ -8,8 +8,8 @@
 #   validate ─▶ web ─┬─▶ windows ─┬─▶ verify ─▶ publish (tags only)
 #                    └─▶ android ─┘
 #
-# "Run workflow" (workflow_dispatch) is a DRY RUN of the same pipeline on any
-# branch: Android is signed with a throwaway key, nothing is published, the
+# "Run workflow" (workflow_dispatch) and pull requests that change the factory
+# are a DRY RUN of the same pipeline: Android is signed with a throwaway key, nothing is published, the
 # files are kept as workflow artifacts. See docs/RELEASING.md and docs/SIGNING.md.
 name: release
 
@@ -17,6 +17,9 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  # the factory tests itself: a pull request that changes it runs a dry run
+  pull_request:
+    paths: ['.github/workflows/release.yml', 'tools/ci/**', 'tools/build-web.mjs', 'tools/runtime-files.mjs', 'tools/version.mjs', 'src-tauri/**']
 
 # a newer push never cancels a release that is being built
 concurrency:
