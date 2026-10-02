@@ -4,7 +4,8 @@
 // with the mouse, a mistake is undone (and refunded), the company is saved,
 // the page is closed and opened again, and Continue brings back the same
 // company with the same track and money.
-import { openPage } from '../lib.mjs';
+import path from 'path';
+import { openPage, ensureOut } from '../lib.mjs';
 
 export const name = 'rcflow';
 export async function run({ browser, base }) {
@@ -45,11 +46,18 @@ export async function run({ browser, base }) {
   await page.waitForTimeout(2500);
   const pts = () => page.evaluate(([a, b]) => { const g = window.__tracklands.game, N = g.mapSize || 64, cam = g.camera.camera; const P = (t) => { const v = new cam.position.constructor((t % N + 0.5) * 2, g.net.railH(t) + 0.1, (Math.floor(t / N) + 0.5) * 2).project(cam); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }; return [P(a), P(b)]; }, pick);
   const state = () => page.evaluate(() => { const g = window.__tracklands.game; return { track: g.net.conn.reduce((s, c) => s + (c ? 1 : 0), 0), coins: Math.round(g.economy.coins) }; });
-  const drag = async () => { const sp = await pts(); await page.mouse.move(sp[0][0], sp[0][1]); await page.mouse.down(); await page.mouse.move(sp[1][0], sp[1][1], { steps: 12 }); await page.waitForTimeout(300); await page.mouse.up(); await page.waitForTimeout(800); };
+  // the camera must have come to rest before screen points are taken
+  const settled = async () => { let prev = null; for (let i = 0; i < 30; i++) { const sp = await pts(); if (prev && Math.hypot(sp[0][0] - prev[0][0], sp[0][1] - prev[0][1]) < 0.5) return sp; prev = sp; await page.waitForTimeout(150); } return prev; };
+  // what the pointer meets, for the failure message
+  const diag = (sp) => page.evaluate(([sp, pick]) => { const g = window.__tracklands.game, under = sp.map(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? (e.id || e.className || e.tagName) : '-'; }); return { tool: g.construction.tool, under, at: sp.map((p) => p.map(Math.round)), tiles: pick.map((t) => ({ conn: !!g.net.conn[t], type: g.world.type[t] })) }; }, [sp, pick]);
+  let lastDiag = null;
+  const drag = async () => { const sp = await settled(); lastDiag = await diag(sp); await page.mouse.move(sp[0][0], sp[0][1]); await page.mouse.down(); await page.mouse.move(sp[1][0], sp[1][1], { steps: 12 }); await page.waitForTimeout(300); await page.mouse.up(); await page.waitForTimeout(800); };
   const s0 = await state();
   await drag();
   const s1 = await state();
-  check(s1.track >= s0.track + 4 && s1.coins < s0.coins, `a mouse-dragged track is built and paid (${s1.track - s0.track} tiles, ${s0.coins - s1.coins} coins)`);
+  const built = s1.track >= s0.track + 4 && s1.coins < s0.coins;
+  if (!built) await page.screenshot({ path: path.join(ensureOut(), 'rcflow-drag-failed.png') });
+  check(built, `a mouse-dragged track is built and paid (${s1.track - s0.track} tiles, ${s0.coins - s1.coins} coins)${built ? '' : ' — ' + JSON.stringify(lastDiag)}`);
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(600);
   const s2 = await state();
