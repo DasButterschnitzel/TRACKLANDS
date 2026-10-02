@@ -4,6 +4,7 @@
 // the selected vehicle, shows or hides the name labels, and leaves the mode
 // (also Esc or P). The game keeps running at its speed.
 import { icon } from './icons.js';
+import { isNative, saveFile } from '../platform.js';
 
 const VEHICLES = ['train', 'roadveh'];
 
@@ -52,7 +53,8 @@ export const PhotoModeMixin = {
     g.renderer.render(g.scene, g.camera.camera);
     const name = `tracklands-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
     const url = cv.toDataURL('image/png');
-    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
+    if (isNative()) { const bin = atob(url.slice(url.indexOf(',') + 1)), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); saveFile(name, new Blob([u8], { type: 'image/png' }), 'image/png').catch(() => {}); }
+    else { const a = document.createElement('a'); a.href = url; a.download = name; a.click(); }
     const bar = document.getElementById('photo-bar');
     if (bar) { bar.classList.add('flash'); setTimeout(() => bar.classList.remove('flash'), 300); }
     this.app.audio.play('click');

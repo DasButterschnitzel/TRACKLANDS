@@ -1,0 +1,78 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "TRACKLANDS",
+  "mainBinaryName": "TRACKLANDS",
+  "version": "../package.json",
+  "identifier": "dev.tracklands.preview",
+  "build": {
+    "frontendDist": "../dist/native",
+    "beforeDevCommand": "node tools/build-web.mjs --target=native",
+    "beforeBuildCommand": "node tools/build-web.mjs --target=native"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "TRACKLANDS",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 560,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' blob: data:",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "worker-src": "'self' blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'",
+        "frame-src": "'none'"
+      },
+      "freezePrototype": false
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "TRACKLANDS",
+    "copyright": "© TRACKLANDS",
+    "category": "SimulationGame",
+    "shortDescription": "A cozy railway and transport tycoon game.",
+    "longDescription": "Build railways, connect towns and watch the world grow. TRACKLANDS runs fully offline.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "android": {
+      "minSdkVersion": 24,
+      "versionCode": 6020099
+    }
+  }
+}

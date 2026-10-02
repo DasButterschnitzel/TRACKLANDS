@@ -17,6 +17,17 @@ npx http-server -p 8080 .
 - **Install and offline:** the game is a Progressive Web App. After the first visit it is cached and runs fully offline; most browsers offer *Install* / *Add to Home Screen*. The first visit needs the network.
 - **Updates:** when a new version is available the game shows an *Update* note. It saves and reloads only when you press it; otherwise the new version starts next time.
 
+### Windows and Android apps
+
+Each [GitHub Release](../../releases) also carries native builds of the same game:
+
+- `TRACKLANDS-<version>-windows-x64-setup.exe`: a per-user installer for Windows 10 and 11. It installs Microsoft WebView2 if it is missing.
+- `TRACKLANDS-<version>-android-universal.apk`: Android 7.0 or newer, for direct install.
+- `TRACKLANDS-<version>-android.aab`: the bundle for Google Play.
+- `TRACKLANDS-<version>-web.zip`, `SHA256SUMS.txt` and `release-manifest.json`.
+
+The apps run fully offline and keep saves in their own storage; use *Export* to move a save between the browser and an app. On Android the Back button closes the topmost panel or dialog first; pressing it twice on an empty screen leaves the game.
+
 ## First steps
 
 1. **Start Journey** on the title screen opens a standard world with the tutorial. **New game…** lets you choose difficulty, map size, terrain, start year and rival companies.
@@ -65,6 +76,9 @@ Every release passes the automated gates listed in [`docs/AUDIT.md`](docs/AUDIT.
 
 - [Release notes](docs/RELEASE_NOTES.md)
 - [Developer notes](docs/DEVELOPMENT.md): running the tests, CI tiers, project layout, debug tools
+- [Releasing](docs/RELEASING.md): how a version tag becomes a GitHub Release
+- [Native builds](docs/NATIVE-BUILDS.md) and [signing](docs/SIGNING.md): the Tauri shell for Windows and Android
+- [Native release status](docs/RELEASE-NATIVE-STATUS.md): what has been verified, and how
 - [Audit](docs/AUDIT.md): every requirement of every phase, its status and the suite that covers it
 - Content packs (extra vehicles and scenarios as JSON): [`assets/packs/README.md`](assets/packs/README.md)
 

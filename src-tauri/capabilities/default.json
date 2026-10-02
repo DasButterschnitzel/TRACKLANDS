@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "TRACKLANDS: the least the game needs. Core events and window basics; the Android Back button and leaving the app from it; the system save dialog and writing the one file the player picked there (save export, diagnostics, photo). No shell, no process, no HTTP, no general file system access.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:app:allow-exit",
+    "dialog:allow-save",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file"
+  ]
+}
