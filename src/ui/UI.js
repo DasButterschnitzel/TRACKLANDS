@@ -53,7 +53,7 @@ export class UI {
     this.app = app;          // main app (settings, store, actions)
     // "now playing": a short note when a music track starts (setting)
     const M = app.audio && app.audio.musicMgr;
-    if (M) M.onChange = (t) => { if (t && !M.paused && app.settings.nowPlaying !== false) this.toast(`♪ ${t.title}${t.artist ? ' — ' + t.artist : ''}`, 'info', 'play'); if (this.panel === 'settings') this.refreshPanel(); };
+    if (M) M.onChange = (t) => { if (t && !M.paused && app.settings.nowPlaying !== false) this.toast(`♪ ${t.title}${t.artist ? ' — ' + t.artist : ''}`, 'info', 'play'); if (this.panel === 'settings') this.refreshPanel(false, true); };
     this.game = null;
     this.panel = null;
     this.handlers = {};
@@ -1150,7 +1150,9 @@ export class UI {
       <div class="row"><button class="icon-btn small" data-act="musicPrev" aria-label="${this.tr('music_prev')}">${icon('left')}</button><button class="icon-btn small" data-act="musicToggle" aria-label="${this.tr('music_toggle')}">${icon(M.paused || !t ? 'play' : 'pause')}</button><button class="icon-btn small" data-act="musicNext" aria-label="${this.tr('music_next')}">${icon('right')}</button>
       <button class="chip mini ${M.shuffle ? 'on' : ''}" data-act="musicShuffle" aria-pressed="${M.shuffle}"><b>${this.tr('music_shuffle')}</b></button>
       <button class="chip mini ${M.repeat !== 'off' ? 'on' : ''}" data-act="musicRepeat" data-tip="${this.tr('music_repeat_' + M.repeat)}"><b>${this.tr('music_repeat')}: ${this.tr('music_repeat_' + M.repeat)}</b></button></div></div>
-      <details class="playlist"><summary>${this.tr('music_count', { n: M.tracks.length })}</summary>${M.tracks.map((x, i) => `<button class="fin-row ${t === x ? 'on' : ''}" data-act="musicPlay" data-arg="${i}"><span>${t === x ? icon('play', 'mini') + ' ' : ''}${escapeHtml(x.title)}</span><small>${escapeHtml([x.artist, x.era ? this.tr('era_' + x.era) : '', x.mood.join(', ')].filter(Boolean).join(' · '))}</small></button>`).join('')}</details>
+      <details class="playlist"><summary>${this.tr('music_count', { n: M.tracks.length })}</summary>${M.tracks.map((x, i) => `<button class="fin-row ${t === x ? 'on' : ''}" data-act="musicPlay" data-arg="${i}"><span>${t === x ? icon('play', 'mini') + ' ' : ''}${escapeHtml(x.title)}</span><small>${escapeHtml([x.artist, x.period ? this.tr('music_period_' + x.period) : x.era ? this.tr('era_' + x.era) : ''].filter(Boolean).join(' · '))}</small></button>`).join('')}</details>
+      <label class="set tog"><span>${this.tr('music_all_eras')}</span><input type="checkbox" ${this.app.settings.musicAllEras ? 'checked' : ''} data-change="settingBool" data-key="musicAllEras"/><i></i></label>
+      <p class="muted small">${this.app.settings.musicAllEras ? this.tr('music_all_eras_on') : M.period() ? this.tr('music_period_now', { p: this.tr('music_period_' + M.period()) }) : this.tr('music_all_eras_off')}</p>
       <label class="set tog"><span>${this.tr('music_now_toast')}</span><input type="checkbox" ${this.app.settings.nowPlaying !== false ? 'checked' : ''} data-change="settingBool" data-key="nowPlaying"/><i></i></label>`;
   }
   pSettings() {
@@ -1588,7 +1590,7 @@ export class UI {
       companyName: (el) => { const v = cleanText(el.value.trim(), 32); if (v && this.game) { this.game.company.name = v; this.game.company.buildVisual(); this.toast(this.tr('company_renamed', { name: v }), 'info', 'company'); this.refreshPanel(); } },
       setting: (el) => { this.app.setSetting(el.dataset.key, parseFloat(el.value)); },
       settingNum: (el) => { const v = parseInt(el.value, 10); if (Number.isFinite(v)) this.app.setSetting(el.dataset.key, v); },
-      settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); },
+      settingBool: (el) => { this.app.setSetting(el.dataset.key, el.checked); if (el.dataset.key === 'musicAllEras') this.refreshPanel(false, true); },
       settingSel: (el) => { this.app.setSetting(el.dataset.key, el.value); },
       indRule: (el) => { if (this.game && ['off', 'on'].includes(el.value)) { this.game.standing.industryRule = el.value; this.refreshPanel(); } },
       relMode: (el) => { if (this.game && ['off', 'relaxed', 'tycoon'].includes(el.value)) { this.game.maint.mode = el.value; this.refreshPanel(); } },

@@ -1,3 +1,1122 @@
 {
-  "tracks": []
+ "tracks": [
+  {
+   "id": "early-days-2",
+   "file": "early-days-2.webm",
+   "title": "Early Days 2",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 131,
+   "weight": 1
+  },
+  {
+   "id": "early-days-3",
+   "file": "early-days-3.webm",
+   "title": "Early Days 3",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 103,
+   "weight": 1
+  },
+  {
+   "id": "early-days-4",
+   "file": "early-days-4.webm",
+   "title": "Early Days 4",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 112,
+   "weight": 1
+  },
+  {
+   "id": "early-days-5",
+   "file": "early-days-5.webm",
+   "title": "Early Days 5",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 130,
+   "weight": 1
+  },
+  {
+   "id": "early-days-6",
+   "file": "early-days-6.webm",
+   "title": "Early Days 6",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 114,
+   "weight": 1
+  },
+  {
+   "id": "early-days-7",
+   "file": "early-days-7.webm",
+   "title": "Early Days 7",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 134,
+   "weight": 1
+  },
+  {
+   "id": "early-days-8",
+   "file": "early-days-8.webm",
+   "title": "Early Days 8",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 141,
+   "weight": 1
+  },
+  {
+   "id": "early-days-9",
+   "file": "early-days-9.webm",
+   "title": "Early Days 9",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 132,
+   "weight": 1
+  },
+  {
+   "id": "early-days-10",
+   "file": "early-days-10.webm",
+   "title": "Early Days 10",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 124,
+   "weight": 1
+  },
+  {
+   "id": "early-days-11",
+   "file": "early-days-11.webm",
+   "title": "Early Days 11",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 150,
+   "weight": 1
+  },
+  {
+   "id": "early-days-12",
+   "file": "early-days-12.webm",
+   "title": "Early Days 12",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 128,
+   "weight": 1
+  },
+  {
+   "id": "early-days-13",
+   "file": "early-days-13.webm",
+   "title": "Early Days 13",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 155,
+   "weight": 1
+  },
+  {
+   "id": "early-days-14",
+   "file": "early-days-14.webm",
+   "title": "Early Days 14",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 156,
+   "weight": 1
+  },
+  {
+   "id": "early-days-1",
+   "file": "early-days-1.webm",
+   "title": "Early Days 1",
+   "artist": "",
+   "period": "early",
+   "years": [
+    1800,
+    1949
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 140,
+   "weight": 1
+  },
+  {
+   "id": "mid-big-map-2",
+   "file": "mid-big-map-2.webm",
+   "title": "Big Map 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 163,
+   "weight": 1
+  },
+  {
+   "id": "mid-big-map-3",
+   "file": "mid-big-map-3.webm",
+   "title": "Big Map 3",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 142,
+   "weight": 1
+  },
+  {
+   "id": "mid-big-map-4",
+   "file": "mid-big-map-4.webm",
+   "title": "Big Map 4",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 182,
+   "weight": 1
+  },
+  {
+   "id": "mid-big-map-1",
+   "file": "mid-big-map-1.webm",
+   "title": "Big Map 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 172,
+   "weight": 1
+  },
+  {
+   "id": "mid-break",
+   "file": "mid-break.webm",
+   "title": "Break",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "peaceful"
+   ],
+   "duration": 145,
+   "weight": 1
+  },
+  {
+   "id": "mid-city-2",
+   "file": "mid-city-2.webm",
+   "title": "City 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "city"
+   ],
+   "duration": 238,
+   "weight": 1
+  },
+  {
+   "id": "mid-city-1",
+   "file": "mid-city-1.webm",
+   "title": "City 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "city"
+   ],
+   "duration": 217,
+   "weight": 1
+  },
+  {
+   "id": "mid-corporate-2",
+   "file": "mid-corporate-2.webm",
+   "title": "Corporate 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 86,
+   "weight": 1
+  },
+  {
+   "id": "mid-corporate-3",
+   "file": "mid-corporate-3.webm",
+   "title": "Corporate 3",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 95,
+   "weight": 1
+  },
+  {
+   "id": "mid-corporate-4",
+   "file": "mid-corporate-4.webm",
+   "title": "Corporate 4",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 83,
+   "weight": 1
+  },
+  {
+   "id": "mid-corporate-5",
+   "file": "mid-corporate-5.webm",
+   "title": "Corporate 5",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 153,
+   "weight": 1
+  },
+  {
+   "id": "mid-corporate-1",
+   "file": "mid-corporate-1.webm",
+   "title": "Corporate 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 124,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-2",
+   "file": "mid-funk-2.webm",
+   "title": "Funk 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 178,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-3",
+   "file": "mid-funk-3.webm",
+   "title": "Funk 3",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 189,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-4",
+   "file": "mid-funk-4.webm",
+   "title": "Funk 4",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 156,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-5",
+   "file": "mid-funk-5.webm",
+   "title": "Funk 5",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 88,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-6",
+   "file": "mid-funk-6.webm",
+   "title": "Funk 6",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 113,
+   "weight": 1
+  },
+  {
+   "id": "mid-funk-1",
+   "file": "mid-funk-1.webm",
+   "title": "Funk 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 113,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-2",
+   "file": "mid-industrial-2.webm",
+   "title": "Industrial 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 63,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-3",
+   "file": "mid-industrial-3.webm",
+   "title": "Industrial 3",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 65,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-4",
+   "file": "mid-industrial-4.webm",
+   "title": "Industrial 4",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 70,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-5",
+   "file": "mid-industrial-5.webm",
+   "title": "Industrial 5",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 61,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-6",
+   "file": "mid-industrial-6.webm",
+   "title": "Industrial 6",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 53,
+   "weight": 1
+  },
+  {
+   "id": "mid-industrial-1",
+   "file": "mid-industrial-1.webm",
+   "title": "Industrial 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 61,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-2",
+   "file": "mid-nighttime-2.webm",
+   "title": "Nighttime 2",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 258,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-3",
+   "file": "mid-nighttime-3.webm",
+   "title": "Nighttime 3",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 209,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-4",
+   "file": "mid-nighttime-4.webm",
+   "title": "Nighttime 4",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 183,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-5",
+   "file": "mid-nighttime-5.webm",
+   "title": "Nighttime 5",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 247,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-6",
+   "file": "mid-nighttime-6.webm",
+   "title": "Nighttime 6",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 224,
+   "weight": 1
+  },
+  {
+   "id": "mid-nighttime-1",
+   "file": "mid-nighttime-1.webm",
+   "title": "Nighttime 1",
+   "artist": "",
+   "period": "mid",
+   "years": [
+    1950,
+    1999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 224,
+   "weight": 1
+  },
+  {
+   "id": "late-ambient-tech",
+   "file": "late-ambient-tech.webm",
+   "title": "Ambient Tech",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "menu"
+   ],
+   "duration": 242,
+   "weight": 1
+  },
+  {
+   "id": "late-french-house",
+   "file": "late-french-house.webm",
+   "title": "French House",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "city"
+   ],
+   "duration": 163,
+   "weight": 1
+  },
+  {
+   "id": "late-house-2",
+   "file": "late-house-2.webm",
+   "title": "House 2",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 168,
+   "weight": 1
+  },
+  {
+   "id": "late-house-3",
+   "file": "late-house-3.webm",
+   "title": "House 3",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 156,
+   "weight": 1
+  },
+  {
+   "id": "late-house-4",
+   "file": "late-house-4.webm",
+   "title": "House 4",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 178,
+   "weight": 1
+  },
+  {
+   "id": "late-house-5",
+   "file": "late-house-5.webm",
+   "title": "House 5",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 177,
+   "weight": 1
+  },
+  {
+   "id": "late-house-1",
+   "file": "late-house-1.webm",
+   "title": "House 1",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy",
+    "city"
+   ],
+   "duration": 152,
+   "weight": 1
+  },
+  {
+   "id": "late-idm-2",
+   "file": "late-idm-2.webm",
+   "title": "IDM 2",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 174,
+   "weight": 1
+  },
+  {
+   "id": "late-idm-3",
+   "file": "late-idm-3.webm",
+   "title": "IDM 3",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 158,
+   "weight": 1
+  },
+  {
+   "id": "late-idm-4",
+   "file": "late-idm-4.webm",
+   "title": "IDM 4",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 154,
+   "weight": 1
+  },
+  {
+   "id": "late-idm-1",
+   "file": "late-idm-1.webm",
+   "title": "IDM 1",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "industrial"
+   ],
+   "duration": 173,
+   "weight": 1
+  },
+  {
+   "id": "late-lo-fi-2",
+   "file": "late-lo-fi-2.webm",
+   "title": "Lo-Fi 2",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "night"
+   ],
+   "duration": 183,
+   "weight": 1
+  },
+  {
+   "id": "late-lo-fi-3",
+   "file": "late-lo-fi-3.webm",
+   "title": "Lo-Fi 3",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "night"
+   ],
+   "duration": 189,
+   "weight": 1
+  },
+  {
+   "id": "late-lo-fi-4",
+   "file": "late-lo-fi-4.webm",
+   "title": "Lo-Fi 4",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "night"
+   ],
+   "duration": 189,
+   "weight": 1
+  },
+  {
+   "id": "late-lo-fi-5",
+   "file": "late-lo-fi-5.webm",
+   "title": "Lo-Fi 5",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "night"
+   ],
+   "duration": 194,
+   "weight": 1
+  },
+  {
+   "id": "late-lo-fi-1",
+   "file": "late-lo-fi-1.webm",
+   "title": "Lo-Fi 1",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful",
+    "night"
+   ],
+   "duration": 174,
+   "weight": 1
+  },
+  {
+   "id": "late-minimal",
+   "file": "late-minimal.webm",
+   "title": "Minimal",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "peaceful"
+   ],
+   "duration": 145,
+   "weight": 1
+  },
+  {
+   "id": "late-synth-2",
+   "file": "late-synth-2.webm",
+   "title": "Synth 2",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 87,
+   "weight": 1
+  },
+  {
+   "id": "late-synth-3",
+   "file": "late-synth-3.webm",
+   "title": "Synth 3",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 152,
+   "weight": 1
+  },
+  {
+   "id": "late-synth-4",
+   "file": "late-synth-4.webm",
+   "title": "Synth 4",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 141,
+   "weight": 1
+  },
+  {
+   "id": "late-synth-1",
+   "file": "late-synth-1.webm",
+   "title": "Synth 1",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "night"
+   ],
+   "duration": 137,
+   "weight": 1
+  },
+  {
+   "id": "late-synth-pop",
+   "file": "late-synth-pop.webm",
+   "title": "Synth Pop",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "city"
+   ],
+   "duration": 158,
+   "weight": 1
+  },
+  {
+   "id": "late-uk-garage",
+   "file": "late-uk-garage.webm",
+   "title": "UK Garage",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "busy"
+   ],
+   "duration": 163,
+   "weight": 1
+  },
+  {
+   "id": "late-y2k",
+   "file": "late-y2k.webm",
+   "title": "Y2K",
+   "artist": "",
+   "period": "late",
+   "years": [
+    2000,
+    9999
+   ],
+   "mood": [
+    "city"
+   ],
+   "duration": 147,
+   "weight": 1
+  }
+ ]
 }

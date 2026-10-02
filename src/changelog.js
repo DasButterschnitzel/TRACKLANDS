@@ -2,6 +2,23 @@
 // Each entry: version, month, and short lines in English and German.
 export const CHANGELOG = [
   {
+    v: '6.3.0', date: '2026-10',
+    en: [
+      'Music: 68 tracks for three periods – the early years, the mid century and today. In a game the music follows the calendar and crossfades into a new period; tracks overlap instead of stopping',
+      'Settings → Audio: "Music of all eras" plays every track whatever the year; the settings show which period is playing',
+      'On a phone or tablet the game no longer shows keyboard shortcuts (tooltips, settings, handbook, driver’s cab)',
+      'Android: the tutorial card no longer covers Build and Cancel while you build (it moves to the top); before, building the first station could get stuck',
+      'Android: dragging a volume slider towards the screen edge no longer closes the settings (Back gesture); Back on the title screen closes an open panel',
+    ],
+    de: [
+      'Musik: 68 Titel für drei Epochen – frühe Jahre, Jahrhundertmitte und heute. Im Spiel folgt die Musik dem Kalender und blendet in eine neue Epoche über; Titel gehen ineinander über statt abzubrechen',
+      'Einstellungen → Audio: „Musik aller Epochen“ spielt alle Titel, egal welches Jahr ist; die Einstellungen zeigen, welche Epoche gerade läuft',
+      'Auf Handy und Tablet zeigt das Spiel keine Tastenkürzel mehr (Tooltips, Einstellungen, Handbuch, Führerstand)',
+      'Android: Die Tutorial-Karte verdeckt beim Bauen nicht mehr Bauen und Abbrechen (sie rückt nach oben); vorher konnte der erste Bahnhofsbau hängen bleiben',
+      'Android: Ein Lautstärkeregler, der zum Bildschirmrand gezogen wird, schließt die Einstellungen nicht mehr (Zurück-Geste); Zurück auf dem Titelbildschirm schließt ein offenes Panel',
+    ],
+  },
+  {
     v: '6.2.0', date: '2026-10',
     en: [
       'TRACKLANDS is also an app now: a Windows installer and an Android app with the same game, running fully offline',

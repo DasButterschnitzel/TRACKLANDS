@@ -25,7 +25,7 @@ const UNLOCK_EVENTS = ['pointerdown', 'click', 'keydown', 'touchend'];
 const SETTINGS_KEY = 'tracklands.settings';
 const DEFAULTS = {
   volMaster: 0.8, volMusic: 0.6, volSfx: 0.8, volAmb: 0.6, music: true,
-  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true, perfHud: false,
+  graphics: 'auto', shadows: 'medium', particles: 'high', units: 'metric', haptics: true, autosave: 30, backups: 5, musicShuffle: true, musicRepeat: 'all', musicAllEras: false, nowPlaying: true, dayNight: true, dayLength: 'normal', weather: true, extremeWeather: true, labels: true, perfHud: false,
   cameraMotion: true, screenShake: true, reducedMotion: false, highContrast: false, uiScale: 1, lang: null, tutorial: true, tips: true, wheel: 'auto',
   instantBuild: false, keepTool: true,
 };

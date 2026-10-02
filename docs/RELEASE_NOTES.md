@@ -1,4 +1,4 @@
-# TRACKLANDS 6.2.0 — release notes
+# TRACKLANDS 6.3.0 — release notes
 
 TRACKLANDS is a transport tycoon in a low-poly miniature world. It runs in the browser (offline once loaded) and, from 6.2.0, as an app for Windows and Android — the same game everywhere, with no account and no server.
 
@@ -9,6 +9,19 @@ TRACKLANDS is a transport tycoon in a low-poly miniature world. It runs in the b
 - **A living world:** towns that grow street by street through six architectural eras, industries linked in production chains, municipal authorities, weather and seasons, rival companies that build and run real networks with their own money — and never through yours.
 - **Plan and manage:** planning mode with exact quotes, blueprints, a transport overview with problems and an advisor that explains its numbers, finance analysis down to each line, FIND in everyday English and German.
 - **Play your way:** a guided start, custom worlds (13 terrain presets, four map sizes, start years 1900–1990), a scenario campaign, a sandbox, English and German, desktop and touch.
+
+## New in 6.3.0
+
+- **Music.** 68 tracks for three periods: the early years (to 1949), the mid century (1950–1999) and today (from 2000).
+  - **In a game,** the music follows the calendar. When the year enters a new period, it crossfades into that period's music.
+  - **Transitions:** each track fades into the next instead of stopping.
+  - **Settings → Audio → "Music of all eras"** plays every track, whatever the year. The playlist shows each track's period.
+  - **Web version:** music is not part of the first download. Each track is kept for offline play once it has played. The Windows and Android apps contain every track.
+- **Phones and tablets:**
+  - **Keyboard shortcuts:** tooltips, settings, the handbook and the driver's cab no longer show them.
+  - **Building:** the tutorial card no longer covers *Build* and *Cancel* while you build. Before, building the first station on Android could get stuck.
+  - **Settings:** dragging a volume slider towards the screen edge no longer triggers Android's Back gesture and closes the settings.
+  - **Title screen:** Back closes an open panel.
 
 ## New in 6.2.0
 
