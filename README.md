@@ -81,5 +81,6 @@ Every release passes the automated gates listed in [`docs/AUDIT.md`](docs/AUDIT.
 - [Native release status](docs/RELEASE-NATIVE-STATUS.md): what has been verified, and how
 - [Audit](docs/AUDIT.md): every requirement of every phase, its status and the suite that covers it
 - Content packs (extra vehicles and scenarios as JSON): [`assets/packs/README.md`](assets/packs/README.md)
+- [Vathography Studio](vathography/README.md): a separate photography tool kept in this repository (not part of the game or its builds) that turns photos into depth artworks
 
 Three.js (MIT License) is bundled in `vendor/three`; everything else — models, textures, icons and sound — is made by the game itself.
